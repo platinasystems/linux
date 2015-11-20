@@ -63,14 +63,14 @@
 		compatible = "macronix,mx66l51235l";
 		spi-max-frequency = <29000000>;
 		reg = <0>;
-	};
-
-	flash1: macronix@1 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "macronix,mx66l51235l";
-		spi-max-frequency = <29000000>;
-		reg = <1>;
+		partition@0 {
+			label = "u-boot";
+			reg = <0x00000000 0x00100000>;
+		};
+		partition@100000 {
+			label = "linux";
+			reg = <0x00100000 0x04000000>;
+		};
 	};
 };
 
