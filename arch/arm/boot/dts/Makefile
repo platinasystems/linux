@@ -372,7 +372,9 @@ dtb-$(CONFIG_SOC_IMX6SL) += \
 dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sabreauto.dtb \
 	imx6sx-sdb-reva.dtb \
-	imx6sx-sdb.dtb
+	imx6sx-sdb.dtb \
+	platina-bugatti-lc.dtb \
+	platina-bugatti-mm.dtb
 dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-14x14-evk.dtb
 dtb-$(CONFIG_SOC_IMX7D) += \
