@@ -648,10 +648,14 @@
 #define E1000_PCS_LSTS_AN_COMPLETE	0x10000
 
 /* PHY Control Register */
+#define MII_CR_SPEED_SELECT_MSB	0x0040  /* bits 6,13: 10=1000, 01=100, 00=10 */
+#define MII_CR_COLL_TEST_ENABLE	0x0080  /* Collision test enable */
 #define MII_CR_FULL_DUPLEX      0x0100  /* FDX =1, half duplex =0 */
 #define MII_CR_RESTART_AUTO_NEG 0x0200  /* Restart auto negotiation */
+#define MII_CR_ISOLATE		0x0400  /* Isolate PHY from MII */
 #define MII_CR_POWER_DOWN       0x0800  /* Power down */
 #define MII_CR_AUTO_NEG_EN      0x1000  /* Auto Neg Enable */
+#define MII_CR_SPEED_SELECT_LSB	0x2000  /* bits 6,13: 10=1000, 01=100, 00=10 */
 #define MII_CR_LOOPBACK         0x4000  /* 0 = normal, 1 = loopback */
 #define MII_CR_RESET            0x8000  /* 0 = normal, 1 = PHY reset */
 #define MII_CR_SPEED_1000       0x0040
@@ -677,8 +681,11 @@
 /* Autoneg Expansion Register */
 
 /* 1000BASE-T Control Register */
+#define CR_1000T_ASYM_PAUSE	0x0080 /* Advertise asymmetric pause bit */
 #define CR_1000T_HD_CAPS         0x0100 /* Advertise 1000T HD capability */
 #define CR_1000T_FD_CAPS         0x0200 /* Advertise 1000T FD capability  */
+/* 1=Repeater/switch device port 0=DTE device */
+#define CR_1000T_REPEATER_DTE	0x0400
 #define CR_1000T_MS_VALUE        0x0800 /* 1=Configure PHY as Master */
 					/* 0=Configure PHY as Slave */
 #define CR_1000T_MS_ENABLE       0x1000 /* 1=Master/Slave manual config value */
@@ -885,7 +892,7 @@
 #define I210_I_PHY_ID        0x01410C00
 #define M88E1543_E_PHY_ID    0x01410EA0
 #define M88E1512_E_PHY_ID    0x01410DD0
-#define BCM54616_E_PHY_ID    0x03625D10
+#define BCM54616S_PHY_ID     0x03625d10
 
 /* M88E1000 Specific Registers */
 #define M88E1000_PHY_SPEC_CTRL     0x10  /* PHY Specific Control Register */

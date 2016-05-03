@@ -5264,6 +5264,10 @@ static void igb_watchdog_task(struct work_struct *work)
 							 &adapter->link_speed,
 							 &adapter->link_duplex);
 
+			if (hw->phy.type == e1000_phy_bcm54616) {
+				bcm54616s_linkup(hw, adapter->link_speed, adapter->link_duplex);
+			}
+
 			ctrl = rd32(E1000_CTRL);
 			/* Links status message must follow this format */
 			netdev_info(netdev,
