@@ -1183,6 +1183,45 @@ out:
 	return ret_val;
 }
 
+s32 igb_phy_force_speed_duplex_bcm(struct e1000_hw *hw)
+{
+	struct e1000_phy_info *phy = &hw->phy;
+	s32 ret_val;
+	u16 phy_data;
+	bool link;
+
+	ret_val = phy->ops.read_reg(hw, PHY_CONTROL, &phy_data);
+	if (ret_val)
+		goto out;
+
+	igb_phy_force_speed_duplex_setup(hw, &phy_data);
+
+	phy_data &= ~(MII_CR_POWER_DOWN|MII_CR_ISOLATE);
+
+	ret_val = phy->ops.write_reg(hw, PHY_CONTROL, phy_data);
+	if (ret_val)
+		goto out;
+
+	if (phy->autoneg_wait_to_complete) {
+		hw_dbg("Waiting for forced speed/duplex link on IGP phy.\n");
+
+		ret_val = igb_phy_has_link(hw, PHY_FORCE_LIMIT, 10000, &link);
+		if (ret_val)
+			goto out;
+
+		if (!link)
+			hw_dbg("Link taking longer than expected.\n");
+
+		/* Try once more */
+		ret_val = igb_phy_has_link(hw, PHY_FORCE_LIMIT, 10000, &link);
+		if (ret_val)
+			goto out;
+	}
+
+out:
+	return ret_val;
+}
+
 /**
  *  igb_phy_force_speed_duplex_m88 - Force speed/duplex for m88 PHY
  *  @hw: pointer to the HW structure
@@ -1967,6 +2006,32 @@ s32 igb_get_phy_info_m88(struct e1000_hw *hw)
 		phy->cable_length = E1000_CABLE_LENGTH_UNDEFINED;
 		phy->local_rx = e1000_1000t_rx_status_undefined;
 		phy->remote_rx = e1000_1000t_rx_status_undefined;
+	}
+
+out:
+	return ret_val;
+}
+
+s32 igb_get_phy_info_bcm(struct e1000_hw *hw)
+{
+	struct e1000_phy_info *phy = &hw->phy;
+	s32  ret_val;
+	bool link;
+
+	if (phy->media_type != e1000_media_type_copper) {
+		hw_dbg("Phy info is only valid for copper media\n");
+		ret_val = -E1000_ERR_CONFIG;
+		goto out;
+	}
+
+	ret_val = igb_phy_has_link(hw, 1, 0, &link);
+	if (ret_val)
+		goto out;
+
+	if (!link) {
+		hw_dbg("Phy info is only valid if link is up\n");
+		ret_val = -E1000_ERR_CONFIG;
+		goto out;
 	}
 
 out:
