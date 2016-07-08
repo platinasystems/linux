@@ -122,6 +122,8 @@ source "drivers/auxdisplay/Kconfig"
 
 source "drivers/uio/Kconfig"
 
+source "drivers/uio-pci-dma/Kconfig"
+
 source "drivers/vfio/Kconfig"
 
 source "drivers/vlynq/Kconfig"

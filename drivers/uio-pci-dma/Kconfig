@@ -1,0 +1,11 @@
+if !UIO
+
+config UIO_PCI_DMA
+	tristate "Alternate Userspace I/O drivers"
+	depends on PCI
+	help
+	  A hacked Userpsace I/O driver supporting DMA from PCI.
+
+	  If you don't know what to do here, say N.
+
+endif
