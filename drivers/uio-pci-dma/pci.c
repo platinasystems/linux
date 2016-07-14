@@ -113,7 +113,7 @@ static ssize_t store_disable_regs(struct device *dev, struct device_attribute *a
 }
 static DEVICE_ATTR(disable_interrupt_regs, S_IRUGO|S_IWUSR|S_IWGRP, show_disable_regs, store_disable_regs);
 
-static int disable_msi = 0, dma_bits = 64;
+static int disable_msi = 0, dma_bits = 32;
 module_param(disable_msi, int, 0);
 module_param(dma_bits, int, 0);
 
