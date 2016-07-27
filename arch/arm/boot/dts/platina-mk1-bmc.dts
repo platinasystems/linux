@@ -49,13 +49,6 @@
 	status = "okay";
 };
 
-&usbotg1 {			/* onboard debug */
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usb_otg1>;
-	status = "okay";
-};
-
-
 &usbotg2 { 			/* used for front faceplate */
 	dr_mode = "host";
 	status = "okay";
@@ -263,14 +256,6 @@
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO06__UART2_TX		0x1b0b1
 				MX6SX_PAD_GPIO1_IO07__UART2_RX		0x1b0b1
-			>;
-		};
-
-		/* USB group empty	*/
-		/* no gpios to define	*/
-		pinctrl_usb_otg1: usbotg1grp {
-			fsl,pins = <
-
 			>;
 		};
 
