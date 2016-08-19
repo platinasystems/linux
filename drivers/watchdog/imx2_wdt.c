@@ -353,9 +353,18 @@ static void imx2_wdt_shutdown(struct platform_device *pdev)
 		 * We are running, configure max timeout before reboot
 		 * will take place.
 		 */
+#define REBOOT_MUTEX_ISSUE
+/* FIXME: Continuous mutex panic:  use the WDT itself to reboot for now */
+#if defined(REBOOT_MUTEX_ISSUE)
+		imx2_wdt_set_timeout(wdog, 2);
+#else
 		imx2_wdt_set_timeout(wdog, IMX2_WDT_MAX_TIME);
+#endif
 		imx2_wdt_ping(wdog);
 		dev_crit(&pdev->dev, "Device shutdown: Expect reboot!\n");
+#if defined(REBOOT_MUTEX_ISSUE)
+		while(1) { }
+#endif
 	}
 }
 
