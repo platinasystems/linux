@@ -14,7 +14,7 @@
 
 / {
 	model = "Freescale i.MX6 SoloX Platina TOR1 Board";
-	compatible = "platina,platina-TOR1", "fsl,imx6sx";
+	compatible = "platina,platina-TOR1", "fsl,imx6sx-sdb", "fsl,imx6sx";
 
 	chosen {
 		stdout-path = &uart1;
@@ -32,8 +32,8 @@
 	pinctrl-0 = <&pinctrl_enet1>;
 	phy-mode = "rgmii";
 	fixed-link {
-		speed = <1000>;
-		full-duplex;
+	      speed = <1000>;
+	      full-duplex;
 	};
 };
 
@@ -49,6 +49,12 @@
 	status = "okay";
 };
 
+&usbotg1 {			/* onboard debug */
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+
 &usbotg2 { 			/* used for front faceplate */
 	dr_mode = "host";
 	status = "okay";
@@ -63,7 +69,7 @@
 
 
 /* Added new Quad-SPI1 node for TOR1 */
-/*                                   */
+/*   	      	       	    	     */
 &qspi1 {
        pinctrl-names = "default";
        pinctrl-0 = <&pinctrl_qspi1>;
@@ -71,27 +77,28 @@
 
 	ddrsmp = <0>;		/* DDR internal Sampling */
 
-       flash10: s25fl512s@0 {
+       flash10: s25fl256s1@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spansion,s25fl512s";
-		spi-max-frequency = <50000000>;
+		compatible = "spansion,s25fl256s1";
+		spi-max-frequency = <29000000>;
 		reg = <0>;
 	};
 
+/*
 	flash11: s25fl512s@1 {
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "spansion,s25fl512s";
-		spi-max-frequency = <50000000>;
+		spi-max-frequency = <29000000>;
 		reg = <1>;
 	};
 
-	flash12: s25fl512s@2 {
+     	flash12: s25fl512s@2 {
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "spansion,s25fl512s";
-		spi-max-frequency = <50000000>;
+		spi-max-frequency = <29000000>;
 		reg = <2>;
 	};
 
@@ -99,28 +106,30 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "spansion,s25fl512s";
-		spi-max-frequency = <50000000>;
+		spi-max-frequency = <29000000>;
 		reg = <3>;
 	};
+
+*/
+
 };
 
 /* Node Quad-SPI2 is not used on TOR1 */
-/*            	                      */
+/* 		     	      	      */
 /*
 &qspi2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_qspi2>;
-	status = "disabled";
-};
-*/
+	status = "disabled";		
+}; */
 
 /* Disabling SPI5 since it's not used on TOR1 	*/
 /* and some of its pins are shared w/ QSPI	*/
-/*
+/* 	     	  	     	      	      
 &ecspi5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi5>;
-	status = "disabled";
+	status = "disabled";	
 
 	spiflash0: macronix@0 {
 		#address-cells = <1>;
@@ -137,8 +146,7 @@
 			reg = <0x00100000 0x04000000>;
 		};
 	};
-};
-*/
+}; */
 
 &ecspi4 {
 	pinctrl-names = "default";
@@ -151,7 +159,7 @@
 	pinctrl-0 = <&pinctrl_hog>;
 
 	platina-TOR1 {
-		pinctrl_hog: hoggrp {
+        	pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x07030	/* input */
 				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9 	0x00068	/* output */
@@ -159,7 +167,7 @@
 				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x00068
 				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x00068
 				MX6SX_PAD_GPIO1_IO13__GPIO1_IO_13	0x00068
-
+				
 				MX6SX_PAD_ENET1_COL__GPIO2_IO_0		0x05030
 				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7 	0x05030
 				MX6SX_PAD_ENET2_RX_CLK__GPIO2_IO_8	0x00068
@@ -183,7 +191,7 @@
 				MX6SX_PAD_NAND_CLE__GPIO4_IO_3  	0x07030
 				MX6SX_PAD_NAND_DATA00__GPIO4_IO_4 	0x05030
 				MX6SX_PAD_NAND_DATA01__GPIO4_IO_5	0x05030
-				MX6SX_PAD_NAND_DATA02__GPIO4_IO_6	0x00068
+				MX6SX_PAD_NAND_DATA02__GPIO4_IO_6	0x00068	
 				MX6SX_PAD_NAND_DATA03__GPIO4_IO_7	0x05030
 				MX6SX_PAD_NAND_DATA04__GPIO4_IO_8 	0x05030
 				MX6SX_PAD_NAND_DATA05__GPIO4_IO_9 	0x05030
@@ -200,7 +208,7 @@
 				MX6SX_PAD_SD2_DATA1__GPIO6_IO_9		0x00068
 				MX6SX_PAD_SD2_DATA2__GPIO6_IO_10   	0x00068
 				MX6SX_PAD_SD2_DATA3__GPIO6_IO_11 	0x00000	/* unused */
-				MX6SX_PAD_SD4_DATA6__GPIO6_IO_20 	0x05030
+				MX6SX_PAD_SD4_DATA6__GPIO6_IO_20 	0x05030	
 				MX6SX_PAD_SD4_DATA7__GPIO6_IO_21	0x00068
 			>;
 		};
@@ -259,6 +267,7 @@
 			>;
 		};
 
+
 		pinctrl_usdhc4: usdhc4grp {
 			fsl,pins = <
 				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17059
@@ -269,16 +278,16 @@
 				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17059
 			>;
 		};
-
+		
 		/* Defined Pins for Quad-SPI1 node */
-		/*                                 */
+		/* 	   	    	      	   */
 		pinctrl_qspi1: qspi1grp {
 			fsl,pins = <
-				 MX6SX_PAD_QSPI1A_DATA0__QSPI1_A_DATA_0	  0x70f1
+				 MX6SX_PAD_QSPI1A_DATA0__QSPI1_A_DATA_0	  0x70f1	
 				 MX6SX_PAD_QSPI1A_DATA1__QSPI1_A_DATA_1	  0x70f1
 				 MX6SX_PAD_QSPI1A_DATA2__QSPI1_A_DATA_2   0x70f1
 				 MX6SX_PAD_QSPI1A_DATA3__QSPI1_A_DATA_3	  0x70f1
-				 MX6SX_PAD_QSPI1A_SCLK__QSPI1_A_SCLK 	  0x70f1
+			  	 MX6SX_PAD_QSPI1A_SCLK__QSPI1_A_SCLK 	  0x70f1
 				 MX6SX_PAD_QSPI1A_SS0_B__QSPI1_A_SS0_B	  0x70f1
 				 MX6SX_PAD_QSPI1A_SS1_B__QSPI1_A_SS1_B	  0x70f1
 				 MX6SX_PAD_QSPI1B_DATA0__QSPI1_B_DATA_0   0x70f1
@@ -311,33 +320,32 @@
 		};
 		*/
 
-		/* not used */
-		/*
-		pinctrl_ecspi5: ecspi5grp {
+	 	/*  */
+		pinctrl_ecspi4: ecspi4grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_CLK__ECSPI4_SCLK       0x70f1
 				MX6SX_PAD_SD3_CMD__ECSPI4_MOSI     0x70f1
 				MX6SX_PAD_SD3_DATA2__ECSPI4_SS0        0x70f1
 				MX6SX_PAD_SD3_DATA3__ECSPI4_MISO     0x70f1
 			>;
-		};
-		*/
+		}; 
 
-		/* Defined Pins for ecspi4 node */
-		/*                              */
-		pinctrl_ecspi4: ecspi4grp {
+		/* Defined Pins for ecspi5 node */
+		/* not used    	     */
+		/*
+		pinctrl_ecspi5: ecspi5grp {
 			fsl,pins = <
 				MX6SX_PAD_QSPI1A_DQS__ECSPI5_MOSI       0x70f1
 				MX6SX_PAD_QSPI1A_SS1_B__ECSPI5_MISO     0x70f1
 				MX6SX_PAD_QSPI1B_DQS__ECSPI5_SS0        0x70f1
 				MX6SX_PAD_QSPI1B_SS1_B__ECSPI5_SCLK     0x70f1
 			>;
-		};
+		}; */
 	};
 };
 
 /* 05/09/16: Updated LOCAL_MUX SPI interface for TOR1	*/
-/*                                                      */
+/* 	      	  	    		      		*/
 &i2c1 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -351,12 +359,12 @@
         };
 
 	pmic: pfuze100@08 {			/* copied from Sabre Board */
-		compatible = "fls,pfuze200";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg = <0x08>;
+	       	compatible = "fls,pfuze200";
+	       	#address-cells = <1>;
+	       	#size-cells = <0>;
+	       	reg = <0x08>;
 
-		regulators {
+	       	regulators {
 			sw1a_reg: sw1ab {
 				regulator-min-microvolt = <300000>;
 				regulator-max-microvolt = <1875000>;
@@ -439,7 +447,7 @@
 			};
 		};
 	};
-
+         
 	localmux: i2cmux@76 {
 		compatible = "nxp,pca9548";
 		#address-cells = <1>;
@@ -451,21 +459,21 @@
 			#size-cells = <0>;
 			reg = <0>;
 
-			ledbrd: ioexpand1@22 {
-				compatible = "nxp,pca9535";
-				reg = <0x22>;
-			};
+                        ucd9090@34 {
+                                   compatible = "ti,ucd9090";
+                                   reg = <0x34>;
+                        };
 		};
-
+		
 		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <1>;
 
-			ucd9090@34 {
-				compatible = "ti,ucd9090";
-				reg = <0x34>;
-			};
+                        ledbrd: ioexpand1@22 {
+                                compatible = "nxp,pca9535";
+                                reg = <0x22>;
+                        };
 		};
 
 		i2c@2 {
@@ -500,7 +508,7 @@
 				compatible = "mps,mp2953b";
 				reg = <0x21>;
 			};
-
+			
 			pwrdc2: mp2953b@22 {
 				compatible = "mps,mp2953b";
 				reg = <0x22>;
@@ -512,9 +520,9 @@
 			#size-cells = <0>;
 			reg = <7>;
 
-			hwmon: w83795adg@2e {
+			hwmon: w83795adg@2f {
 				compatible = "novuton,w83795adg";
-				reg = <0x2e>;
+				reg = <0x2f>;
 			};
 		};
 	};
@@ -526,11 +534,11 @@
         pinctrl-0 = <&pinctrl_i2c2>;
         status = "okay";
 
-	frumux: frumux1@70 {
+	frumux: frumux1@72 {
 		compatible = "nxp,pca9545";
 		#address-cells = <1>;
 		#size-cells = <0>;
-		reg = <0x70>;
+		reg = <0x72>;
 
 		i2c@0 {
 			#address-cells = <1>;
@@ -542,7 +550,7 @@
 				reg = <0x58>;
 			};
 		};
-
+		
 		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -577,7 +585,7 @@
 &gpio1 {
 	HOST_TO_BMC_INT_L@8 {
 		gpio-pin-desc;
-		input;
+	  	input;
 	};
 	BMC_TO_HOST_NMI@9 {
 		gpio-pin-desc;
@@ -620,7 +628,7 @@
 	CPU_TO_MAIN_I2C_EN@10 {
 		gpio-pin-desc;
 		output-low;
-	};
+	};	      
 	CPU_TO_FRU_I2C_EN@11 {
 		gpio-pin-desc;
 		output-low;
@@ -649,13 +657,13 @@
 		gpio-pin-desc;
 		input;
 	};
-};
+};		   
 
 &gpio3 {
 	ETHX_INT_L@0 {
-		gpio-pin-desc;
+       		gpio-pin-desc;
 		input;
-	};
+  	};
 	ETHX_RST_L@25 {
 		gpio-pin-desc;
 		output-high;
@@ -697,7 +705,7 @@
 	};
 	PSU0_PWRON_L@6 {
 		gpio-pin-desc;
-		output-low;
+	  	output-low;
 	};
 	PSU0_INT_L@7 {
 		gpio-pin-desc;
@@ -713,7 +721,7 @@
 	};
 	PSU1_PWRON_L@10 {
 		gpio-pin-desc;
-		output-low;
+	  	output-low;
 	};
 	PSU1_INT_L@11 {
 		gpio-pin-desc;
@@ -723,6 +731,10 @@
 		gpio-pin-desc;
 		output-low;
 	};
+        HOST_CPU_PWRBTN_L@14 {
+                gpio-pin-desc;
+                output-high;
+        };
 	ALL_PWR_GOOD@15 {
 		gpio-pin-desc;
 		input;
@@ -730,6 +742,10 @@
 };
 
 &gpio6 {
+        SYSTEM_LED_RST_L@6 {
+                gpio-pin-desc;
+                output-high;
+        };
 	HOST_TO_BMC_I2C_GPIO@7 {
 		gpio-pin-desc;
 		input;
@@ -755,4 +771,4 @@
 		output-high;
 	};
 
-};
+};	
