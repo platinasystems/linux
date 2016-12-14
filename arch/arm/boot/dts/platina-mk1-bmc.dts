@@ -163,7 +163,7 @@
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x07030	/* input */
 				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9 	0x00068	/* output */
-				MX6SX_PAD_GPIO1_IO10__GPIO1_IO_10	0x00868
+				MX6SX_PAD_GPIO1_IO10__GPIO1_IO_10	0x00068
 				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x00068
 				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x00068
 				MX6SX_PAD_GPIO1_IO13__GPIO1_IO_13	0x00068
@@ -191,11 +191,11 @@
 				MX6SX_PAD_NAND_CLE__GPIO4_IO_3  	0x07030
 				MX6SX_PAD_NAND_DATA00__GPIO4_IO_4 	0x05030
 				MX6SX_PAD_NAND_DATA01__GPIO4_IO_5	0x05030
-				MX6SX_PAD_NAND_DATA02__GPIO4_IO_6	0x03068	
+				MX6SX_PAD_NAND_DATA02__GPIO4_IO_6	0x00068	
 				MX6SX_PAD_NAND_DATA03__GPIO4_IO_7	0x05030
 				MX6SX_PAD_NAND_DATA04__GPIO4_IO_8 	0x05030
 				MX6SX_PAD_NAND_DATA05__GPIO4_IO_9 	0x05030
-				MX6SX_PAD_NAND_DATA06__GPIO4_IO_10	0x03068
+				MX6SX_PAD_NAND_DATA06__GPIO4_IO_10	0x00068
 				MX6SX_PAD_NAND_DATA07__GPIO4_IO_11 	0x05030
 				MX6SX_PAD_NAND_RE_B__GPIO4_IO_12   	0x00068
 				MX6SX_PAD_NAND_READY_B__GPIO4_IO_13	0x00000	/* unused */
@@ -212,7 +212,7 @@
                                 MX6SX_PAD_QSPI1B_SS1_B__GPIO4_IO_31     0x0068
 
 
-				MX6SX_PAD_SD2_CLK__GPIO6_IO_6		0x00068	/* unused */
+				MX6SX_PAD_SD2_CLK__GPIO6_IO_6		0x00000	/* unused */
 				MX6SX_PAD_SD2_CMD__GPIO6_IO_7  		0x00068
 				MX6SX_PAD_SD2_DATA0__GPIO6_IO_8  	0x00068
 				MX6SX_PAD_SD2_DATA1__GPIO6_IO_9		0x00068
@@ -363,181 +363,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
-
-	eeprom: 24c128@55 {
-                compatible = "24c128";
-                pagesize = <64>;
-                reg = <0x55>;
-        };
-
-	pmic: pfuze200@08 {			/* copied from Sabre Board */
-		compatible = "fsl,pfuze200";
-	       	#address-cells = <1>;
-	       	#size-cells = <0>;
-	       	reg = <0x08>;
-
-	       	regulators {
-			sw1a_reg: sw1ab {
-				regulator-min-microvolt = <300000>;
-				regulator-max-microvolt = <1875000>;
-				regulator-boot-on;
-				regulator-always-on;
-				regulator-ramp-delay = <6250>;
-			};
-
-			sw2_reg: sw2 {
-				regulator-min-microvolt = <400000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-boot-on;
-				regulator-always-on;
-			};
-
-			sw3a_reg: sw3a {
-				regulator-min-microvolt = <400000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-boot-on;
-				regulator-always-on;
-			};
-
-			sw3b_reg: sw3b {
-				regulator-min-microvolt = <400000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-boot-on;
-				regulator-always-on;
-			};
-
-			swbst_reg: swbst {
-				regulator-min-microvolt = <5000000>;
-				regulator-max-microvolt = <5150000>;
-			};
-
-			snvs_reg: vsnvs {
-				regulator-min-microvolt = <1000000>;
-				regulator-max-microvolt = <3000000>;
-				regulator-boot-on;
-				regulator-always-on;
-			};
-
-			vref_reg: vrefddr {
-				regulator-boot-on;
-				regulator-always-on;
-			};
-
-			vgen1_reg: vgen1 {
-				regulator-min-microvolt = <800000>;
-				regulator-max-microvolt = <1550000>;
-				regulator-always-on;
-			};
-
-			vgen2_reg: vgen2 {
-				regulator-min-microvolt = <800000>;
-				regulator-max-microvolt = <1550000>;
-			};
-
-			vgen3_reg: vgen3 {
-				regulator-min-microvolt = <1800000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-always-on;
-			};
-
-			vgen4_reg: vgen4 {
-				regulator-min-microvolt = <1800000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-always-on;
-			};
-
-			vgen5_reg: vgen5 {
-				regulator-min-microvolt = <1800000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-always-on;
-			};
-
-			vgen6_reg: vgen6 {
-				regulator-min-microvolt = <1800000>;
-				regulator-max-microvolt = <3300000>;
-				regulator-always-on;
-			};
-		};
-	};
-         
-	localmux: i2cmux@76 {
-		compatible = "nxp,pca9548";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg = <0x76>;
-
-		i2c@0 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0>;
-
-                        ucd9090@34 {
-                                   compatible = "ti,ucd9090";
-                                   reg = <0x34>;
-                        };
-		};
-		
-		i2c@1 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <1>;
-
-                        ledbrd: ioexpand1@22 {
-                                compatible = "nxp,pca9535";
-                                reg = <0x22>;
-                        };
-		};
-
-		i2c@2 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <2>;
-
-			expander1: ioexpand2@27 {
-				   compatible = "nxp,pca9535";
-				   reg = <0x27>;
-			};
-		};
-
-
-		i2c@5 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <5>;
-
-			clkgen: 8t49n028@6e {
-				compatible = "idt,8t49n028";
-				reg = <0x6e>;
-			};
-		};
-
-		i2c@6 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <6>;
-
-			pwrdc1: mp2953b@21 {
-				compatible = "mps,mp2953b";
-				reg = <0x21>;
-			};
-			
-			pwrdc2: mp2953b@22 {
-				compatible = "mps,mp2953b";
-				reg = <0x22>;
-			};
-		};
-
-		i2c@7 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <7>;
-
-			hwmon: w83795adg@2f {
-				compatible = "novuton,w83795adg";
-				reg = <0x2f>;
-			};
-		};
-	};
 };
 
 &i2c2 {
@@ -545,46 +370,6 @@
         pinctrl-names = "default";
         pinctrl-0 = <&pinctrl_i2c2>;
         status = "okay";
-
-	frumux: frumux1@72 {
-		compatible = "nxp,pca9545";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg = <0x72>;
-
-		i2c@0 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0>;
-
-			psu0: fsp700@58 {
-				compatible = "fsp,fsp700-20erm";
-				reg = <0x58>;
-			};
-		};
-		
-		i2c@1 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <1>;
-
-			psu1: fsp700@58 {
-				compatible = "fsp,fsp700-20erm";
-				reg = <0x58>;
-			};
-		};
-
-		i2c@2 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <2>;
-
-			fanBrd: ioexpand3@20 {
-				compatible = "nxp,pca9535";
-				reg = <0x20>;
-			};
-		};
-	};
 };
 
 &i2c3 {
