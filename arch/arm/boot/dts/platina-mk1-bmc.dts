@@ -161,8 +161,8 @@
 	platina-TOR1 {
         	pinctrl_hog: hoggrp {
 			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x07030	/* input */
-				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9 	0x00068	/* output */
+				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x07030
+				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9 	0x07030
 				MX6SX_PAD_GPIO1_IO10__GPIO1_IO_10	0x00868
 				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x00068
 				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x00068
@@ -384,9 +384,9 @@
 		gpio-pin-desc;
 	  	input;
 	};
-	BMC_TO_HOST_NMI@9 {
+	BMC_TO_HOST_NMI_L@9 {
 		gpio-pin-desc;
-		output-low;
+		input;
 	};
 	BMC_TO_HOST_RST_L@10 {
 		gpio-pin-desc;
