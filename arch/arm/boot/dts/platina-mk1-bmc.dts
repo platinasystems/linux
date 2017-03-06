@@ -386,7 +386,7 @@
 	};
 	BMC_TO_HOST_NMI_L@9 {
 		gpio-pin-desc;
-		input;
+		output-high;
 	};
 	BMC_TO_HOST_RST_L@10 {
 		gpio-pin-desc;
