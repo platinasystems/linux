@@ -197,7 +197,7 @@
 				MX6SX_PAD_NAND_DATA05__GPIO4_IO_9 	0x05030
 				MX6SX_PAD_NAND_DATA06__GPIO4_IO_10	0x03068
 				MX6SX_PAD_NAND_DATA07__GPIO4_IO_11 	0x05030
-				MX6SX_PAD_NAND_RE_B__GPIO4_IO_12   	0x00068
+				MX6SX_PAD_NAND_RE_B__GPIO4_IO_12   	0x07030
 				MX6SX_PAD_NAND_READY_B__GPIO4_IO_13	0x00000	/* unused */
 				MX6SX_PAD_NAND_WE_B__GPIO4_IO_14        0x00000 /* usused */
 				MX6SX_PAD_NAND_WP_B__GPIO4_IO_15 	0x05030
@@ -526,7 +526,7 @@
 	};
 	FP_BTN_UARTSEL_EN_L@12 {
 		gpio-pin-desc;
-		output-low;
+		output-high;
 	};
         HOST_CPU_PWRBTN_L@14 {
                 gpio-pin-desc;
