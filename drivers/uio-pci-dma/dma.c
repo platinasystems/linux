@@ -756,8 +756,7 @@ static void uio_dma_vm_close(struct vm_area_struct *vma)
 {
 }
 
-static int uio_dma_vm_fault(struct vm_area_struct *area, 
-			struct vm_fault *fdata)
+static int uio_dma_vm_fault(struct vm_fault *fdata)
 {
 	return VM_FAULT_SIGBUS;
 }
