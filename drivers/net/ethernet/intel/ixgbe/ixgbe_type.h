@@ -457,7 +457,16 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_DMATXCTL_MBINTEN  0x40 /* Bit 6 */
 #define IXGBE_DMATXCTL_VT_SHIFT 16  /* VLAN EtherType */
 
+#define IXGBE_PFDTXGSWC_VT_LBDIS  0 /* Local L2 VT switch disable */
 #define IXGBE_PFDTXGSWC_VT_LBEN 0x1 /* Local L2 VT switch enable */
+
+#ifdef CONFIG_IXGBE_DISABLE_VMDQ_LOOPBACK
+#define IXGBE_PFDTXGSWC_VT_LB   IXGBE_PFDTXGSWC_VT_LBDIS
+#define IXGBE_BRIDGE_MODE_SRIOV BRIDGE_MODE_VEPA
+#else
+#define IXGBE_PFDTXGSWC_VT_LB IXGBE_PFDTXGSWC_VT_LBEN
+#define IXGBE_BRIDGE_MODE_SRIOV BRIDGE_MODE_VEB
+#endif
 
 /* Anti-spoofing defines */
 #define IXGBE_SPOOF_MACAS_MASK          0xFF
