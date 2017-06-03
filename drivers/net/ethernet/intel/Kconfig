@@ -194,15 +194,6 @@ config IXGBE_DCB
 
 	  If unsure, say N.
 
-config IXGBE_DISABLE_VMDQ_LOOPBACK
-	bool "Disable ixgbe VMDQ Loopback support"
-	default n
-	depends on IXGBE
-	---help---
-	  Say Y here if you want to disable VMDQ Loopback support
-
-	  If unsure, say N.
-
 config IXGBEVF
 	tristate "Intel(R) 10GbE PCI Express Virtual Function Ethernet support"
 	depends on PCI_MSI

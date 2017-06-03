@@ -97,8 +97,8 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 	adapter->ring_feature[RING_F_VMDQ].offset = num_vfs;
 
 	/* Initialize default switching mode VEB */
-	IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LB);
-	adapter->bridge_mode = IXGBE_BRIDGE_MODE_SRIOV;
+	IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LBEN);
+	adapter->bridge_mode = BRIDGE_MODE_VEB;
 
 	/* limit trafffic classes based on VFs enabled */
 	if ((adapter->hw.mac.type == ixgbe_mac_82599EB) && (num_vfs < 16)) {
