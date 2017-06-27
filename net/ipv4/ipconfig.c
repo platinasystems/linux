@@ -69,9 +69,6 @@
 #if defined(CONFIG_IP_PNP_DHCP)
 #define IPCONFIG_DHCP
 #endif
-#if defined(CONFIG_IP_PNP_DHCP_TIMEOUT)
-#define IPCONFIG_AUTOADDR
-#endif
 #if defined(CONFIG_IP_PNP_BOOTP) || defined(CONFIG_IP_PNP_DHCP)
 #define IPCONFIG_BOOTP
 #endif
@@ -88,19 +85,11 @@
 
 /* Define the timeout for waiting for a DHCP/BOOTP/RARP reply */
 #define CONF_OPEN_RETRIES 	2	/* (Re)open devices twice */
-#if defined(IPCONFIG_AUTOADDR)
-#define CONF_SEND_RETRIES 	2	/* Send six requests per open */
-#else
 #define CONF_SEND_RETRIES 	6	/* Send six requests per open */
-#endif
 #define CONF_BASE_TIMEOUT	(HZ*2)	/* Initial timeout: 2 seconds */
 #define CONF_TIMEOUT_RANDOM	(HZ)	/* Maximum amount of randomization */
 #define CONF_TIMEOUT_MULT	*7/4	/* Rate of timeout growth */
-#if defined(IPCONFIG_AUTOADDR)
-#define CONF_TIMEOUT_MAX	(HZ*5)	/* Maximum allowed timeout */
-#else
 #define CONF_TIMEOUT_MAX	(HZ*30)	/* Maximum allowed timeout */
-#endif
 #define CONF_NAMESERVERS_MAX   3       /* Maximum number of nameservers
 					   - '3' from resolv.h */
 
@@ -1170,7 +1159,6 @@ static int __init ic_dynamic(void)
 	unsigned long start_jiffies, timeout, jiff;
 	int do_bootp = ic_proto_have_if & IC_BOOTP;
 	int do_rarp = ic_proto_have_if & IC_RARP;
-	int dhcp_fail_cnt = 0;
 
 	/*
 	 * If none of DHCP/BOOTP/RARP was selected, return with an error.
@@ -1254,7 +1242,7 @@ static int __init ic_dynamic(void)
 		}
 #endif /* IPCONFIG_DHCP */
 
-		if ((ic_got_reply) || (dhcp_fail_cnt > 0)) {
+		if (ic_got_reply) {
 			pr_cont(" OK\n");
 			break;
 		}
@@ -1263,9 +1251,6 @@ static int __init ic_dynamic(void)
 			continue;
 
 		if (! --retries) {
-#if defined(IPCONFIG_AUTOADDR)
-			dhcp_fail_cnt++;
-#endif
 			pr_cont(" timed out!\n");
 			break;
 		}
@@ -1288,9 +1273,6 @@ static int __init ic_dynamic(void)
 		ic_rarp_cleanup();
 #endif
 
-	if (dhcp_fail_cnt > 0) {
-		ic_got_reply = 1;
-	}
 	if (!ic_got_reply) {
 		ic_myaddr = NONE;
 		return -1;

@@ -132,18 +132,6 @@ config IP_PNP_DHCP
 	  must be operating on your network.  Read
 	  <file:Documentation/filesystems/nfs/nfsroot.txt> for details.
 
-config IP_PNP_DHCP_TIMEOUT
-	bool "IP: DHCP_TIMEOUT support"
-	depends on IP_PNP
-	---help---
-	  This enables a Platina specific change to ipconfig.c that will
-          fake a DHCP ACK.  This will assign 255.255.255.255 to the eth0
-          interface.  This puts the eth0 interface in the up state.  This
-          is so IPV6 Link Local can actually work.  Without this option,
-          if DHCP fails, eth0 will be down, and IPV6 Link Local will not
-          be able to function.  This also reduces the DHCP timeout from
-          minutes to ~10 seconds.
-
 config IP_PNP_BOOTP
 	bool "IP: BOOTP support"
 	depends on IP_PNP
