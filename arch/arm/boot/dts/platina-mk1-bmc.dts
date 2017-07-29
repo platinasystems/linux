@@ -148,12 +148,14 @@
 	};
 }; */
 
+/* not used*/
+/*
 &ecspi4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi4>;
 	status = "okay";
 };
-
+*/
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
@@ -332,7 +334,8 @@
 		};
 		*/
 
-	 	/*  */
+	 	/* not used  */
+		/*
 		pinctrl_ecspi4: ecspi4grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_CLK__ECSPI4_SCLK       0x70f1
@@ -341,7 +344,7 @@
 				MX6SX_PAD_SD3_DATA3__ECSPI4_MISO     0x70f1
 			>;
 		}; 
-
+		*/
 		/* Defined Pins for ecspi5 node */
 		/* not used    	     */
 		/*
