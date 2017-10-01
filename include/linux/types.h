@@ -11,10 +11,16 @@
 
 typedef __u32 __kernel_dev_t;
 
+#ifndef _SYS_SELECT_H
 typedef __kernel_fd_set		fd_set;
+#endif
+#ifndef __dev_t_defined
 typedef __kernel_dev_t		dev_t;
+#endif
 typedef __kernel_ino_t		ino_t;
+#ifndef __mode_t_defined
 typedef __kernel_mode_t		mode_t;
+#endif
 typedef unsigned short		umode_t;
 typedef __u32			nlink_t;
 typedef __kernel_off_t		off_t;
@@ -22,7 +28,9 @@ typedef __kernel_pid_t		pid_t;
 typedef __kernel_daddr_t	daddr_t;
 typedef __kernel_key_t		key_t;
 typedef __kernel_suseconds_t	suseconds_t;
+#ifndef __time_t_defined
 typedef __kernel_timer_t	timer_t;
+#endif
 typedef __kernel_clockid_t	clockid_t;
 typedef __kernel_mqd_t		mqd_t;
 
@@ -33,7 +41,9 @@ typedef __kernel_gid32_t	gid_t;
 typedef __kernel_uid16_t        uid16_t;
 typedef __kernel_gid16_t        gid16_t;
 
+#ifndef __intptr_t_defined
 typedef unsigned long		uintptr_t;
+#endif
 
 #ifdef CONFIG_HAVE_UID16
 /* This is defined by include/asm-{arch}/posix_types.h */
@@ -128,10 +138,14 @@ typedef		__s64		int64_t;
  */
 #ifdef CONFIG_LBDAF
 typedef u64 sector_t;
+#ifndef __blkcnt_t_defined
 typedef u64 blkcnt_t;
+#endif
 #else
 typedef unsigned long sector_t;
+#ifndef __blkcnt_t_defined
 typedef unsigned long blkcnt_t;
+#endif
 #endif
 
 /*
@@ -154,8 +168,8 @@ typedef u64 dma_addr_t;
 typedef u32 dma_addr_t;
 #endif
 
-typedef unsigned __bitwise gfp_t;
-typedef unsigned __bitwise fmode_t;
+typedef unsigned __bitwise__ gfp_t;
+typedef unsigned __bitwise__ fmode_t;
 
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 typedef u64 phys_addr_t;
@@ -227,6 +241,9 @@ struct callback_head {
 
 typedef void (*rcu_callback_t)(struct rcu_head *head);
 typedef void (*call_rcu_func_t)(struct rcu_head *head, rcu_callback_t func);
+
+/* clocksource cycle base type */
+typedef u64 cycle_t;
 
 #endif /*  __ASSEMBLY__ */
 #endif /* _LINUX_TYPES_H */
