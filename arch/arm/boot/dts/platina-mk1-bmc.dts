@@ -156,6 +156,12 @@
 	status = "okay";
 };
 */
+
+&pcie {
+        pinctrl-names = "default";
+        status = "disabled";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
