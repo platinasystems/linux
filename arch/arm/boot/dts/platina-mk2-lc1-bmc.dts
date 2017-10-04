@@ -13,8 +13,8 @@
 #include "imx6sx.dtsi"
 
 / {
-	model = "Freescale i.MX6 SoloX Platina TOR1 Board";
-	compatible = "platina,platina-TOR1", "fsl,imx6sx-sdb", "fsl,imx6sx";
+	model = "platina-mk2-lc1-bmc";
+	compatible = "platina,platina-mk2-lc1-bmc", "fsl,imx6sx-sdb", "fsl,imx6sx";
 
 	chosen {
 		stdout-path = &uart1;
@@ -119,7 +119,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	platina-TOR1 {
+	platina-mk2-lc1-bmc {
         	pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x17028
