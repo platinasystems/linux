@@ -24,6 +24,44 @@
 		reg = <0x80000000 0x40000000>;
 	};
 
+
+        /* Map gpio interrupts to logical
+         * User Space IO devices
+         */
+        g7_5 {
+                compatible = "generic-uio", "uio_pdrv_genirq";
+                status = "okay";
+                interrupt-parent = <&gpio7>;
+                interrupts =    <5 IRQ_TYPE_EDGE_FALLING>;
+        };
+
+        g7_6 {
+                compatible = "generic-uio", "uio_pdrv_genirq";
+                status = "okay";
+                interrupt-parent = <&gpio7>;
+                interrupts =    <6 IRQ_TYPE_EDGE_FALLING>;
+        };
+
+        g7_7 {
+                compatible = "generic-uio", "uio_pdrv_genirq";
+                status = "okay";
+                interrupt-parent = <&gpio7>;
+                interrupts =    <7 IRQ_TYPE_EDGE_FALLING>;
+        };
+
+        g7_8 {
+                compatible = "generic-uio", "uio_pdrv_genirq";
+                status = "okay";
+                interrupt-parent = <&gpio7>;
+                interrupts =    <8 IRQ_TYPE_EDGE_FALLING>;
+        };
+
+        g7_9 {
+                compatible = "generic-uio", "uio_pdrv_genirq";
+                status = "okay";
+                interrupt-parent = <&gpio7>;
+                interrupts =    <9 IRQ_TYPE_EDGE_FALLING>;
+        };
 };
 
 &fec1 {
