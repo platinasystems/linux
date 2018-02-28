@@ -41,6 +41,15 @@ static int xeth_ndo_stop(struct net_device *nd)
 	return 0;
 }
 
+static int xeth_ndo_change_carrier(struct net_device *nd, bool new_carrier)
+{
+	if (new_carrier)
+		netif_carrier_on(nd);
+	else
+		netif_carrier_off(nd);
+	return 0;
+}
+
 static void xeth_ndo_get_stats64(struct net_device *nd,
 					 struct rtnl_link_stats64 *dst)
 {
@@ -60,16 +69,18 @@ static int xeth_ndo_get_iflink(const struct net_device *nd)
 
 void xeth_ndo_init(void)
 {
-	xeth.ops.ndo.ndo_open        = xeth_ndo_open;
-	xeth.ops.ndo.ndo_stop        = xeth_ndo_stop;
-	xeth.ops.ndo.ndo_get_stats64 = xeth_ndo_get_stats64;
-	xeth.ops.ndo.ndo_get_iflink  = xeth_ndo_get_iflink;
+	xeth.ops.ndo.ndo_open           = xeth_ndo_open;
+	xeth.ops.ndo.ndo_stop           = xeth_ndo_stop;
+	xeth.ops.ndo.ndo_change_carrier = xeth_ndo_change_carrier;
+	xeth.ops.ndo.ndo_get_stats64    = xeth_ndo_get_stats64;
+	xeth.ops.ndo.ndo_get_iflink     = xeth_ndo_get_iflink;
 }
 
 void xeth_ndo_exit(void)
 {
-	xeth.ops.ndo.ndo_open        = NULL;
-	xeth.ops.ndo.ndo_stop        = NULL;
-	xeth.ops.ndo.ndo_get_stats64 = NULL;
-	xeth.ops.ndo.ndo_get_iflink  = NULL;
+	xeth.ops.ndo.ndo_open           = NULL;
+	xeth.ops.ndo.ndo_stop           = NULL;
+	xeth.ops.ndo.ndo_change_carrier = NULL;
+	xeth.ops.ndo.ndo_get_stats64    = NULL;
+	xeth.ops.ndo.ndo_get_iflink     = NULL;
 }
