@@ -75,14 +75,14 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	}
 	skb_push(skb, ETH_HLEN);
 	skb->dev = nd;
-	xeth_debug_hex_dump("rx: ", skb);
+	xeth_debug_hex_dump(skb);
 	res = xeth_debug_netdev_true_val(nd, "%d", dev_forward_skb(nd, skb));
 	if (res == NET_RX_DROP)
 		nd->stats.rx_dropped++;
 	return RX_HANDLER_CONSUMED;
 }
 
-static ssize_t xeth_vlan_side_band_rx(struct sk_buff *skb)
+static ssize_t xeth_vlan_sb(struct sk_buff *skb)
 {
 	struct vlan_ethhdr *ve = (struct vlan_ethhdr *)skb->data;
 	u16 vid;
@@ -109,7 +109,7 @@ static ssize_t xeth_vlan_side_band_rx(struct sk_buff *skb)
 	}
 	/* restore mac addrs to beginning of de-encapsulated frame */
 	memcpy(skb->data, eaddrs, 2*ETH_ALEN);
-	xeth_debug_hex_dump("sb: ", skb);
+	xeth_debug_hex_dump(skb);
 	skb->protocol = eth_type_trans(skb, skb->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
 	return (xeth_debug_netdev_true_val(skb->dev, "%d", netif_rx(skb))
@@ -138,7 +138,7 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 		nd->stats.tx_dropped++;
 		return xeth_debug_val("%d, couldn't insert tag", NETDEV_TX_OK);
 	}
-	xeth_debug_hex_dump("tx: ", skb);
+	xeth_debug_hex_dump(skb);
 	skb->dev = iflink;
 	return xeth_debug_netdev_true_val(iflink, "%d", dev_queue_xmit(skb));
 }
@@ -146,7 +146,7 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 void xeth_vlan_init(void)
 {
 	xeth.ops.rx_handler         = xeth_vlan_rx;
-	xeth.ops.side_band_rx       = xeth_vlan_side_band_rx;
+	xeth.ops.side_band_rx       = xeth_vlan_sb;
 	xeth.ops.ndo.ndo_start_xmit = xeth_vlan_tx;
 }
 
