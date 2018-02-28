@@ -30,7 +30,24 @@
 
 static int xeth_ndo_open(struct net_device *nd)
 {
-	if (1)	/* FIXME (iflink->flags & IFF_UP) */
+	struct xeth_priv *priv = netdev_priv(nd);
+	struct net_device *iflink = xeth_priv_iflink(priv);
+	unsigned long iflink_flags;
+
+	if (!iflink)
+		return -ENODEV;
+	iflink_flags = dev_get_flags(iflink);
+	if (!(iflink_flags & IFF_UP)) {
+		 int err = dev_change_flags(iflink, iflink_flags | IFF_UP);
+		 if (err < 0)
+			 return err;
+	}
+	if (!iflink->promiscuity) {
+		int err = dev_set_promiscuity(iflink, 1);
+		if (err)
+			return err;
+	}
+	if (true || netif_carrier_ok(iflink))	/* FIXME */
 		netif_carrier_on(nd);
 	return 0;
 }
