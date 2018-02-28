@@ -44,18 +44,22 @@ static int xeth_devfs_close(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+static ssize_t xeth_devfs_read(struct file *filp, char __user *buf,
+			       size_t len, loff_t *ppos)
+{
+	return 0;
+}
+
 static ssize_t xeth_devfs_write(struct file *filp, const char __user *buf,
-				size_t len, loff_t *ppose)
+				size_t len, loff_t *ppos)
 {
 	struct sk_buff *skb = netdev_alloc_skb(xeth.iflinks[0], len);
-
 	if (!skb)
 		return -ENOMEM;
 	skb_put(skb, len);
-	if (xeth_debug_true_val("%d",
-				copy_from_user(skb->data, buf, len) != len)) {
+	if (xeth_debug_true_val("%lu", copy_from_user(skb->data, buf, len))) {
 		kfree_skb(skb);
-		return -EFAULT;
+		return -ENOSPC;
 	}
 	return xeth_debug_val("%zd", xeth.ops.side_band_rx(skb));
 }
@@ -64,7 +68,9 @@ static const struct file_operations xeth_devfs_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = xeth_devfs_open,
 	.release = xeth_devfs_close,
+	.read    = xeth_devfs_read,
 	.write	 = xeth_devfs_write,
+	.llseek	 = noop_llseek,
 };
 
 static char xeth_devfs_nodename[64];
