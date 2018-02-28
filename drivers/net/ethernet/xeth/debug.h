@@ -87,16 +87,20 @@
 		(_val);							\
 	})
 
-static inline void xeth_debug_hex_dump(const char *prefix_str,
-				       struct sk_buff *skb)
+static inline void _xeth_debug_hex_dump(const char *func,
+					struct sk_buff *skb)
 {
 #if defined(CONFIG_DYNAMIC_DEBUG)
 	char dev_prefix_str[64];
 
-	sprintf(dev_prefix_str, "%s %s", netdev_name(skb->dev), prefix_str);
+	sprintf(dev_prefix_str, "%s:%s:%s: ", xeth.ops.rtnl.kind, func,
+		netdev_name(skb->dev));
 	print_hex_dump_bytes(dev_prefix_str, DUMP_PREFIX_NONE,
 			     skb->data,	skb->len);
 #endif
 }
+
+#define xeth_debug_hex_dump(nd)						\
+	_xeth_debug_hex_dump(__func__, nd)
 
 #endif /* __XETH_DEBUG_H */
