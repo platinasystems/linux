@@ -1,0 +1,12 @@
+config NET_XETH
+	bool "XETH drivers"
+	depends on ETHERNET
+	default n
+	---help---
+	  This section contains XETH drivers for Ethernet switches.
+
+if NET_XETH
+
+source "drivers/net/ethernet/xeth/Kconfig.platina"
+
+endif # NET_XETH
