@@ -1,0 +1,20 @@
+config XETH_VENDOR_PLATINA
+	bool "Platina systems ethernet switches"
+	default n
+	---help---
+	  Say Y if this is a Platina Systems ethernet switch.
+
+	  Note that the answer to this question doesn't directly affect the
+	  kernel: saying N will just cause the configurator to skip all the
+	  questions about Platina's switches. If you say Y, you will be asked
+	  for your specific switch in the following questions.
+
+if XETH_VENDOR_PLATINA
+
+config XETH_VENDOR_PLATINA_MK1
+	tristate "mk1 top of rack ethernet switch"
+	depends on NET_SWITCHDEV && VLAN_8021Q
+	---help---
+	  This connects through an IXGBE to an integrated ethernet switch.
+
+endif # XETH_VENDOR_PLATINA
