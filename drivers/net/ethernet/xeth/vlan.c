@@ -78,7 +78,7 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	xeth_debug_hex_dump(skb);
 	res = xeth_debug_netdev_true_val(nd, "%d", dev_forward_skb(nd, skb));
 	if (res == NET_RX_DROP)
-		nd->stats.rx_dropped++;
+		atomic_long_inc(&nd->rx_dropped);
 	return RX_HANDLER_CONSUMED;
 }
 
@@ -129,13 +129,13 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 
 	if (iflink == NULL) {
 		kfree_skb(skb);
-		nd->stats.tx_dropped++;
+		atomic_long_inc(&nd->tx_dropped);
 		return xeth_debug_netdev_val(nd, "0x%02x, no iflink",
 					     NETDEV_TX_OK);
 	}
 	skb = vlan_insert_tag_set_proto(skb, tpid, tci);
 	if (!skb) {
-		nd->stats.tx_dropped++;
+		atomic_long_inc(&nd->tx_dropped);
 		return xeth_debug_val("%d, couldn't insert tag", NETDEV_TX_OK);
 	}
 	xeth_debug_hex_dump(skb);
