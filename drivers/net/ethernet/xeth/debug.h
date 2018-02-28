@@ -93,8 +93,8 @@ static inline void _xeth_debug_hex_dump(const char *func,
 #if defined(CONFIG_DYNAMIC_DEBUG)
 	char dev_prefix_str[64];
 
-	sprintf(dev_prefix_str, "%s:%s:%s: ", xeth.ops.rtnl.kind, func,
-		netdev_name(skb->dev));
+	snprintf(dev_prefix_str, sizeof(dev_prefix_str), "%s:%s:%s: ",
+		 xeth.ops.rtnl.kind, func, netdev_name(skb->dev));
 	print_hex_dump_bytes(dev_prefix_str, DUMP_PREFIX_NONE,
 			     skb->data,	skb->len);
 #endif
