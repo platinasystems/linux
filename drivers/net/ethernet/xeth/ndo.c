@@ -71,9 +71,9 @@ static void xeth_ndo_get_stats64(struct net_device *nd,
 					 struct rtnl_link_stats64 *dst)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	mutex_lock(&priv->mutex.stats);
-	memcpy(dst, &priv->stats, sizeof(struct rtnl_link_stats64));
-	mutex_unlock(&priv->mutex.stats);
+	mutex_lock(&priv->link_mutex);
+	memcpy(dst, &priv->link_stats, sizeof(struct rtnl_link_stats64));
+	mutex_unlock(&priv->link_mutex);
 }
 
 static int xeth_ndo_get_iflink(const struct net_device *nd)

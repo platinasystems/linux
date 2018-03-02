@@ -33,19 +33,14 @@ int xeth_init(void)
 {
 	int i;
 	
-	xeth.ndi_by_id = kmalloc_array(xeth.n.ids,
-				       sizeof(u16),
-				       GFP_KERNEL);
+	xeth.ndi_by_id = kcalloc(xeth.n.ids, sizeof(u16), GFP_KERNEL);
 	if (!xeth.ndi_by_id)
 		goto egress;
-	xeth.nds = kmalloc_array(xeth.n.nds,
-				 sizeof(struct net_device*),
-				 GFP_KERNEL);
+	xeth.nds = kcalloc(xeth.n.nds, sizeof(struct net_device*), GFP_KERNEL);
 	if (!xeth.nds)
 		goto egress;
-	xeth.iflinks = kmalloc_array(xeth.n.iflinks,
-				     sizeof(struct net_device*),
-				     GFP_KERNEL);
+	xeth.iflinks = kcalloc(xeth.n.iflinks, sizeof(struct net_device*),
+			       GFP_KERNEL);
 	if (!xeth.iflinks)
 		goto egress;
 	for (i = 0; i < xeth.n.iflinks; i++)
