@@ -504,8 +504,9 @@ static size_t platina_mk1_ethtool_stat_attr_index(struct attribute *attr)
 static struct attribute
 *platina_mk1_ethtool_stat_ktype_default_attrs[1+platina_mk1_n_ethtool_stats];
 
-/* FIXME reset from board version at init */
-static bool platina_mk1_one_based = false;
+static bool alpha = false;
+module_param(alpha, bool, false);
+MODULE_PARM_DESC(alpha, "a 0 based, pre-production system");
 
 static u64 platina_mk1_eth0_ea64;
 static unsigned char platina_mk1_eth0_ea_assign_type;
@@ -572,7 +573,7 @@ static int platina_mk1_assert_iflinks(void)
 
 static int platina_mk1_parse_name(struct xeth_priv *priv, const char *name)
 {
-	int base = platina_mk1_one_based ? 1 : 0;
+	int base = alpha ? 0 : 1;
 	u16 port, subport;
 
 	if (sscanf(name, "eth-%hu-%hu", &port, &subport) != 2)
