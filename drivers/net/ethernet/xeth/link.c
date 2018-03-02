@@ -31,6 +31,11 @@
 
 static void xeth_destructor(struct net_device *nd)
 {
+	struct xeth_priv *priv = netdev_priv(nd);
+	if (priv->ethtool_stats) {
+		kfree(priv->ethtool_stats);
+		priv->ethtool_stats = NULL;
+	}
 }
 
 static void xeth_link_setup(struct net_device *nd)
@@ -67,6 +72,10 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	char ifname[IFNAMSIZ+1];
 	int err;
 
+	priv->ethtool_stats = kcalloc(xeth.n.ethtool_stats, sizeof(u64),
+				      GFP_KERNEL);
+	if (!priv->ethtool_stats)
+		return -ENOMEM;
 	if (tb[IFLA_IFNAME] == NULL)
 		return xeth_debug_netdev_val(nd, "%d, missing name", -EINVAL);
 	if (tb[IFLA_ADDRESS] != NULL)
