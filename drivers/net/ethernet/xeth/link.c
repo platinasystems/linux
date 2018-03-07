@@ -23,12 +23,6 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <linux/etherdevice.h>
-#include <net/rtnetlink.h>
-
-#include "xeth.h"
-#include "debug.h"
-
 static void xeth_destructor(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
@@ -127,6 +121,8 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	xeth_priv_set_nd(priv, nd);
 	if (!IS_ERR_OR_NULL(xeth.sysfs.root))
 		xeth_sysfs_priv_init(priv, ifname);
+	if (xeth.ops.ethtool.get_link)
+		nd->ethtool_ops = &xeth.ops.ethtool;
 	return 0;
 }
 

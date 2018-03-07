@@ -23,9 +23,6 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <net/rtnetlink.h>
-#include "xeth.h"
-
 static inline int xeth_notifier(struct notifier_block *unused,
 				unsigned long event, void *ptr)
 {
