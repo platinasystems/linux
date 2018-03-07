@@ -28,10 +28,6 @@
  */
 
 #include <linux/miscdevice.h>
-#include <net/rtnetlink.h>
-
-#include "xeth.h"
-#include "debug.h"
 
 static int xeth_devfs_open(struct inode *inode, struct file *filp)
 {

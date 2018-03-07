@@ -46,6 +46,14 @@
 #ifndef __XETH_H
 #define __XETH_H
 
+#include <linux/etherdevice.h>
+#include <linux/ethtool.h>
+#include <net/rtnetlink.h>
+
+#ifndef XETH_VERSION
+#define XETH_VERSION unknown
+#endif
+
 struct	xeth_priv {
 	struct	mutex link_mutex;
 	struct	mutex ethtool_mutex;
@@ -74,6 +82,7 @@ struct xeth {
 		void (*destructor)(struct net_device *nd);
 		struct rtnl_link_ops rtnl;
 		struct net_device_ops ndo;
+		struct ethtool_ops ethtool;
 	} ops;
 
 	struct	notifier_block notifier;
@@ -104,6 +113,8 @@ extern struct xeth xeth;
 
 int xeth_init(void);
 void xeth_exit(void);
+void xeth_ethtool_init(void);
+void xeth_ethtool_exit(void);
 int xeth_link_init(const char *kind);
 void xeth_link_exit(void);
 void xeth_ndo_init(void);
