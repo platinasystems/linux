@@ -23,11 +23,6 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <net/rtnetlink.h>
-
-#include "xeth.h"
-#include "debug.h"
-
 static int xeth_ndo_open(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);

@@ -23,10 +23,6 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <net/rtnetlink.h>
-
-#include "xeth.h"
-#include "debug.h"
 #include "sysfs.h"
 
 struct xeth_sysfs_link_stat {

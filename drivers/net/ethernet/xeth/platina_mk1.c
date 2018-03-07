@@ -22,17 +22,9 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <linux/etherdevice.h>
 #include <linux/if_vlan.h>
 #include <linux/module.h>
-#include <net/rtnetlink.h>
-
-#include "xeth.h"
-#include "debug.h"
 #include "sysfs.h"
-
-/* from <drivers/net/ethernet/intel/ixgbe> */
-#define IXGBE_MAX_JUMBO_FRAME_SIZE 9728
 
 #define platina_mk1_n_ports	32
 #define platina_mk1_n_subports	4
@@ -642,6 +634,7 @@ static int __init platina_mk1_init(void)
 	xeth_vlan_init();
 	xeth_sysfs_init("platina-mk1");
 	xeth_devfs_init("platina-mk1");
+	xeth_ethtool_init();
 
 	return 0;
 }
@@ -656,6 +649,7 @@ static void __exit platina_mk1_exit(void)
 	xeth_exit();
 	xeth_sysfs_exit();
 	xeth_devfs_exit();
+	xeth_ethtool_exit();
 }
 
 module_init(platina_mk1_init);

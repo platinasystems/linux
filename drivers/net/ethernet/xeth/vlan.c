@@ -23,12 +23,7 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <linux/etherdevice.h>
 #include <linux/if_vlan.h>
-#include <net/rtnetlink.h>
-
-#include "xeth.h"
-#include "debug.h"
 
 static inline bool xeth_vlan_is_8021X(__be16 proto)
 {
