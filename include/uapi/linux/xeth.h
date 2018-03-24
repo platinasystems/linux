@@ -1,5 +1,4 @@
-/* XETH notifier
- *
+/* XETH side-band channel protocol.
  * Copyright(c) 2018 Platina Systems, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -23,36 +22,27 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-static inline int xeth_notifier(struct notifier_block *unused,
-				unsigned long event, void *ptr)
-{
-	struct net_device *nd = netdev_notifier_info_to_dev(ptr);
-	int i;
+#ifndef __XETH_UAPI_H
+#define __XETH_UAPI_H
 
-	switch (event) {
-	case NETDEV_UNREGISTER:
-		for (i = 0; i < xeth.n.iflinks; i++) {
-			struct net_device *iflink = xeth_iflinks(i);
-			if (nd == iflink) {
-				xeth_reset_iflinks(i);
-				netdev_rx_handler_unregister(iflink);
-				dev_put(iflink);
-			}
-		}
-		break;
-		/* FIXME add PRECHANGEMTU */
-	}
-	return NOTIFY_DONE;
-}
+#define XETH_SIZEOF_MAX_JUMBO_FRAME	9728 /* Maximum Supported Size 9.5KB */
 
-int xeth_notifier_init(void)
-{
-	xeth.notifier.notifier_call = xeth_notifier;
-	return register_netdevice_notifier(&xeth.notifier);
-}
+#define XETH_SBNOOP			0
+#define XETH_SBOP_SET_NET_STAT		1
+#define XETH_SBOP_SET_ETHTOOL_STAT	2
 
-void xeth_notifier_exit(void)
-{
-	unregister_netdevice_notifier(&xeth.notifier);
-	xeth.notifier.notifier_call = NULL;
-}
+struct xeth_sb_hdr {
+	u64 z64;
+	u32 z32;
+	u16 z16;
+	u8  z8;
+	u8  op;
+};
+
+struct xeth_sb_set_stat {
+	u64 ifindex;
+	u64 statindex;
+	u64 count;
+};
+
+#endif /* __XETH_UAPI_H */

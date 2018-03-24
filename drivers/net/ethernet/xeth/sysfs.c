@@ -117,7 +117,7 @@ static ssize_t xeth_sysfs_link_stat_store(struct kobject *kobj,
 	size_t index = xeth_sysfs_link_stat_attr_index(attr);
 	size_t offset = xeth_sysfs_link_stat_offsets[index];
 	u64 val, *p = (u64 *)(((u8 *) &priv->link_stats) + offset);
-	int err = xeth_debug_true_val("%d", kstrtoull(buf, 10, &val));
+	int err = xeth_pr_true_val("%d", kstrtoull(buf, 10, &val));
 	if (!err) {
 		mutex_lock(&priv->link_mutex);
 		*p = val;
@@ -157,7 +157,7 @@ static ssize_t xeth_sysfs_ethtool_stat_store(struct kobject *kobj,
 	struct xeth_priv *priv = xeth_priv_of_ethtool(kobj);
 	size_t index = xeth.ops.ethtool_stat_attr_index(attr);
 	u64 val;
-	int err = xeth_debug_true_val("%d", kstrtoull(buf, 10, &val));
+	int err = xeth_pr_true_val("%d", kstrtoull(buf, 10, &val));
 	if (!err) {
 		mutex_lock(&priv->ethtool_mutex);
 		priv->ethtool_stats[index] = val;
