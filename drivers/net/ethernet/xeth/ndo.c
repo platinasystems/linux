@@ -75,17 +75,17 @@ static int xeth_ndo_get_iflink(const struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 	struct net_device *iflink = xeth_priv_iflink(priv);
-	return xeth_debug_netdev_false_val(nd, "%d",
-					   iflink ? iflink->ifindex : 0);
+	return xeth_pr_nd_false_val(nd, "%d", iflink ? iflink->ifindex : 0);
 }
 
-void xeth_ndo_init(void)
+int xeth_ndo_init(void)
 {
 	xeth.ops.ndo.ndo_open           = xeth_ndo_open;
 	xeth.ops.ndo.ndo_stop           = xeth_ndo_stop;
 	xeth.ops.ndo.ndo_change_carrier = xeth_ndo_change_carrier;
 	xeth.ops.ndo.ndo_get_stats64    = xeth_ndo_get_stats64;
 	xeth.ops.ndo.ndo_get_iflink     = xeth_ndo_get_iflink;
+	return 0;
 }
 
 void xeth_ndo_exit(void)
