@@ -49,14 +49,6 @@ static void xeth_link_setup(struct net_device *nd)
 	eth_zero_addr(nd->broadcast);
 }
 
-static inline int _xeth_mk_attrgrp(struct net_device *nd,
-				   struct attribute_group *attrgrp)
-{
-	return xeth_debug_netdev_val(nd, "%d",
-					  sysfs_create_group(&nd->dev.kobj,
-							     attrgrp));
-}
-
 static int xeth_link_new(struct net *src_net, struct net_device *nd,
 			 struct nlattr *tb[], struct nlattr *data[],
 			 struct netlink_ext_ack *extack)
@@ -71,32 +63,24 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	if (!priv->ethtool_stats)
 		return -ENOMEM;
 	if (tb[IFLA_IFNAME] == NULL)
-		return xeth_debug_netdev_val(nd, "%d, missing name", -EINVAL);
+		return xeth_pr_nd_val(nd, "%d, missing name", -EINVAL);
 	if (tb[IFLA_ADDRESS] != NULL)
-		return xeth_debug_netdev_val(nd, "%d, can't change lladdr",
-					     -EINVAL);
-
+		return xeth_pr_nd_val(nd, "%d, can't change lladdr", -EINVAL);
 	nla_strlcpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	ifname[IFNAMSIZ] = '\0';
-	err = xeth_debug_netdev_true_val(nd, "%d",
-					 xeth.ops.parse_name(priv, ifname));
+	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.parse_name(priv, ifname));
 	if (err)
 		return err;
-
 	xeth.ndi_by_id[priv->id] = priv->ndi;
-	err = xeth_debug_netdev_true_val(nd, "%d", xeth.ops.assert_iflinks());
+	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.assert_iflinks());
 	if (err)
 		return err;
-
-	err = xeth_debug_netdev_true_val(nd, "%d",
-					 xeth.ops.set_lladdr(nd));
+	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.set_lladdr(nd));
 	if (err)
 		return err;
-
 	iflink = xeth_priv_iflink(priv);
 	if (is_zero_ether_addr(nd->broadcast))
 		memcpy(nd->broadcast, iflink->broadcast, nd->addr_len);
-
 	nd->mtu = iflink->mtu - xeth.n.encap;
 	nd->max_mtu = iflink->max_mtu - xeth.n.encap;
 	nd->flags  = iflink->flags & ~(IFF_UP | IFF_PROMISC | IFF_ALLMULTI |
@@ -115,12 +99,10 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	/* FIXME dev->dev_id = real_dev->dev_id; */
 	/* FIXME SET_NETDEV_DEVTYPE(nd, &vlan_type); */
 
-	err = xeth_debug_netdev_true_val(nd, "%d", register_netdevice(nd));
+	err = xeth_pr_nd_true_val(nd, "%d", register_netdevice(nd));
 	if (err)
 		return err;
 	xeth_priv_set_nd(priv, nd);
-	if (!IS_ERR_OR_NULL(xeth.sysfs.root))
-		xeth_sysfs_priv_init(priv, ifname);
 	if (xeth.ops.ethtool.get_link)
 		nd->ethtool_ops = &xeth.ops.ethtool;
 	return 0;
@@ -130,9 +112,8 @@ static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 
-	xeth_sysfs_priv_exit(priv);
 	xeth_reset_nds(priv->ndi);
-	xeth_debug_netdev_void(nd, unregister_netdevice_queue(nd, head));
+	xeth_pr_nd_void(nd, unregister_netdevice_queue(nd, head));
 }
 
 static int xeth_link_validate(struct nlattr *tb[], struct nlattr *data[],
@@ -180,12 +161,11 @@ static void xeth_link_reset(void)
 	xeth.ops.rtnl.get_num_tx_queues = NULL;	
 }
 
-int xeth_link_init(const char *kind)
+int xeth_link_init(void)
 {
 	int err;
 
 	xeth.ops.rtnl.priv_size         = sizeof(struct xeth_priv);
-	xeth.ops.rtnl.kind              = kind;
 	xeth.ops.rtnl.setup             = xeth_link_setup;
 	xeth.ops.rtnl.newlink           = xeth_link_new;
 	xeth.ops.rtnl.dellink           = xeth_link_del;
@@ -193,13 +173,13 @@ int xeth_link_init(const char *kind)
 	xeth.ops.rtnl.get_link_net      = xeth_link_get_net;
 	xeth.ops.rtnl.get_num_rx_queues = xeth_link_get_num_rx_queues;
 	xeth.ops.rtnl.get_num_tx_queues = xeth_link_get_num_tx_queues;	
-	err = xeth_debug_true_val("%d", rtnl_link_register(&xeth.ops.rtnl));
+	err = xeth_pr_true_val("%d", rtnl_link_register(&xeth.ops.rtnl));
 	if (err)
 		xeth_link_reset();
 	return err;
 }
 
-void xeth_link_exit()
+void xeth_link_exit(void)
 {
 	rtnl_link_unregister(&xeth.ops.rtnl);
 	xeth_link_reset();

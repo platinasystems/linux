@@ -42,17 +42,16 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	int res;
 	
 	if (!xeth_vlan_is_8021X(skb->vlan_proto))
-		return xeth_debug_netdev_val(skb->dev,
-					     "%d, vlan_proto: 0x%04hx",
-					     RX_HANDLER_PASS,
-					     be16_to_cpu(skb->vlan_proto));
+		return xeth_pr_nd_val(skb->dev, "%d, vlan_proto: 0x%04hx",
+				      RX_HANDLER_PASS,
+				      be16_to_cpu(skb->vlan_proto));
 	skb->priority =
 		(typeof(skb->priority))(skb->vlan_tci >> VLAN_PRIO_SHIFT);
 	vid = skb->vlan_tci & VLAN_VID_MASK;
 	nd = to_xeth_nd(vid);
 	if (nd == NULL) {
 		kfree_skb(skb);
-		xeth_debug_netdev_val(skb->dev, "%d unknown", vid);
+		xeth_pr_nd_val(skb->dev, "%d unknown", vid);
 		return RX_HANDLER_CONSUMED;
 	}
 	if (skb->protocol == cpu_to_be16(ETH_P_8021Q)) {
@@ -70,8 +69,8 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	}
 	skb_push(skb, ETH_HLEN);
 	skb->dev = nd;
-	xeth_debug_hex_dump(skb);
-	res = xeth_debug_netdev_true_val(nd, "%d", dev_forward_skb(nd, skb));
+	xeth_pr_skb_hex_dump(skb);
+	res = xeth_pr_nd_true_val(nd, "%d", dev_forward_skb(nd, skb));
 	if (res == NET_RX_DROP)
 		atomic_long_inc(&nd->rx_dropped);
 	return RX_HANDLER_CONSUMED;
@@ -84,12 +83,12 @@ static ssize_t xeth_vlan_sb(struct sk_buff *skb)
 	char eaddrs[2*ETH_ALEN];
 	ssize_t n = skb->len;
 
-	if (!xeth_debug_false_val("%d", xeth_vlan_is_8021X(ve->h_vlan_proto)))
+	if (!xeth_pr_false_val("%d", xeth_vlan_is_8021X(ve->h_vlan_proto)))
 		return -EINVAL;
 	vid = be16_to_cpu(ve->h_vlan_TCI) & VLAN_VID_MASK;
 	skb->dev = to_xeth_nd(vid);
 	if (skb->dev == NULL) {
-		xeth_debug_val("%d unknown", vid);
+		xeth_pr_val("%d unknown", vid);
 		return -ENOENT;
 	}
 	memcpy(eaddrs, skb->data, 2*ETH_ALEN);
@@ -104,11 +103,12 @@ static ssize_t xeth_vlan_sb(struct sk_buff *skb)
 	}
 	/* restore mac addrs to beginning of de-encapsulated frame */
 	memcpy(skb->data, eaddrs, 2*ETH_ALEN);
-	xeth_debug_hex_dump(skb);
+	xeth_pr_skb_hex_dump(skb);
 	skb->protocol = eth_type_trans(skb, skb->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
-	return (xeth_debug_netdev_true_val(skb->dev, "%d", netif_rx(skb))
-		== NET_RX_DROP) ? -EBUSY : n;
+	return (xeth_pr_nd_true_val(skb->dev, "%d",
+				    netif_rx(skb)) == NET_RX_DROP) ?
+		-EBUSY : n;
 }
 
 /* Push outer VLAN tag with xeth's vid and skb's priority. */
@@ -125,24 +125,24 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 	if (iflink == NULL) {
 		kfree_skb(skb);
 		atomic_long_inc(&nd->tx_dropped);
-		return xeth_debug_netdev_val(nd, "0x%02x, no iflink",
-					     NETDEV_TX_OK);
+		return xeth_pr_nd_val(nd, "0x%02x, no iflink", NETDEV_TX_OK);
 	}
 	skb = vlan_insert_tag_set_proto(skb, tpid, tci);
 	if (!skb) {
 		atomic_long_inc(&nd->tx_dropped);
-		return xeth_debug_val("%d, couldn't insert tag", NETDEV_TX_OK);
+		return xeth_pr_val("%d, couldn't insert tag", NETDEV_TX_OK);
 	}
-	xeth_debug_hex_dump(skb);
+	xeth_pr_skb_hex_dump(skb);
 	skb->dev = iflink;
-	return xeth_debug_netdev_true_val(iflink, "%d", dev_queue_xmit(skb));
+	return xeth_pr_nd_true_val(iflink, "%d", dev_queue_xmit(skb));
 }
 
-void xeth_vlan_init(void)
+int xeth_vlan_init(void)
 {
 	xeth.ops.rx_handler         = xeth_vlan_rx;
 	xeth.ops.side_band_rx       = xeth_vlan_sb;
 	xeth.ops.ndo.ndo_start_xmit = xeth_vlan_tx;
+	return 0;
 }
 
 void xeth_vlan_exit(void)
