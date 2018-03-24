@@ -21,74 +21,79 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#ifndef __XETH_DEBUG_H
-#define __XETH_DEBUG_H
+#ifndef __XETH_PR_H
+#define __XETH_PR_H
 
-#define xeth_debug_pr(format, ...)					\
-	pr_debug(format "\n", ##__VA_ARGS__)
-#define xeth_debug_ptr(ptr)						\
-	xeth_debug_pr("%s: %p", #ptr, ptr)
-#define xeth_debug_netdev_pr(nd, format, ...)				\
-	netdev_dbg((nd), format "\n", ##__VA_ARGS__)
-#define xeth_debug_void(expr)						\
+#define xeth_pr(fmt, ...)	pr_debug(fmt "\n", ##__VA_ARGS__)
+#define xeth_pr_is_err_val(ptr)						\
+	({								\
+		int err = 0;						\
+	 	if (!ptr) {						\
+	 		err = -ENOMEM;					\
+	 		xeth_pr("%s is NULL", #ptr);			\
+		} else if (IS_ERR(ptr)) {				\
+			err = PTR_ERR(ptr);				\
+			xeth_pr("%s error: %d", #ptr, err);		\
+			(ptr) = NULL;					\
+		}							\
+		(err);							\
+	})
+#define xeth_pr_void(expr)						\
 	do {								\
 		(expr);							\
 		xeth_debug_pr("%s: OK", #expr);				\
 	} while(0)
-#define xeth_debug_val(format, val, ...)				\
+#define xeth_pr_val(fmt, val, ...)					\
 	({								\
 		typeof(val) _val = (val);				\
-		xeth_debug_pr("%s: " format, #val,			\
-			      _val, ##__VA_ARGS__);			\
+		xeth_pr("%s: " fmt, #val, _val, ##__VA_ARGS__);		\
 		(_val);							\
 	})
-#define xeth_debug_true_val(format, val, ...)				\
+#define xeth_pr_true_val(fmt, val, ...)					\
 	({								\
 		typeof(val) _val = (val);				\
 	 	if (!!(_val))						\
-			xeth_debug_pr("%s: " format, #val,		\
-				      _val, ##__VA_ARGS__);		\
+			xeth_pr("%s: " fmt, #val, _val,	##__VA_ARGS__);	\
 		(_val);							\
 	})
-#define xeth_debug_false_val(format, val, ...)				\
+#define xeth_pr_false_val(fmt, val, ...)				\
 	({								\
 		typeof(val) _val = (val);				\
 	 	if (!(_val))						\
-			xeth_debug_pr("%s: " format, #val,		\
-				      _val, ##__VA_ARGS__);		\
+			xeth_pr("%s: " fmt, #val, _val, ##__VA_ARGS__);	\
 		(_val);							\
 	})
-#define xeth_debug_netdev_void(nd, expr)				\
+#define xeth_pr_nd(nd, fmt, ...)					\
+	netdev_dbg((nd), fmt "\n", ##__VA_ARGS__)
+#define xeth_pr_nd_void(nd, expr)					\
 	do {								\
 		(expr);							\
-		xeth_debug_netdev_pr((nd), "%s: OK", #expr);		\
+		xeth_pr_nd((nd), "%s: OK", #expr);			\
 	} while(0)
-#define xeth_debug_netdev_val(nd, format, val, ...)			\
+#define xeth_pr_nd_val(nd, fmt, val, ...)				\
 	({								\
 		typeof(val) _val = (val);				\
-		xeth_debug_netdev_pr((nd), "%s: " format, #val,		\
-				     _val, ##__VA_ARGS__);		\
+		xeth_pr_nd((nd), "%s: " fmt, #val, _val, ##__VA_ARGS__);\
 		(_val);							\
 	})
-#define xeth_debug_netdev_true_val(nd, format, val, ...)		\
+#define xeth_pr_nd_true_val(nd, fmt, val, ...)				\
 	({								\
 		typeof(val) _val = (val);				\
 	 	if (!!(_val))						\
-			xeth_debug_netdev_pr((nd), "%s: " format, #val,	\
-					     _val, ##__VA_ARGS__);	\
+			xeth_pr_nd((nd), "%s: " fmt, #val, _val,	\
+				   ##__VA_ARGS__);			\
 		(_val);							\
 	})
-#define xeth_debug_netdev_false_val(nd, format, val, ...)		\
+#define xeth_pr_nd_false_val(nd, fmt, val, ...)				\
 	({								\
 		typeof(val) _val = (val);				\
 	 	if (!(_val))						\
-			xeth_debug_netdev_pr((nd), "%s: " format, #val,	\
-					     _val, ##__VA_ARGS__);	\
+			xeth_pr_nd((nd), "%s: " fmt, #val, _val,	\
+				   ##__VA_ARGS__);			\
 		(_val);							\
 	})
 
-static inline void _xeth_debug_hex_dump(const char *func,
-					struct sk_buff *skb)
+static inline void _xeth_pr_skb_hex_dump(const char *func, struct sk_buff *skb)
 {
 #if defined(CONFIG_DYNAMIC_DEBUG)
 	char dev_prefix_str[64];
@@ -100,7 +105,19 @@ static inline void _xeth_debug_hex_dump(const char *func,
 #endif
 }
 
-#define xeth_debug_hex_dump(nd)						\
-	_xeth_debug_hex_dump(__func__, nd)
+#define xeth_pr_skb_hex_dump(skb) _xeth_pr_skb_hex_dump(__func__, skb)
 
-#endif /* __XETH_DEBUG_H */
+static inline void _xeth_pr_buf_hex_dump(const char *func, char *buf, int len)
+{
+#if defined(CONFIG_DYNAMIC_DEBUG)
+	char prefix_str[64];
+
+	snprintf(prefix_str, sizeof(prefix_str), "%s:%s: ",
+		 xeth.ops.rtnl.kind, func);
+	print_hex_dump_bytes(prefix_str, DUMP_PREFIX_NONE, buf, len);
+#endif
+}
+
+#define xeth_pr_buf_hex_dump(buf,len) _xeth_pr_buf_hex_dump(__func__, buf, len)
+
+#endif /* __XETH_PR_H */

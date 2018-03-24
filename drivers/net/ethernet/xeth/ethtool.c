@@ -58,9 +58,7 @@ static void xeth_ethtool_get_strings(struct net_device *nd, u32 sset, u8 *data)
 		break;
 	case ETH_SS_STATS:
 		for (i = 0; i < xeth.n.ethtool_stats; i++) {
-			strlcpy(p,
-				xeth.ethtool_stat_ktype.default_attrs[i]->name,
-				ETH_GSTRING_LEN);
+			strlcpy(p, xeth.ethtool_stats[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
@@ -79,7 +77,7 @@ static void xeth_ethtool_get_ethtool_stats(struct net_device *nd,
 	mutex_unlock(&priv->ethtool_mutex);
 }
 
-void xeth_ethtool_init(void)
+int xeth_ethtool_init(void)
 {
 	xeth.ops.ethtool.get_drvinfo	= xeth_ethtool_get_drvinfo;
 	xeth.ops.ethtool.get_link	= ethtool_op_get_link;
@@ -87,6 +85,7 @@ void xeth_ethtool_init(void)
 	xeth.ops.ethtool.get_strings	= xeth_ethtool_get_strings;
 	xeth.ops.ethtool.get_ethtool_stats =
 		xeth_ethtool_get_ethtool_stats;
+	return 0;
 }
 
 void xeth_ethtool_exit(void)

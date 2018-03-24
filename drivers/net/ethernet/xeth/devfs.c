@@ -53,11 +53,11 @@ static ssize_t xeth_devfs_write(struct file *filp, const char __user *buf,
 	if (!skb)
 		return -ENOMEM;
 	skb_put(skb, len);
-	if (xeth_debug_true_val("%lu", copy_from_user(skb->data, buf, len))) {
+	if (xeth_pr_true_val("%lu", copy_from_user(skb->data, buf, len))) {
 		kfree_skb(skb);
 		return -ENOSPC;
 	}
-	return xeth_debug_val("%zd", xeth.ops.side_band_rx(skb));
+	return xeth_pr_val("%zd", xeth.ops.side_band_rx(skb));
 }
 
 static const struct file_operations xeth_devfs_fops = {
@@ -84,7 +84,7 @@ void xeth_devfs_init(const char *name)
 	xeth_devfs_miscdev.name = name;
 	sprintf(xeth_devfs_nodename, "net/%s", name);
 	xeth_devfs_register_err =
-		xeth_debug_val("%d", misc_register(&xeth_devfs_miscdev));
+		xeth_pr_val("%d", misc_register(&xeth_devfs_miscdev));
 }
 
 void xeth_devfs_exit(void)
