@@ -10,11 +10,11 @@ package xeth
 import "C"
 
 const (
-	SizeofMaxJumboFrame = C.XETH_SIZEOF_MAX_JUMBO_FRAME
-	SizeofSbHdr         = C.sizeof_struct_xeth_sb_hdr
-	SizeofSbSetStat     = C.sizeof_struct_xeth_sb_set_stat
-	SbOpSetNetStat      = C.XETH_SBOP_SET_NET_STAT
-	SbOpSetEthtoolStat  = C.XETH_SBOP_SET_ETHTOOL_STAT
+	SizeofJumboFrame   = C.XETH_SIZEOF_JUMBO_FRAME
+	SizeofSbHdr        = C.sizeof_struct_xeth_sb_hdr
+	SizeofSbSetStat    = C.sizeof_struct_xeth_sb_set_stat
+	SbOpSetNetStat     = C.XETH_SBOP_SET_NET_STAT
+	SbOpSetEthtoolStat = C.XETH_SBOP_SET_ETHTOOL_STAT
 )
 
 type SbHdr C.struct_xeth_sb_hdr
