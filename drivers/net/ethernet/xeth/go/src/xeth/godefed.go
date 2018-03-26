@@ -4,7 +4,7 @@
 package xeth
 
 const (
-	SizeofMaxJumboFrame	= 0x2600
+	SizeofJumboFrame	= 0x2600
 	SizeofSbHdr		= 0x10
 	SizeofSbSetStat		= 0x18
 	SbOpSetNetStat		= 0x1

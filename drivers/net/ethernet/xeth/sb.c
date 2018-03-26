@@ -104,7 +104,7 @@ static int xeth_sb_rx(struct socket *sock)
 					    sizeof(struct xeth_sb_hdr));
 	struct kvec iov = {
 		.iov_base = xeth_sb_rxbuf,
-		.iov_len = XETH_SIZEOF_MAX_JUMBO_FRAME,
+		.iov_len = XETH_SIZEOF_JUMBO_FRAME,
 	};
 	int err = 0;
 
@@ -211,7 +211,7 @@ static struct task_struct *xeth_sb_task_main;
 
 int xeth_sb_init(void)
 {
-	xeth_sb_rxbuf = kmalloc(XETH_SIZEOF_MAX_JUMBO_FRAME, GFP_KERNEL);
+	xeth_sb_rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth_sb_rxbuf)
 		return -ENOMEM;
 	xeth_sb_task_main = kthread_run(xeth_sb_main, NULL, xeth.ops.rtnl.kind);

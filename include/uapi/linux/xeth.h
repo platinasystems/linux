@@ -25,7 +25,7 @@
 #ifndef __XETH_UAPI_H
 #define __XETH_UAPI_H
 
-#define XETH_SIZEOF_MAX_JUMBO_FRAME	9728 /* Maximum Supported Size 9.5KB */
+#define XETH_SIZEOF_JUMBO_FRAME		9728
 
 #define XETH_SBNOOP			0
 #define XETH_SBOP_SET_NET_STAT		1
