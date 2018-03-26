@@ -27,135 +27,192 @@ package xeth
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
 )
 
-const (
-	indexofStatRxPackets uint64 = iota
-	indexofStatTxPackets
-	indexofStatRxBytes
-	indexofStatTxBytes
-	indexofStatRxErrors
-	indexofStatTxErrors
-	indexofStatRxDropped
-	indexofStatTxDropped
-	indexofStatMulticast
-	indexofStatCollisions
-	indexofStatRxLengthErrors
-	indexofStatRxOverErrors
-	indexofStatRxCrcErrors
-	indexofStatRxFrameErrors
-	indexofStatRxFifoErrors
-	indexofStatRxMissedErrors
-	indexofStatTxAbortedErrors
-	indexofStatTxCarrierErrors
-	indexofStatTxFifoErrors
-	indexofStatTxHeartbeatErrors
-	indexofStatTxWindowErrors
-	indexofStatRxCompressed
-	indexofStatTxCompressed
-	indexofStatRxNohandler
-)
+const DefaultSizeofCh = 4
+const netname = "unixpacket"
 
-var indexofStat = map[string]uint64{
-	"rx-packets":          indexofStatRxPackets,
-	"tx-packets":          indexofStatTxPackets,
-	"rx-bytes":            indexofStatRxBytes,
-	"tx-bytes":            indexofStatTxBytes,
-	"rx-errors":           indexofStatRxErrors,
-	"tx-errors":           indexofStatTxErrors,
-	"rx-dropped":          indexofStatRxDropped,
-	"tx-dropped":          indexofStatTxDropped,
-	"multicast":           indexofStatMulticast,
-	"collisions":          indexofStatCollisions,
-	"rx-length-errors":    indexofStatRxLengthErrors,
-	"rx-over-errors":      indexofStatRxOverErrors,
-	"rx-crc-errors":       indexofStatRxCrcErrors,
-	"rx-frame-errors":     indexofStatRxFrameErrors,
-	"rx-fifo-errors":      indexofStatRxFifoErrors,
-	"rx-missed-errors":    indexofStatRxMissedErrors,
-	"tx-aborted-errors":   indexofStatTxAbortedErrors,
-	"tx-carrier-errors":   indexofStatTxCarrierErrors,
-	"tx-fifo-errors":      indexofStatTxFifoErrors,
-	"tx-heartbeat-errors": indexofStatTxHeartbeatErrors,
-	"tx-window-errors":    indexofStatTxWindowErrors,
-	"rx-compressed":       indexofStatRxCompressed,
-	"tx-compressed":       indexofStatTxCompressed,
-	"rx-nohandler":        indexofStatRxNohandler,
-}
+type AssertDialOpt bool
+type SizeofRxchOpt int
+type SizeofTxchOpt int
 
+// This provides a buffered interface to an XETH driver side band channel.  Set
+// and ExceptionFrame operations are queued to a channel of configurable depth.
+// A service go-routine de-queues this channel and, if necessary, dials the
+// respctive socket then starts a receive go-routine.
 type Xeth struct {
-	*net.UnixConn
-	driver      string
-	indexofStat map[string]uint64
+	closed bool
+	txch   chan []byte
+	rxch   chan []byte
+
+	IndexofEthtoolStat map[string]uint64
 }
 
-func MapIndexofStats(stats []string) map[string]uint64 {
-	m := make(map[string]uint64)
+// New(driver, stats[, options...]]])
+// driver :: XETH driver name (e.g. "platina-mk1")
+// stats :: list of driver's ethtool stat names
+// Options:
+//	AssertDialOpt	if true, panic if can't dial the driver's
+//			side-band socket
+//	SizeofRxchOpt	override DefaultSizeofCh for rxch
+//			could be minimal if xeth.Rx() from another go-routine
+//	SizeofTxchOpt	override DefaultSizeofCh for txch
+//			for maximum buffering, should be
+//				number of devices * number of stats
+func New(driver string, stats []string, opts ...interface{}) (*Xeth, error) {
+	addr, err := net.ResolveUnixAddr(netname,
+		fmt.Sprintf("@%s.xeth", driver))
+	if err != nil {
+		return nil, err
+	}
+	assertDial := false
+	sizeofTxch := DefaultSizeofCh
+	sizeofRxch := DefaultSizeofCh
+	for _, opt := range opts {
+		switch t := opt.(type) {
+		case AssertDialOpt:
+			assertDial = bool(t)
+		case SizeofRxchOpt:
+			sizeofRxch = int(t)
+		case SizeofTxchOpt:
+			sizeofTxch = int(t)
+		}
+	}
+	xeth := &Xeth{
+		rxch:               make(chan []byte, sizeofRxch),
+		txch:               make(chan []byte, sizeofTxch),
+		IndexofEthtoolStat: make(map[string]uint64),
+	}
 	for i, s := range stats {
-		m[s] = uint64(i)
+		xeth.IndexofEthtoolStat[s] = uint64(i)
 	}
-	return m
+	runtime.SetFinalizer(xeth, (*Xeth).Close)
+	go xeth.txgo(addr, assertDial)
+	return xeth, nil
 }
 
-func New(driver string, indexofStat map[string]uint64) (*Xeth, error) {
-	const netname = "unixpacket"
-	sockname := fmt.Sprintf("@%s.xeth", driver)
-	sockaddr, err := net.ResolveUnixAddr(netname, sockname)
-	if err != nil {
-		return nil, err
+func (xeth *Xeth) Close() error {
+	runtime.SetFinalizer(xeth, nil)
+	if xeth.closed {
+		return nil
 	}
-	sockconn, err := net.DialUnix(netname, nil, sockaddr)
-	if err != nil {
-		return nil, err
+	close(xeth.txch)
+	for _ = range xeth.rxch {
+		// txgo closes rxch after sock shutdown
 	}
-	return &Xeth{sockconn, driver, indexofStat}, nil
+	xeth.IndexofEthtoolStat = nil
+	return nil
 }
 
-func (xeth *Xeth) Shutdown() error {
-	const (
-		SHUT_RD = iota
-		SHUT_WR
-		SHUT_RDWR
-	)
-	f, err := xeth.File()
-	if err == nil {
-		err = syscall.Shutdown(int(f.Fd()), SHUT_RDWR)
-	}
-	xeth.Close()
-	xeth.indexofStat = nil
-	return err
+func (xeth *Xeth) ExceptionFrame(buf []byte) error {
+	poolbuf := PoolGet(len(buf))
+	copy(poolbuf, buf)
+	xeth.txch <- poolbuf
+	return nil
 }
 
 func (xeth *Xeth) Set(ifindex uint64, stat string, count uint64) error {
 	var statindex uint64
 	var found bool
 	var op uint8
-	oob := []byte{}
 	modstat := strings.Replace(strings.Replace(stat, "_", "-", -1),
 		".", "-", -1)
-	if statindex, found = indexofStat[modstat]; found {
+	if statindex, found = IndexofNetStat[modstat]; found {
 		op = SbOpSetNetStat
-	} else if statindex, found = xeth.indexofStat[modstat]; found {
+	} else if statindex, found = xeth.IndexofEthtoolStat[modstat]; found {
 		op = SbOpSetEthtoolStat
 	} else {
 		return fmt.Errorf("STAT %q unknown", stat)
 	}
-	buf := make([]byte, SizeofSbHdr+SizeofSbSetStat)
+	buf := SbSetStatPool.Get().([]byte)
 	sbhdr := (*SbHdr)(unsafe.Pointer(&buf[0]))
 	sbhdr.Op = op
 	sbstat := (*SbSetStat)(unsafe.Pointer(&buf[SizeofSbHdr]))
 	sbstat.Ifindex = ifindex
 	sbstat.Statindex = statindex
 	sbstat.Count = count
-	_, _, err := xeth.WriteMsgUnix(buf, oob, nil)
-	return err
+	xeth.txch <- buf
+	return nil
 }
 
-func (xeth *Xeth) RxExceptionFrame(buf []byte) error {
+func (xeth *Xeth) Rx(buf []byte) (n int, err error) {
+	poolbuf := <-xeth.rxch
+	n = len(poolbuf)
+	if n > len(buf) {
+		return 0, syscall.E2BIG
+	}
+	buf = buf[:n]
+	copy(buf, poolbuf)
+	PoolPut(poolbuf)
+	return n, nil
+}
+
+func (xeth *Xeth) txgo(addr *net.UnixAddr, assertDial bool) {
+	var (
+		err  error
+		sock *net.UnixConn
+	)
 	oob := []byte{}
-	_, _, err := xeth.WriteMsgUnix(buf, oob, nil)
+	for buf := range xeth.txch {
+		if sock == nil {
+			sock, err = net.DialUnix(netname, nil, addr)
+			if err != nil {
+				if assertDial {
+					panic(err)
+				}
+				PoolPut(buf)
+				continue
+			} else {
+				go xeth.rxgo(sock)
+			}
+		}
+		_, _, err = sock.WriteMsgUnix(buf, oob, nil)
+		PoolPut(buf)
+		if err != nil {
+			xeth.shutdown(sock)
+			sock = nil
+		}
+	}
+	xeth.shutdown(sock)
+	close(xeth.rxch)
+}
+
+func (xeth *Xeth) rxgo(sock *net.UnixConn) {
+	oob := []byte{}
+	for {
+		buf := PagePool.Get().([]byte)
+		n, noob, flags, addr, err := sock.ReadMsgUnix(buf, oob)
+		_ = noob
+		_ = flags
+		_ = addr
+		if err != nil || xeth.closed {
+			PagePool.Put(buf)
+			break
+		}
+		xeth.rxch <- buf[:n]
+	}
+}
+
+func (xeth *Xeth) shutdown(sock *net.UnixConn) error {
+	const (
+		SHUT_RD = iota
+		SHUT_WR
+		SHUT_RDWR
+	)
+	if sock == nil {
+		return nil
+	}
+	f, err := sock.File()
+	if err == nil {
+		err = syscall.Shutdown(int(f.Fd()), SHUT_RDWR)
+	}
+	if cerr := sock.Close(); err == nil {
+		err = cerr
+	}
+	xeth.closed = true
 	return err
 }
