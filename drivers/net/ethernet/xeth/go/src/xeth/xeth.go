@@ -45,9 +45,12 @@ type SizeofTxchOpt int
 // A service go-routine de-queues this channel and, if necessary, dials the
 // respctive socket then starts a receive go-routine.
 type Xeth struct {
+	name string
+	txch chan []byte
+	rxch chan []byte
+	stat *strings.Replacer
+
 	closed bool
-	txch   chan []byte
-	rxch   chan []byte
 
 	IndexofEthtoolStat map[string]uint64
 }
@@ -83,17 +86,22 @@ func New(driver string, stats []string, opts ...interface{}) (*Xeth, error) {
 		}
 	}
 	xeth := &Xeth{
-		rxch:               make(chan []byte, sizeofRxch),
-		txch:               make(chan []byte, sizeofTxch),
+		name: driver,
+		rxch: make(chan []byte, sizeofRxch),
+		txch: make(chan []byte, sizeofTxch),
+		stat: strings.NewReplacer(" ", "-", ".", "-", "_", "-"),
+
 		IndexofEthtoolStat: make(map[string]uint64),
 	}
 	for i, s := range stats {
-		xeth.IndexofEthtoolStat[s] = uint64(i)
+		xeth.IndexofEthtoolStat[xeth.stat.Replace(s)] = uint64(i)
 	}
 	runtime.SetFinalizer(xeth, (*Xeth).Close)
 	go xeth.txgo(addr, assertDial)
 	return xeth, nil
 }
+
+func (xeth *Xeth) String() string { return xeth.name }
 
 func (xeth *Xeth) Close() error {
 	runtime.SetFinalizer(xeth, nil)
@@ -109,30 +117,29 @@ func (xeth *Xeth) Close() error {
 }
 
 func (xeth *Xeth) ExceptionFrame(buf []byte) error {
-	poolbuf := PoolGet(len(buf))
-	copy(poolbuf, buf)
-	xeth.txch <- poolbuf
+	b := Pool.Get(len(buf))
+	copy(b, buf)
+	xeth.txch <- b
 	return nil
 }
 
-func (xeth *Xeth) Set(ifindex uint64, stat string, count uint64) error {
+func (xeth *Xeth) Set(ifname, stat string, count uint64) error {
 	var statindex uint64
 	var found bool
 	var op uint8
-	modstat := strings.Replace(strings.Replace(stat, "_", "-", -1),
-		".", "-", -1)
+	modstat := xeth.stat.Replace(stat)
 	if statindex, found = IndexofNetStat[modstat]; found {
 		op = SbOpSetNetStat
 	} else if statindex, found = xeth.IndexofEthtoolStat[modstat]; found {
 		op = SbOpSetEthtoolStat
 	} else {
-		return fmt.Errorf("STAT %q unknown", stat)
+		return fmt.Errorf("STAT %q unknown", modstat)
 	}
-	buf := SbSetStatPool.Get().([]byte)
+	buf := Pool.Get(SizeofSbHdrSetStat)
 	sbhdr := (*SbHdr)(unsafe.Pointer(&buf[0]))
 	sbhdr.Op = op
 	sbstat := (*SbSetStat)(unsafe.Pointer(&buf[SizeofSbHdr]))
-	sbstat.Ifindex = ifindex
+	copy(sbstat.Ifname[:], ifname)
 	sbstat.Statindex = statindex
 	sbstat.Count = count
 	xeth.txch <- buf
@@ -147,7 +154,7 @@ func (xeth *Xeth) Rx(buf []byte) (n int, err error) {
 	}
 	buf = buf[:n]
 	copy(buf, poolbuf)
-	PoolPut(poolbuf)
+	Pool.Put(poolbuf)
 	return n, nil
 }
 
@@ -164,14 +171,14 @@ func (xeth *Xeth) txgo(addr *net.UnixAddr, assertDial bool) {
 				if assertDial {
 					panic(err)
 				}
-				PoolPut(buf)
+				Pool.Put(buf)
 				continue
 			} else {
 				go xeth.rxgo(sock)
 			}
 		}
 		_, _, err = sock.WriteMsgUnix(buf, oob, nil)
-		PoolPut(buf)
+		Pool.Put(buf)
 		if err != nil {
 			xeth.shutdown(sock)
 			sock = nil
@@ -184,13 +191,13 @@ func (xeth *Xeth) txgo(addr *net.UnixAddr, assertDial bool) {
 func (xeth *Xeth) rxgo(sock *net.UnixConn) {
 	oob := []byte{}
 	for {
-		buf := PagePool.Get().([]byte)
+		buf := Pool.Get(PageSize)
 		n, noob, flags, addr, err := sock.ReadMsgUnix(buf, oob)
 		_ = noob
 		_ = flags
 		_ = addr
 		if err != nil || xeth.closed {
-			PagePool.Put(buf)
+			Pool.Put(buf)
 			break
 		}
 		xeth.rxch <- buf[:n]
