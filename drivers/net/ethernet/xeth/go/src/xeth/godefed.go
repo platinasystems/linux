@@ -6,7 +6,7 @@ package xeth
 const (
 	SizeofJumboFrame	= 0x2600
 	SizeofSbHdr		= 0x10
-	SizeofSbSetStat		= 0x18
+	SizeofSbSetStat		= 0x20
 	SbOpSetNetStat		= 0x1
 	SbOpSetEthtoolStat	= 0x2
 )
@@ -19,7 +19,7 @@ type SbHdr struct {
 	Op	uint8
 }
 type SbSetStat struct {
-	Ifindex		uint64
+	Ifname		[16]uint8
 	Statindex	uint64
 	Count		uint64
 }

@@ -68,7 +68,11 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 		return xeth_pr_nd_val(nd, "%d, can't change lladdr", -EINVAL);
 	nla_strlcpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	ifname[IFNAMSIZ] = '\0';
-	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.parse_name(priv, ifname));
+	err = xeth_pr_nd_true_val(nd, "%d",
+				  xeth.ops.parse_name(ifname,
+						      &priv->id,
+						      &priv->ndi,
+						      &priv->iflinki));
 	if (err)
 		return err;
 	xeth.ndi_by_id[priv->id] = priv->ndi;

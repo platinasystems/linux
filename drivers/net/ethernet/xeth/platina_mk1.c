@@ -98,7 +98,8 @@ static int platina_mk1_assert_iflinks(void)
 	return err;
 }
 
-static int platina_mk1_parse_name(struct xeth_priv *priv, const char *name)
+static int platina_mk1_parse_name(const char *name,
+				  u16 *id, u16 *ndi, u16 *iflinki)
 {
 	int base = alpha ? 0 : 1;
 	u16 port, subport;
@@ -111,9 +112,9 @@ static int platina_mk1_parse_name(struct xeth_priv *priv, const char *name)
 	if ((subport > (platina_mk1_n_subports + base)) || (subport < base))
 		return -EINVAL;
 	subport -= base;
-	priv->id = 1 + ((port ^ 1) * platina_mk1_n_subports) + subport + 1;
-	priv->ndi = (port * platina_mk1_n_subports) + subport;
-	priv->iflinki = port >= (platina_mk1_n_ports / 2) ? 1 : 0;
+	*id = 1 + ((port ^ 1) * platina_mk1_n_subports) + subport + 1;
+	*ndi = (port * platina_mk1_n_subports) + subport;
+	*iflinki = port >= (platina_mk1_n_ports / 2) ? 1 : 0;
 	return 0;
 }
 
