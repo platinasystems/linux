@@ -40,7 +40,7 @@ struct xeth_sb_hdr {
 };
 
 struct xeth_sb_set_stat {
-	u64 ifindex;
+	u8  ifname[IFNAMSIZ];
 	u64 statindex;
 	u64 count;
 };

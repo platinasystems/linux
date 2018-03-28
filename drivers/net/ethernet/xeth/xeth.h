@@ -57,24 +57,16 @@
 struct	xeth_priv {
 	struct	mutex link_mutex;
 	struct	mutex ethtool_mutex;
-	struct	kobject link_kobj;
-	struct	kobject ethtool_kobj;
-	int	link_kobj_err;
-	int	ethtool_kobj_err;
 	struct	rtnl_link_stats64 link_stats;
 	u64	*ethtool_stats;
 	u16	id, ndi, iflinki;
 };
 
-#define xeth_priv_of_link(kobjp)					\
-	container_of(kobjp, struct xeth_priv, link_kobj)
-#define xeth_priv_of_ethtool(kobjp)					\
-	container_of(kobjp, struct xeth_priv, ethtool_kobj)
-
 struct xeth {
 	struct	xeth_ops {
 		int (*assert_iflinks)(void);
-		int (*parse_name)(struct xeth_priv *priv, const char *name);
+		int (*parse_name)(const char *name,
+				  u16 *id, u16 *ndi, u16 *iflinki);
 		int (*set_lladdr)(struct net_device *nd);
 		rx_handler_result_t (*rx_handler)(struct sk_buff **pskb);
 		ssize_t (*side_band_rx)(struct sk_buff *skb);
@@ -84,10 +76,9 @@ struct xeth {
 		struct ethtool_ops ethtool;
 	} ops;
 
+	struct	mutex sb_mutex;
 	struct	notifier_block notifier;
-
 	const	char * const *ethtool_stats;
-	struct	kobj_type ethtool_stat_ktype;
 
 	struct	xeth_sizes {
 		size_t	iflinks;
@@ -97,14 +88,12 @@ struct xeth {
 		size_t	ethtool_stats;
 	} n;
 
+	u16	*ndi_by_id;
+
 	/* RCU protected pointers */
 	struct	net_device **iflinks;
 	struct	net_device **nds;
 	struct	socket *sb;
-
-	struct	mutex sb_mutex;
-
-	u16 *ndi_by_id;
 };
 
 extern struct xeth xeth;
