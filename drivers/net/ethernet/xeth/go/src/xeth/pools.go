@@ -30,47 +30,59 @@ import (
 
 const SizeofSbHdrSetStat = SizeofSbHdr + SizeofSbSetStat
 
-var SbSetStatPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, SizeofSbHdrSetStat)
-	},
-}
-
 var PageSize = syscall.Getpagesize()
 
-var PagePool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, PageSize)
+type pools struct {
+	sbSetStat, page, jumbo sync.Pool
+}
+
+var Pool = pools{
+	sbSetStat: sync.Pool{
+		New: func() interface{} {
+			return make([]byte, SizeofSbHdrSetStat)
+		},
+	},
+	page: sync.Pool{
+		New: func() interface{} {
+			return make([]byte, PageSize)
+		},
+	},
+	jumbo: sync.Pool{
+		New: func() interface{} {
+			return make([]byte, SizeofJumboFrame)
+		},
 	},
 }
 
-var JumboPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, SizeofJumboFrame)
-	},
-}
-
-func PoolGet(n int) []byte {
+func (p *pools) Get(n int) []byte {
 	var buf []byte
-	if n < PageSize {
-		buf = PagePool.Get().([]byte)
-	} else {
-		buf = JumboPool.Get().([]byte)
+	switch {
+	case n == SizeofSbHdrSetStat:
+		buf = p.sbSetStat.Get().([]byte)
+	case n <= PageSize:
+		buf = p.page.Get().([]byte)
+	case n < SizeofJumboFrame:
+		buf = p.jumbo.Get().([]byte)
+	default:
+		panic("can't pool > jumbo frame")
 	}
-	buf = buf[:n]
-	return buf
+	// Optimised by compiler
+	for i := range buf {
+		buf[i] = 0
+	}
+	return buf[:n]
 }
 
-func PoolPut(buf []byte) {
+func (p *pools) Put(buf []byte) {
 	switch cap(buf) {
 	case SizeofSbHdrSetStat:
-		SbSetStatPool.Put(buf)
+		p.sbSetStat.Put(buf)
 	case PageSize:
 		buf = buf[:cap(buf)]
-		PagePool.Put(buf)
+		p.page.Put(buf)
 	case SizeofJumboFrame:
 		buf = buf[:cap(buf)]
-		JumboPool.Put(buf)
+		p.jumbo.Put(buf)
 	default:
 		panic(fmt.Errorf("unexpected buf cap: %d", cap(buf)))
 	}

@@ -29,16 +29,16 @@ go-list-go = $(foreach pkg,$(1),$(addprefix $(src)/go/src/$(pkg)/,$(shell\
 quiet_cmd_gobuild = GOBUILD $@
       cmd_gobuild = go build -o $@
 
-platina-mk1-deps := $(call go-list-go,xeth xeth/cmd xeth/cmd/platina-mk1)
+platina-mk1-deps := $(call go-list-go,platina-mk1 xeth)
 platina-mk1-deps += $(src)/go/src/xeth/godefed.go
 
 $(obj)/platina-mk1: $(platina-mk1-deps)
-	$(call cmd,gobuild) xeth/cmd/platina-mk1
+	$(call cmd,gobuild) platina-mk1
 
 quiet_cmd_genstats = GOGEN   $@
       cmd_genstats = $(obj)/gen-platina-mk1-stats
 
-$(src)/go/src/xeth/cmd/platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
+$(src)/go/src/platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
 	$(call cmd,genstats) > $@
 
 quiet_cmd_godefs  = GODEFS  $@
