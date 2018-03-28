@@ -29,6 +29,33 @@
 #include <uapi/linux/un.h>
 #include <uapi/linux/xeth.h>
 
+static const char *const link_stats[] = {
+	"rx-packets",
+	"tx-packets",
+	"rx-bytes",
+	"tx-bytes",
+	"rx-errors",
+	"tx-errors",
+	"rx-dropped",
+	"tx-dropped",
+	"multicast",
+	"collisions",
+	"rx-length-errors",
+	"rx-over-errors",
+	"rx-crc-errors",
+	"rx-frame-errors",
+	"rx-fifo-errors",
+	"rx-missed-errors",
+	"tx-aborted-errors",
+	"tx-carrier-errors",
+	"tx-fifo-errors",
+	"tx-heartbeat-errors",
+	"tx-window-errors",
+	"rx-compressed",
+	"tx-compressed",
+	"rx-nohandler",
+};
+
 static char *xeth_sb_rxbuf;
 
 static bool xeth_sb_is_hdr(struct xeth_sb_hdr *p)
@@ -36,21 +63,28 @@ static bool xeth_sb_is_hdr(struct xeth_sb_hdr *p)
 	return	p->z64 == 0 && p->z32 == 0 && p->z16 == 0 && p->z8 == 0;
 }
 
-static struct net_device *xeth_sb_find_nd(u64 ifindex)
+static struct net_device *xeth_sb_nd_of(struct xeth_sb_set_stat *sbsetstat)
 {
 	struct net_device *nd;
-	rtnl_lock();
-	nd = xeth_find_nd(ifindex);
-	rtnl_unlock();
-	if (!nd) {
-		xeth_pr("invalid ifindex: %llu", ifindex);
+	char ifname[IFNAMSIZ];
+	int err;
+	u16 id, ndi, iflinki;
+
+	strlcpy(ifname, sbsetstat->ifname, IFNAMSIZ);
+	err = xeth.ops.parse_name(ifname, &id, &ndi, &iflinki);
+	if (err) {
+		xeth_pr("invalid ifname: %s", ifname);
+		return NULL;
 	}
+	nd = to_xeth_nd(id);
+	if (!nd && false)
+		xeth_pr("no such device: %s", ifname);
 	return nd;
 }
 
 static void xeth_sb_set_net_stat(struct xeth_sb_set_stat *sbsetstat)
 {
-	struct net_device *nd = xeth_sb_find_nd(sbsetstat->ifindex);
+	struct net_device *nd = xeth_sb_nd_of(sbsetstat);
 	struct xeth_priv *priv;
 	u64 *stat;
 	const size_t nstats = sizeof(struct rtnl_link_stats64)/sizeof(u64);
@@ -66,17 +100,19 @@ static void xeth_sb_set_net_stat(struct xeth_sb_set_stat *sbsetstat)
 	mutex_lock(&priv->link_mutex);
 	*stat = sbsetstat->count;
 	mutex_unlock(&priv->link_mutex);
+	xeth_pr_nd(nd, "%s: %llu", link_stats[sbsetstat->statindex],
+		   sbsetstat->count);
 }
 
 static void xeth_sb_set_ethtool_stat(struct xeth_sb_set_stat *sbsetstat)
 {
-	struct net_device *nd = xeth_sb_find_nd(sbsetstat->ifindex);
+	struct net_device *nd = xeth_sb_nd_of(sbsetstat);
 	struct xeth_priv *priv;
 
 	if (!nd)
 		return;
 	if (sbsetstat->statindex >= xeth.n.ethtool_stats) {
-		xeth_pr("invalid ethtool stat index: %llu",
+		xeth_pr_nd(nd, "invalid ethtool stat index: %llu",
 			sbsetstat->statindex);
 		return;
 	}
@@ -84,6 +120,8 @@ static void xeth_sb_set_ethtool_stat(struct xeth_sb_set_stat *sbsetstat)
 	mutex_lock(&priv->link_mutex);
 	priv->ethtool_stats[sbsetstat->statindex] = sbsetstat->count;
 	mutex_unlock(&priv->link_mutex);
+	xeth_pr_nd(nd, "%s: %llu", xeth.ethtool_stats[sbsetstat->statindex],
+		   sbsetstat->count);
 }
 
 static void xeth_sb_exception_frame(const char *buf, int n)

@@ -2,6 +2,7 @@
 
 package xeth
 
+// #define IFNAMSIZ 16
 // typedef unsigned long long u64;
 // typedef unsigned u32;
 // typedef unsigned short u16;

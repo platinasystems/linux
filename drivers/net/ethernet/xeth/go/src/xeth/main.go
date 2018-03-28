@@ -1,32 +1,16 @@
-// A sample XETH sideband controller.
-package cmd
+package xeth
 
 import (
 	"fmt"
 	"io/ioutil"
-	"net"
 	"os"
-	"path/filepath"
-	"xeth"
 )
 
-type Cmd struct {
-	driver string
-	stats  []string
-}
-
-func New(stats []string) *Cmd {
-	return &Cmd{
-		driver: filepath.Base(os.Args[0]),
-		stats:  stats,
-	}
-}
-
 // Run sample XETH controller.
-func (cmd *Cmd) Main() {
+func (xeth *Xeth) Main() {
 	const assertDial = true
 	args := os.Args[1:]
-	usage := fmt.Sprint("usage:\t", cmd.driver,
+	usage := fmt.Sprint("usage:\t", xeth,
 		` { -dump | -set DEVICE STAT COUNT | FILE | - }...
 
 DEVICE	an interface name or its ifindex
@@ -38,20 +22,17 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 		return
 	}
 
-	xeth, err := xeth.New(cmd.driver, cmd.stats, xeth.AssertDialOpt(true))
 	defer func() {
 		r := recover()
-		if xeth != nil {
-			xeth.Close()
+		err := xeth.Close()
+		if r == nil {
+			r = err
 		}
 		if r != nil {
-			fmt.Fprint(os.Stderr, cmd.driver, ": ", r, "\n")
+			fmt.Fprint(os.Stderr, xeth, ": ", r, "\n")
 			os.Exit(1)
 		}
 	}()
-	if err != nil {
-		panic(err)
-	}
 
 	for len(args) > 0 {
 		switch args[0] {
@@ -61,7 +42,7 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 		case "dump", "-dump", "--dump":
 			fmt.Println("FIXME dump recvmsg")
 		case "set", "-set", "--set":
-			var ifindex, count uint64
+			var count uint64
 			switch len(args) {
 			case 1:
 				panic(fmt.Errorf("missing DEVICE\n%s", usage))
@@ -70,19 +51,11 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 			case 3:
 				panic(fmt.Errorf("missing COUNT\n%s", usage))
 			}
-			_, err := fmt.Sscan(args[1], &ifindex)
-			if err != nil {
-				itf, err := net.InterfaceByName(args[1])
-				if err != nil {
-					panic(fmt.Errorf("DEVICE: %v", err))
-				}
-				ifindex = uint64(itf.Index)
-			}
-			_, err = fmt.Sscan(args[3], &count)
+			_, err := fmt.Sscan(args[3], &count)
 			if err != nil {
 				panic(fmt.Errorf("COUNT %q %v", args[3], err))
 			}
-			err = xeth.Set(ifindex, args[2], count)
+			err = xeth.Set(args[1], args[2], count)
 			if err != nil {
 				panic(err)
 			}
