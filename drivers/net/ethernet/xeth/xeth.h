@@ -136,16 +136,15 @@ static inline struct net_device *xeth_nds(int i)
 	return (i < xeth.n.nds) ? rtnl_dereference(xeth.nds[i]) : NULL;
 }
 
-static inline struct net_device *xeth_find_nd(u64 ifindex)
+static inline void xeth_foreach_nd(void (*op)(struct net_device *nd))
 {
 	int i;
 
 	for (i = 0; i < xeth.n.ids; i++) {
 		struct net_device *nd = xeth_nds(i);
-		if (nd != NULL && nd->ifindex == (int)ifindex)
-			return nd;
+		if (nd != NULL)
+			op(nd);
 	}
-	return NULL;
 }
 
 static inline struct net_device *to_xeth_nd(u16 id)
