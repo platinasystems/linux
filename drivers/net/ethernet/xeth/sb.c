@@ -56,7 +56,25 @@ static const char *const link_stats[] = {
 	"rx-nohandler",
 };
 
+static const size_t xeth_sb_n_link_stats =
+	sizeof(struct rtnl_link_stats64)/sizeof(u64);
+
 static char *xeth_sb_rxbuf;
+
+static void xeth_sb_reset_nd_stats(struct net_device *nd)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+	int i;
+	u64 *link_stat = (u64*)&priv->link_stats;
+	mutex_lock(&priv->link_mutex);
+	for (i = 0; i < xeth_sb_n_link_stats; i++)
+		link_stat[i] = 0;
+	mutex_unlock(&priv->link_mutex);
+	mutex_lock(&priv->ethtool_mutex);
+	for (i = 0; i < xeth.n.ethtool_stats; i++)
+		priv->ethtool_stats[i] = 0;
+	mutex_unlock(&priv->ethtool_mutex);
+}
 
 static bool xeth_sb_is_hdr(struct xeth_sb_hdr *p)
 {
@@ -87,11 +105,10 @@ static void xeth_sb_set_net_stat(struct xeth_sb_set_stat *sbsetstat)
 	struct net_device *nd = xeth_sb_nd_of(sbsetstat);
 	struct xeth_priv *priv;
 	u64 *stat;
-	const size_t nstats = sizeof(struct rtnl_link_stats64)/sizeof(u64);
 
 	if (!nd)
 		return;
-	if (sbsetstat->statindex >= nstats) {
+	if (sbsetstat->statindex >= xeth_sb_n_link_stats) {
 		xeth_pr("invalid net stat index: %llu", sbsetstat->statindex);
 		return;
 	}
@@ -117,9 +134,9 @@ static void xeth_sb_set_ethtool_stat(struct xeth_sb_set_stat *sbsetstat)
 		return;
 	}
 	priv = netdev_priv(nd);
-	mutex_lock(&priv->link_mutex);
+	mutex_lock(&priv->ethtool_mutex);
 	priv->ethtool_stats[sbsetstat->statindex] = sbsetstat->count;
-	mutex_unlock(&priv->link_mutex);
+	mutex_unlock(&priv->ethtool_mutex);
 	xeth_pr_nd(nd, "%s: %llu", xeth.ethtool_stats[sbsetstat->statindex],
 		   sbsetstat->count);
 }
@@ -234,6 +251,7 @@ static int xeth_sb_main(void *data)
 		}
 		if (!err) {
 			xeth_pr("@%s: connected", addr.sun_path+1);
+			xeth_foreach_nd(xeth_sb_reset_nd_stats);
 			err = xeth_pr_true_val("%d", xeth_sb_rx(conn));
 			xeth_pr("@%s: disconnected", addr.sun_path+1);
 		}
