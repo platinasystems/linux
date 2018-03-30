@@ -25,6 +25,7 @@
 #include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <net/sock.h>
 #include <uapi/linux/un.h>
 #include <uapi/linux/xeth.h>
@@ -60,6 +61,7 @@ static const size_t xeth_sb_n_link_stats =
 	sizeof(struct rtnl_link_stats64)/sizeof(u64);
 
 static char *xeth_sb_rxbuf;
+static struct task_struct *xeth_sb_task_main;
 
 static void xeth_sb_reset_nd_stats(struct net_device *nd)
 {
@@ -164,13 +166,14 @@ static int xeth_sb_rx(struct socket *sock)
 	int err = 0;
 
 	xeth_assign_sb(sock);
-	while (!kthread_should_stop()) {
+	while (!kthread_should_stop() && !signal_pending(xeth_sb_task_main)) {
 		struct msghdr msg = {};
 		int n = kernel_recvmsg(sock, &msg, &iov, 1, iov.iov_len,
 				       MSG_DONTWAIT);
 		if (kthread_should_stop())
 			break;
 		if (n == -EAGAIN) {
+			msleep_interruptible(250);
 			schedule();
 		} else if (n < sizeof(struct xeth_sb_hdr)) {
 			err = n;
@@ -225,7 +228,8 @@ static int xeth_sb_main(void *data)
 	err = xeth_pr_true_val("%d", kernel_listen(ln, backlog));
 	if (err)
 		goto xeth_sb_main_egress;
-	while (!err) {
+	allow_signal(SIGKILL);
+	while (!err && !signal_pending(xeth_sb_task_main)) {
 		struct socket *conn = NULL;
 		err = xeth_pr_true_val("%d",
 				       sock_create_lite(ln->sk->sk_family,
@@ -262,8 +266,6 @@ xeth_sb_main_egress:
 	xeth_pr("finished");
 	return err;
 }
-
-static struct task_struct *xeth_sb_task_main;
 
 int xeth_sb_init(void)
 {
