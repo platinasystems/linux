@@ -38,7 +38,6 @@ static void xeth_link_setup(struct net_device *nd)
 	nd->netdev_ops = &xeth.ops.ndo;
 	nd->needs_free_netdev = true;
 	nd->priv_destructor = xeth_destructor;
-	nd->priv_flags |= IFF_802_1Q_VLAN;
 	nd->priv_flags |= IFF_NO_QUEUE;
 	/* FIXME nd->priv_flags |= IFF_UNICAST_FLT; */
 	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
