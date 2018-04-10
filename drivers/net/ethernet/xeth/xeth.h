@@ -154,7 +154,7 @@ static inline struct net_device *to_xeth_nd(u16 id)
 
 static inline void xeth_reset_nds(int i)
 {
-	if (i < xeth.n.iflinks)
+	if (i < xeth.n.nds)
 		RCU_INIT_POINTER(xeth.nds[i], NULL);
 }
 
