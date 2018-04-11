@@ -66,8 +66,9 @@ static struct task_struct *xeth_sb_task_main;
 static void xeth_sb_reset_nd_stats(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
+	u64 *link_stat = (u64*)&priv->link_stats;;
 	int i;
-	u64 *link_stat = (u64*)&priv->link_stats;
+
 	mutex_lock(&priv->link_mutex);
 	for (i = 0; i < xeth_sb_n_link_stats; i++)
 		link_stat[i] = 0;
@@ -97,23 +98,24 @@ static struct net_device *xeth_sb_nd_of(struct xeth_sb_set_stat *sbsetstat)
 		return NULL;
 	}
 	nd = to_xeth_nd(id);
-	if (!nd && false)
+	if (!nd)
 		xeth_pr("no such device: %s", ifname);
 	return nd;
 }
 
-static void xeth_sb_set_net_stat(struct xeth_sb_set_stat *sbsetstat)
+static void xeth_sb_set_link_stat(struct xeth_sb_set_stat *sbsetstat)
 {
-	struct net_device *nd = xeth_sb_nd_of(sbsetstat);
+	struct net_device *nd;
 	struct xeth_priv *priv;
 	u64 *stat;
 
-	if (!nd)
-		return;
 	if (sbsetstat->statindex >= xeth_sb_n_link_stats) {
-		xeth_pr("invalid net stat index: %llu", sbsetstat->statindex);
+		xeth_pr("invalid link stat index: %llu", sbsetstat->statindex);
 		return;
 	}
+	nd = xeth_sb_nd_of(sbsetstat);
+	if (!nd)
+		return;
 	priv = netdev_priv(nd);
 	stat = (u64*)&priv->link_stats + sbsetstat->statindex;
 	mutex_lock(&priv->link_mutex);
@@ -125,16 +127,17 @@ static void xeth_sb_set_net_stat(struct xeth_sb_set_stat *sbsetstat)
 
 static void xeth_sb_set_ethtool_stat(struct xeth_sb_set_stat *sbsetstat)
 {
-	struct net_device *nd = xeth_sb_nd_of(sbsetstat);
+	struct net_device *nd;
 	struct xeth_priv *priv;
 
-	if (!nd)
-		return;
 	if (sbsetstat->statindex >= xeth.n.ethtool_stats) {
-		xeth_pr_nd(nd, "invalid ethtool stat index: %llu",
+		xeth_pr("invalid ethtool stat index: %llu",
 			sbsetstat->statindex);
 		return;
 	}
+	nd = xeth_sb_nd_of(sbsetstat);
+	if (!nd)
+		return;
 	priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool_mutex);
 	priv->ethtool_stats[sbsetstat->statindex] = sbsetstat->count;
@@ -181,7 +184,7 @@ static int xeth_sb_rx(struct socket *sock)
 		} else if (xeth_sb_is_hdr(sbhdr)) {
 			switch (sbhdr->op) {
 			case XETH_SBOP_SET_NET_STAT:
-				xeth_sb_set_net_stat(sbsetstat);
+				xeth_sb_set_link_stat(sbsetstat);
 				break;
 			case XETH_SBOP_SET_ETHTOOL_STAT:
 				xeth_sb_set_ethtool_stat(sbsetstat);
