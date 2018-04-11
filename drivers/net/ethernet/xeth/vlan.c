@@ -82,15 +82,17 @@ static ssize_t xeth_vlan_sb(struct sk_buff *skb)
 	u16 vid;
 	char eaddrs[2*ETH_ALEN];
 	ssize_t n = skb->len;
+	struct net_device *nd;
 
 	if (!xeth_pr_false_val("%d", xeth_vlan_is_8021X(ve->h_vlan_proto)))
 		return -EINVAL;
 	vid = be16_to_cpu(ve->h_vlan_TCI) & VLAN_VID_MASK;
-	skb->dev = to_xeth_nd(vid);
-	if (skb->dev == NULL) {
+	nd = to_xeth_nd(vid);
+	if (nd == NULL) {
 		xeth_pr_val("%d unknown", vid);
 		return -ENOENT;
 	}
+	skb->dev = nd;
 	memcpy(eaddrs, skb->data, 2*ETH_ALEN);
 	if (xeth_vlan_is_8021X(ve->h_vlan_encapsulated_proto)) {
 		const size_t vesz = sizeof(struct vlan_ethhdr);
@@ -106,9 +108,9 @@ static ssize_t xeth_vlan_sb(struct sk_buff *skb)
 	xeth_pr_skb_hex_dump(skb);
 	skb->protocol = eth_type_trans(skb, skb->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
-	return (xeth_pr_nd_true_val(skb->dev, "%d",
-				    netif_rx(skb)) == NET_RX_DROP) ?
-		-EBUSY : n;
+	if (xeth_pr_nd_true_val(skb->dev, "%d", netif_rx(skb) == NET_RX_DROP))
+		n = -EBUSY;
+	return n;
 }
 
 /* Push outer VLAN tag with xeth's vid and skb's priority. */
