@@ -55,45 +55,58 @@
 #endif
 
 struct	xeth_priv {
-	struct	mutex link_mutex;
-	struct	mutex ethtool_mutex;
-	struct	rtnl_link_stats64 link_stats;
-	u64	*ethtool_stats;
+	struct xeth_priv_link {
+		struct	mutex mutex;
+		struct	rtnl_link_stats64 stats;
+	} link;
+	struct	xeth_priv_ethtool {
+		struct	mutex	mutex;
+		struct	ethtool_link_ksettings settings;
+		u64	*stats;
+		u32	flags;
+	} ethtool;
 	u16	id, ndi, iflinki;
 };
 
 struct xeth {
 	struct	xeth_ops {
-		int (*assert_iflinks)(void);
-		int (*parse_name)(const char *name,
+		int	(*assert_iflinks)(void);
+		int	(*parse_name)(const char *name,
 				  u16 *id, u16 *ndi, u16 *iflinki);
-		int (*set_lladdr)(struct net_device *nd);
-		rx_handler_result_t (*rx_handler)(struct sk_buff **pskb);
-		ssize_t (*side_band_rx)(struct sk_buff *skb);
-		void (*destructor)(struct net_device *nd);
-		struct rtnl_link_ops rtnl;
-		struct net_device_ops ndo;
-		struct ethtool_ops ethtool;
+		int	(*set_lladdr)(struct net_device *nd);
+		rx_handler_result_t	(*rx_handler)(struct sk_buff **pskb);
+		ssize_t	(*side_band_rx)(struct sk_buff *skb);
+		void	(*destructor)(struct net_device *nd);
+		void	(*init_ethtool_settings)(struct net_device *nd);
+		int	(*validate_speed)(struct net_device *nd, u32 speed);
+		struct	rtnl_link_ops rtnl;
+		struct	net_device_ops ndo;
+		struct	ethtool_ops ethtool;
 	} ops;
 
-	struct	mutex sb_mutex;
 	struct	notifier_block notifier;
-	const	char * const *ethtool_stats;
+
+	struct	xeth_ethtool {
+		const char * const *stats;
+		const char * const *flags;
+	} ethtool;
 
 	struct	xeth_sizes {
 		size_t	iflinks;
 		size_t	nds;
 		size_t	ids;
 		size_t	encap;	/* e.g. VLAN_HLEN */
-		size_t	ethtool_stats;
+		struct	xeth_sizes_ethtool {
+			size_t	stats;
+			size_t	flags;
+		} ethtool;
 	} n;
 
 	u16	*ndi_by_id;
 
 	/* RCU protected pointers */
-	struct	net_device **iflinks;
-	struct	net_device **nds;
-	struct	socket *sb;
+	struct	net_device	**iflinks;
+	struct	net_device	**nds;
 };
 
 extern struct xeth xeth;
@@ -113,6 +126,9 @@ void xeth_ndo_exit(void);
 void xeth_notifier_exit(void);
 void xeth_sb_exit(void);
 void xeth_vlan_exit(void);
+
+int xeth_sb_send_ethtool_flags(struct net_device *nd);
+int xeth_sb_send_ethtool_settings(struct net_device *nd);
 
 static inline struct net_device *xeth_iflinks(int i)
 {
@@ -173,26 +189,5 @@ static inline void xeth_priv_set_nd(struct xeth_priv *priv,
 				    struct net_device *nd)
 {
 	xeth_set_nds(priv->ndi, nd);
-}
-
-static inline void xeth_reset_sb(void)
-{
-	RCU_INIT_POINTER(xeth.sb, NULL);
-}
-
-static inline void xeth_assign_sb(struct socket *sb)
-{
-	mutex_lock(&xeth.sb_mutex);
-	rcu_assign_pointer(xeth.sb, sb);
-	mutex_unlock(&xeth.sb_mutex);
-}
-
-static inline struct socket *xeth_dereference_sb(void)
-{
-	struct socket *sb;
-	mutex_lock(&xeth.sb_mutex);
-	sb = rcu_dereference(xeth.sb);
-	mutex_unlock(&xeth.sb_mutex);
-	return sb;
 }
 #endif /* __XETH_H */
