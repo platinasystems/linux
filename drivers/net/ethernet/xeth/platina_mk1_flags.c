@@ -1,4 +1,5 @@
-/* Copyright(c) 2018 Platina Systems, Inc.
+/* ethtool flags for Platina Systems top of rack ethernet switch.
+ * Copyright(c) 2018 Platina Systems, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -20,12 +21,14 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
 
-import "xeth"
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
-}
+const char *const platina_mk1_flags[] = {
+	"copper",
+	"fec74",
+	"fec91",
+	NULL,
+};

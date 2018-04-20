@@ -20,12 +20,34 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+import "fmt"
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+type EthtoolStat uint64
+
+var EthtoolStats []string
+
+func (stat EthtoolStat) String() string {
+	var s string
+	i := int(stat)
+	if i < len(EthtoolStats) {
+		s = EthtoolStats[i]
+	} else {
+		s = fmt.Sprint("@", i)
+	}
+	return s
+}
+
+var EthtoolStatMap map[string]EthtoolStat
+
+func EthtoolStatOf(s string) (EthtoolStat, bool) {
+	if EthtoolStatMap == nil {
+		EthtoolStatMap = make(map[string]EthtoolStat)
+		for i, s := range EthtoolStats {
+			EthtoolStatMap[Hyphenate(s)] = EthtoolStat(i)
+		}
+	}
+	ethtoolstat, found := EthtoolStatMap[Hyphenate(s)]
+	return ethtoolstat, found
 }

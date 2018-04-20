@@ -26,9 +26,9 @@
 static void xeth_destructor(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	if (priv->ethtool_stats) {
-		kfree(priv->ethtool_stats);
-		priv->ethtool_stats = NULL;
+	if (priv->ethtool.stats) {
+		kfree(priv->ethtool.stats);
+		priv->ethtool.stats = NULL;
 	}
 }
 
@@ -57,9 +57,9 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	char ifname[IFNAMSIZ+1];
 	int err;
 
-	priv->ethtool_stats = kcalloc(xeth.n.ethtool_stats, sizeof(u64),
+	priv->ethtool.stats = kcalloc(xeth.n.ethtool.stats, sizeof(u64),
 				      GFP_KERNEL);
-	if (!priv->ethtool_stats)
+	if (!priv->ethtool.stats)
 		return -ENOMEM;
 	if (tb[IFLA_IFNAME] == NULL)
 		return xeth_pr_nd_val(nd, "%d, missing name", -EINVAL);
@@ -108,6 +108,8 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	xeth_priv_set_nd(priv, nd);
 	if (xeth.ops.ethtool.get_link)
 		nd->ethtool_ops = &xeth.ops.ethtool;
+	if (xeth.ops.init_ethtool_settings)
+		xeth.ops.init_ethtool_settings(nd);
 	return 0;
 }
 

@@ -20,12 +20,16 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+import "strings"
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+var hyphenater *strings.Replacer
+
+// Replace with all spaces, periods, and underscores replaced with hyphens
+func Hyphenate(s string) string {
+	if hyphenater == nil {
+		hyphenater = strings.NewReplacer(" ", "-", ".", "-", "_", "-")
+	}
+	return hyphenater.Replace(s)
 }
