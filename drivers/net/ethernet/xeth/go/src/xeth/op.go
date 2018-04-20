@@ -20,12 +20,36 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+import "fmt"
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+type Op uint8
+
+const (
+	XETH_BREAK_OP Op = iota
+	XETH_LINK_STAT_OP
+	XETH_ETHTOOL_STAT_OP
+	XETH_ETHTOOL_FLAGS_OP
+	XETH_ETHTOOL_SETTINGS_OP
+	XETH_ETHTOOL_DUMP_OP
+)
+
+func (op Op) String() string {
+	var ops = []string{
+		"break",
+		"link-stat",
+		"ethtool-stat",
+		"ethtool-flags",
+		"ethtool-settings",
+		"ethtool-dump",
+	}
+	var s string
+	i := int(op)
+	if i < len(ops) {
+		s = ops[i]
+	} else {
+		s = fmt.Sprint("op[", i, "]")
+	}
+	return s
 }

@@ -43,7 +43,6 @@ int xeth_init(void)
 		xeth_reset_iflinks(i);
 	for (i = 0; i < xeth.n.nds; i++)
 		xeth_reset_nds(i);
-	xeth_reset_sb();
 	return 0;
 
 egress:
