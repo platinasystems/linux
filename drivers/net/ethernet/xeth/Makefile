@@ -9,7 +9,11 @@ vlan-$(CONFIG_NET_XETH) := vlan.o
 
 obj-$(CONFIG_XETH_VENDOR_PLATINA_MK1) += platina-mk1.o
 
-platina-mk1-y := platina_mk1.o platina_mk1_stats.o $(xeth-y) $(vlan-y)
+platina-mk1-y := platina_mk1.o  
+platina-mk1-y += platina_mk1_stats.o
+platina-mk1-y += platina_mk1_flags.o
+platina-mk1-y += $(xeth-y)
+platina-mk1-y += $(vlan-y)
 
 GIT_VERSION := $(shell git describe --always --long --dirty || echo "unknown")
 
@@ -19,7 +23,9 @@ ccflags-y += -I$(src) --include=xeth.h --include=pr.h
 go-platina-mk1 := $(if $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(CONFIG_SAMPLE_XETH))
 extra-$(go-platina-mk1) += platina-mk1
 hostprogs-$(go-platina-mk1) += gen-platina-mk1-stats
+hostprogs-$(go-platina-mk1) += gen-platina-mk1-flags
 gen-platina-mk1-stats-objs := gen_platina_mk1_stats.o platina_mk1_stats.o
+gen-platina-mk1-flags-objs := gen_platina_mk1_flags.o platina_mk1_flags.o
 
 GOPATH := $(realpath $(srctree)/$(src)/go)
 export GOPATH
@@ -38,8 +44,14 @@ $(obj)/platina-mk1: $(platina-mk1-deps)
 quiet_cmd_genstats = GOGEN   $@
       cmd_genstats = $(obj)/gen-platina-mk1-stats
 
+quiet_cmd_genflags = GOGEN   $@
+      cmd_genflags = $(obj)/gen-platina-mk1-flags
+
 $(src)/go/src/platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
 	$(call cmd,genstats) > $@
+
+$(src)/go/src/platina-mk1/flags.go: $(obj)/gen-platina-mk1-flags
+	$(call cmd,genflags) > $@
 
 quiet_cmd_godefs  = GODEFS  $@
       cmd_godefs  = go tool cgo -godefs -- $(LINUXINCLUDE)

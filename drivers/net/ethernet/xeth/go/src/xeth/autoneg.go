@@ -20,12 +20,22 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+type Autoneg uint8
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+const (
+	AUTONEG_DISABLE Autoneg = 0x00
+	AUTONEG_ENABLE  Autoneg = 0x01
+)
+
+func (autoneg Autoneg) String() string {
+	s, found := map[Autoneg]string{
+		AUTONEG_DISABLE: "disable",
+		AUTONEG_ENABLE:  "enable",
+	}[autoneg]
+	if !found {
+		s = "invalid"
+	}
+	return s
 }

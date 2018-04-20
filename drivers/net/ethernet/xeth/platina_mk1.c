@@ -34,6 +34,7 @@
 #define platina_mk1_n_encap	VLAN_HLEN
 
 extern const char *const platina_mk1_stats[];
+extern const char *const platina_mk1_flags[];
 
 static bool alpha = false;
 module_param(alpha, bool, false);
@@ -136,6 +137,77 @@ static int platina_mk1_set_lladdr(struct net_device *nd)
 	return 0;
 }
 
+static void platina_mk1_init_ethtool_settings(struct net_device *nd)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+	struct ethtool_link_ksettings *settings = &priv->ethtool.settings; 
+	settings->base.speed = 100000;
+	settings->base.duplex = DUPLEX_FULL;
+	settings->base.autoneg = AUTONEG_ENABLE;
+	settings->base.port = PORT_OTHER;
+	ethtool_link_ksettings_zero_link_mode(settings, supported);
+	ethtool_link_ksettings_add_link_mode(settings, supported, Autoneg);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     10000baseKX4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     10000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     10000baseR_FEC);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     20000baseMLD2_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     20000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     25000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     25000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     25000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     40000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     40000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     40000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     40000baseLR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     50000baseCR2_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     50000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     50000baseSR2_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     100000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     100000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     100000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported,
+					     100000baseLR4_ER4_Full);
+	memcpy(settings->link_modes.advertising,
+	       settings->link_modes.supported,
+	       sizeof(settings->link_modes.supported));
+}
+
+static int platina_mk1_validate_speed(struct net_device *nd, u32 speed)
+{
+	switch (speed) {
+	case 100000:
+	case 50000:
+	case 40000:
+	case 25000:
+	case 20000:
+	case 10000:
+	case 1000:
+		break;
+	default:
+		xeth_pr_nd(nd, "invalid speed: %dMb/s", speed);
+		return -EINVAL;
+	}
+	return 0;
+}
+
 static void platina_mk1_egress(void)
 {
 	void (*const exits[])(void) = {
@@ -173,15 +245,22 @@ static int __init platina_mk1_init(void)
 	xeth.n.nds = platina_mk1_n_nds,
 	xeth.n.iflinks = platina_mk1_n_iflinks;
 	xeth.n.encap = platina_mk1_n_encap;
-	xeth.ethtool_stats = platina_mk1_stats;
-	for (xeth.n.ethtool_stats = 0;
-	     platina_mk1_stats[xeth.n.ethtool_stats];
-	     xeth.n.ethtool_stats++);
-	xeth_pr("%zd", xeth.n.ethtool_stats);
+	xeth.ethtool.stats = platina_mk1_stats;
+	for (xeth.n.ethtool.stats = 0;
+	     platina_mk1_stats[xeth.n.ethtool.stats];
+	     xeth.n.ethtool.stats++);
+	xeth_pr("%zd", xeth.n.ethtool.stats);
+	xeth.ethtool.flags = platina_mk1_flags;
+	for (xeth.n.ethtool.flags = 0;
+	     platina_mk1_flags[xeth.n.ethtool.flags];
+	     xeth.n.ethtool.flags++);
+	xeth_pr("%zd", xeth.n.ethtool.flags);
 	xeth.ops.assert_iflinks = platina_mk1_assert_iflinks;
 	xeth.ops.parse_name = platina_mk1_parse_name;
 	xeth.ops.set_lladdr = platina_mk1_set_lladdr;
 	xeth.ops.rtnl.kind = "platina-mk1";
+	xeth.ops.init_ethtool_settings = platina_mk1_init_ethtool_settings;
+	xeth.ops.validate_speed = platina_mk1_validate_speed;
 	for (i = 0; inits[i]; i++) {
 		int err = inits[i]();
 		if (err) {
