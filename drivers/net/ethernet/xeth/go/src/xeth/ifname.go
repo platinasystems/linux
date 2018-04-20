@@ -20,12 +20,15 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+type Ifname [IFNAMSIZ]byte
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+func (ifname *Ifname) String() string {
+	for i, c := range ifname[:] {
+		if c == 0 {
+			return string(ifname[:i])
+		}
+	}
+	return string(ifname[:])
 }

@@ -20,12 +20,32 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+import (
+	"bytes"
+	"fmt"
+)
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+type EthtoolFlagBits uint32
+
+var EthtoolFlags []string
+
+func (bits EthtoolFlagBits) String() string {
+	var sep string
+	if bits == 0 {
+		return "none"
+	}
+	if len(EthtoolFlags) == 0 {
+		return fmt.Sprintf("b%b", bits)
+	}
+	buf := new(bytes.Buffer)
+	for i, s := range EthtoolFlags {
+		bit := EthtoolFlagBits(1) << uint(i)
+		if bits&bit == bit {
+			fmt.Fprint(buf, sep, s)
+			sep = ", "
+		}
+	}
+	return buf.String()
 }

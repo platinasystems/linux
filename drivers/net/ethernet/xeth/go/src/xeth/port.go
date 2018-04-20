@@ -20,12 +20,34 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-package main
+package xeth
 
-import "xeth"
+type Port uint8
 
-func main() {
-	xeth.EthtoolStats = stats
-	xeth.EthtoolFlags = flags
-	xeth.Main()
+const (
+	PORT_TP    Port = 0x00
+	PORT_AUI   Port = 0x01
+	PORT_MII   Port = 0x02
+	PORT_FIBRE Port = 0x03
+	PORT_BNC   Port = 0x04
+	PORT_DA    Port = 0x05
+	PORT_NONE  Port = 0xef
+	PORT_OTHER Port = 0xff
+)
+
+func (port Port) String() string {
+	s, found := map[Port]string{
+		PORT_TP:    "tp",
+		PORT_AUI:   "aui",
+		PORT_MII:   "mii",
+		PORT_FIBRE: "fibre",
+		PORT_BNC:   "bnc",
+		PORT_DA:    "da",
+		PORT_NONE:  "none",
+		PORT_OTHER: "other",
+	}[port]
+	if !found {
+		s = "invalid"
+	}
+	return s
 }

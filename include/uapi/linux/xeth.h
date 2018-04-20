@@ -27,22 +27,60 @@
 
 #define XETH_SIZEOF_JUMBO_FRAME		9728
 
-#define XETH_SBNOOP			0
-#define XETH_SBOP_SET_NET_STAT		1
-#define XETH_SBOP_SET_ETHTOOL_STAT	2
-
-struct xeth_sb_hdr {
-	u64 z64;
-	u32 z32;
-	u16 z16;
-	u8  z8;
-	u8  op;
+enum xeth_op {
+	XETH_BREAK_OP,
+	XETH_LINK_STAT_OP,
+	XETH_ETHTOOL_STAT_OP,
+	XETH_ETHTOOL_FLAGS_OP,
+	XETH_ETHTOOL_SETTINGS_OP,
+	XETH_ETHTOOL_DUMP_OP,
 };
 
-struct xeth_sb_set_stat {
-	u8  ifname[IFNAMSIZ];
-	u64 statindex;
+#define xeth_msg_name(name)	xeth_##name##_msg
+
+#define xeth_msg(name, ...)						\
+struct xeth_msg_name(name) {						\
+	struct	xeth_msg_hdr	hdr;					\
+	__VA_ARGS__;							\
+}
+
+#define xeth_ifmsg(name, ...)						\
+struct xeth_msg_name(name) {						\
+	struct	xeth_msg_hdr	hdr;					\
+	u8	ifname[IFNAMSIZ];					\
+	__VA_ARGS__;							\
+}
+
+struct xeth_msg_hdr {
+	u64	z64;
+	u32	z32;
+	u16	z16;
+	u8	z8;
+	u8	op;
+};
+
+struct xeth_stat {
+	u64 index;
 	u64 count;
 };
 
+xeth_msg(break);
+xeth_ifmsg(stat, struct xeth_stat stat);
+xeth_ifmsg(ethtool_flags, u32 flags);
+xeth_ifmsg(ethtool_settings, struct ethtool_link_ksettings settings);
+xeth_msg(ethtool_dump);
+
+static inline bool xeth_is_hdr(struct xeth_msg_hdr *p)
+{
+	return	p->z64 == 0 && p->z32 == 0 && p->z16 == 0 && p->z8 == 0;
+}
+
+static inline void xeth_set_hdr(struct xeth_msg_hdr *hdr, u8 op)
+{
+	hdr->z64 = 0;
+	hdr->z32 = 0;
+	hdr->z16 = 0;
+	hdr->z8 = 0;
+	hdr->op = op;
+}
 #endif /* __XETH_UAPI_H */
