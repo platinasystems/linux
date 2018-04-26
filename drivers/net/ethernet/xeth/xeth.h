@@ -1,26 +1,4 @@
-/* An XETH driver uses VLAN or MPLS encapsulations to multiplex virtual
- * ethernet devices through one or more iflinks to a switch asic. Such drivers
- * also have a companion control daemon (aka. switchd) that may use sysfs or a
- * netlink protocol for sideband driver communication and  may also use an
- * alternate link, data encapsulation or vfio/pci for asic information.
- *
- * A typlical use case:
- *
- * switchd
- *  |   |
- *  |   |
- *  |   |   virtuals  e.g. eth-[CHASSIS-][SLOT-]PORT-SUBPORT
- *  |   |   | .... |
- *  |   |<->  xeth
- *  |          ||
- *  |          ||     iflinks
- *  |          ||
- *  |<----->  asic    (on-board or remote)
- *          | .... |
- *        switch ports
- *
- *
- * Copyright(c) 2018 Platina Systems, Inc.
+/* Copyright(c) 2018 Platina Systems, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
