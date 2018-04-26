@@ -1,0 +1,99 @@
+An XETH driver may use VLAN or MPLS encapsulation to multiplex virtual ethernet
+devices through one or more iflinks to respective ports of an on-board or
+remote SWITCH. Such drivers also have a companion daemon (aka. SWITCHD) that
+controls the switch through: vfio/pci; an alternate data link or encapsulation;
+or some other means.  This SWITCHD also has a sideband protocol with its XETH
+driver through a SEQPACKET, UNIX domain socket named @DRIVER/xeth.
+
+	SWITCHD
+	 |   |
+	 |   |
+	 |   |   virtuals	e.g. eth-[CHASSIS-][SLOT-]PORT-SUBPORT
+	 |   |   | .... |
+	 |   |<->  XETH		@DRIVER/xeth
+	 |          ||
+	 |          ||		iflinks
+	 |          ||
+	 |<-----> SWITCH	on-board or remote
+	         | .... |
+	           ports
+
+The first XETH driver, platina-mk1 is used on Platina Systems 32 by 100G Top Of
+Rack switch. This TOR has an on-board Tomahawk SWITCH ASIC from Broadcom
+Corporation. The controller, vnetd is bundled within a multi-featured program
+called goes [GO-Embedded-System].
+
+Usage:
+
+# modprobe platina-mk1
+# ip link add eth-PORT-SUBPORT type platina-mk1
+# ip address add PREFIX dev eth-PORT-SUBPORT
+# ethtool --set-priv-flags eth-PORT-SUBPORT copper {on|off}
+# ethrool -s eth-PORT-SUBPORT autoneg {on|off} speed {Mbps}
+...
+# goes start
+# ip -s link show eth-PORT-SUBPORT
+# ethtool -S eth-PORT-SUBPORT
+
+@DRIVER/xeth protocol:
+
+The first 15 bytes of all protocol messages are 0. Any non-zero data implies
+that the SEQPACKET is a properly encapsulated ethernet frame that is demux'd by
+the driver and forwarded to the respective virtual interface. These are
+typically SWITCH exception frames like ARP, TTL=1 or table misses.
+
+The 16th byte of the 0 prefaced message is it's op-code identifying the
+remaining message format and the desired operation.
+
+XETH_BREAK_OP:
+
+	u8	zeros[15];
+	u8	op;	// 0
+
+Sent by the XETH driver to indicate completion of streamed response.
+
+XETH_LINK_STAT_OP:
+
+	u8	zeros[15];
+	u8	op;	// 1
+	u8	ifname[IFNAMSIZ];
+	u64	index;
+	u64	count;
+
+Sent by SWITCHD to set the indexed link stat.
+
+XETH_ETHTOOL_STAT_OP:
+
+	u8	zeros[15];
+	u8	op;	// 2
+	u8	ifname[IFNAMSIZ];
+	u64	index;
+	u64	count;
+
+Sent by SWITCHD to set the indexed ethtool stat.
+
+XETH_ETHTOOL_FLAGS_OP:
+
+	u8	zeros[15];
+	u8	op;	// 3
+	u8	ifname[IFNAMSIZ];
+	u32	flags;
+
+Sent by the XETH driver to forward dumped or changed ethtool priv_flags.
+
+XETH_ETHTOOL_SETTINGS_OP:
+
+	u8 zeros[15];
+	u8 op;	// 4
+	u8 ifname[IFNAMSIZ];
+	struct ethtool_link_ksettings settings;
+
+Sent by the XETH driver to forward dumped or changed ethtool settings.
+
+XETH_ETHTOOL_DUMP_OP:
+
+	u8 zeros[15];
+	u8 op;	// 5
+
+Sent by SWITCHD to request the ethtool flags and settings of all XETH net
+devices. The XETH driver will send BREAK after the last ETHTOOL_SETTINGS.
