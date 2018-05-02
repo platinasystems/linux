@@ -63,8 +63,13 @@
 			xeth_pr("%s: " fmt, #val, _val, ##__VA_ARGS__);	\
 		(_val);							\
 	})
+#if 1
+#define xeth_pr_nd(nd, fmt, ...)					\
+	pr_debug("%s: " fmt "\n", netdev_name(nd), ##__VA_ARGS__)
+#else
 #define xeth_pr_nd(nd, fmt, ...)					\
 	netdev_dbg((nd), fmt "\n", ##__VA_ARGS__)
+#endif
 #define xeth_pr_nd_void(nd, expr)					\
 	do {								\
 		(expr);							\
