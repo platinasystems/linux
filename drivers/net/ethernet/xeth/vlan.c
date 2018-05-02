@@ -40,6 +40,8 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	struct net_device *nd;
 	u16 vid;
 	int res;
+	struct xeth_priv *priv;
+	struct net_device *iflink;
 	
 	if (!xeth_vlan_is_8021X(skb->vlan_proto))
 		return xeth_pr_nd_val(skb->dev, "%d, vlan_proto: 0x%04hx",
@@ -52,6 +54,16 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	if (nd == NULL) {
 		kfree_skb(skb);
 		xeth_pr_nd_val(skb->dev, "%d unknown", vid);
+		return RX_HANDLER_CONSUMED;
+	}
+	priv = netdev_priv(nd);
+	if (vid != priv->id) {
+		xeth_pr_nd(nd, "mismatched vid: %d, expect %d", vid, priv->id);
+		return RX_HANDLER_CONSUMED;
+	}
+	iflink = xeth_priv_iflink(priv);
+	if (skb->dev != iflink) {
+		xeth_pr_nd(nd, "mismatched iflink");
 		return RX_HANDLER_CONSUMED;
 	}
 	if (skb->protocol == cpu_to_be16(ETH_P_8021Q)) {
