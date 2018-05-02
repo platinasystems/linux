@@ -148,13 +148,32 @@ static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
 	strlcpy(ifname, msg_ifname, IFNAMSIZ);
 	err = xeth.ops.parse_name(ifname, &id, &ndi, &iflinki);
 	if (err) {
-		xeth_pr("invalid ifname: %s", ifname);
+		xeth_pr("\"%s\" invalid", ifname);
 		return NULL;
 	}
 	nd = to_xeth_nd(id);
 	if (!nd)
-		xeth_pr("no such device: %s", ifname);
+		xeth_pr("\"%s\" no such device", ifname);
 	return nd;
+}
+
+static void xeth_sb_carrier(const struct xeth_carrier_msg *msg)
+{
+	const char *onoff = "invalid";
+	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
+	if (!nd)
+		return;
+	switch (msg->flag) {
+	case XETH_CARRIER_ON:
+		netif_carrier_on(nd);
+		onoff = "on";
+		break;
+	case XETH_CARRIER_OFF:
+		netif_carrier_off(nd);
+		onoff = "off";
+		break;
+	}
+	xeth_pr_nd(nd, "carrier %s", onoff);
 }
 
 static void xeth_sb_link_stat(const struct xeth_stat_msg *msg)
@@ -333,7 +352,6 @@ static inline int xeth_sb_ethtool_dump(struct socket *sock,
 static inline int xeth_sb_service_rx(struct socket *sock)
 {
 	struct xeth_msg_hdr *hdr = (struct xeth_msg_hdr *)(xeth_sb_rxbuf);
-	struct xeth_stat_msg *stat = (struct xeth_stat_msg *)(xeth_sb_rxbuf);
 	struct msghdr msg = {};
 	struct kvec iov = {
 		.iov_base = xeth_sb_rxbuf,
@@ -353,26 +371,33 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 		return 0;
 	}
 	switch (hdr->op) {
-	case XETH_LINK_STAT_OP:
+	case XETH_CARRIER_OP: {
+		struct xeth_carrier_msg *carrier =
+			(struct xeth_carrier_msg *)(xeth_sb_rxbuf);
+		xeth_sb_carrier(carrier);
+	}	break;
+	case XETH_LINK_STAT_OP: {
+		struct xeth_stat_msg *stat =
+			(struct xeth_stat_msg *)(xeth_sb_rxbuf);
 		xeth_sb_link_stat(stat);
-		break;
-	case XETH_ETHTOOL_STAT_OP:
+	}	break;
+	case XETH_ETHTOOL_STAT_OP: {
+		struct xeth_stat_msg *stat =
+			(struct xeth_stat_msg *)(xeth_sb_rxbuf);
 		xeth_sb_ethtool_stat(stat);
-		break;
-	case XETH_ETHTOOL_DUMP_OP:
-		{
-			int i, err = 0;
+	}	break;
+	case XETH_ETHTOOL_DUMP_OP: {
+		int i, err = 0;
 
-			for (i = 0; !err && i < xeth.n.ids; i++) {
-				struct net_device *nd = xeth_nds(i);
-				if (nd != NULL)
-					err = xeth_sb_ethtool_dump(sock, nd);
-			}
-			if (err)
-				return err;
-			xeth_sb_send_break();
+		for (i = 0; !err && i < xeth.n.ids; i++) {
+			struct net_device *nd = xeth_nds(i);
+			if (nd != NULL)
+				err = xeth_sb_ethtool_dump(sock, nd);
 		}
-		break;
+		if (err)
+			return err;
+		xeth_sb_send_break();
+	}	break;
 	default:
 		xeth_pr("invalid op code: %d", hdr->op);
 		return -EINVAL;

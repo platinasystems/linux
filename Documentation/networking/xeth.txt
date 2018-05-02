@@ -97,3 +97,14 @@ XETH_ETHTOOL_DUMP_OP:
 
 Sent by SWITCHD to request the ethtool flags and settings of all XETH net
 devices. The XETH driver will send BREAK after the last ETHTOOL_SETTINGS.
+
+XETH_CARRER_OP:
+
+	u8	zeros[15];
+	u8	op;	// 6
+	u8	ifname[IFNAMSIZ];
+	u8	flag;	// XETH_CARRIER_ON | XETH_CARRIER_OFF
+
+Sent by SWITCHD to change carrier status (aka. LOWER_UP flag) of an interface.
+This is equivalent to an rtnetlink IFLA_CARRIER attribute sent to the netlink
+socket of the interface's namespace.
