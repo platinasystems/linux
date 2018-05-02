@@ -34,6 +34,12 @@ enum xeth_op {
 	XETH_ETHTOOL_FLAGS_OP,
 	XETH_ETHTOOL_SETTINGS_OP,
 	XETH_ETHTOOL_DUMP_OP,
+	XETH_CARRIER_OP,
+};
+
+enum xeth_carrier_flag {
+	XETH_CARRIER_OFF,
+	XETH_CARRIER_ON,
 };
 
 #define xeth_msg_name(name)	xeth_##name##_msg
@@ -69,6 +75,7 @@ xeth_ifmsg(stat, struct xeth_stat stat);
 xeth_ifmsg(ethtool_flags, u32 flags);
 xeth_ifmsg(ethtool_settings, struct ethtool_link_ksettings settings);
 xeth_msg(ethtool_dump);
+xeth_ifmsg(carrier, u8 flag);
 
 static inline bool xeth_is_hdr(struct xeth_msg_hdr *p)
 {
