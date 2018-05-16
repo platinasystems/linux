@@ -27,20 +27,37 @@ static inline int xeth_notifier(struct notifier_block *unused,
 				unsigned long event, void *ptr)
 {
 	struct net_device *nd = netdev_notifier_info_to_dev(ptr);
-	int i;
+	int iflinki, ndi;
 
 	switch (event) {
 	case NETDEV_UNREGISTER:
-		for (i = 0; i < xeth.n.iflinks; i++) {
-			struct net_device *iflink = xeth_iflinks(i);
+		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
+			struct net_device *iflink = xeth_iflinks(iflinki);
 			if (nd == iflink) {
-				xeth_reset_iflinks(i);
+				xeth_reset_iflinks(iflinki);
 				netdev_rx_handler_unregister(iflink);
 				dev_put(iflink);
 			}
 		}
 		break;
-		/* FIXME add PRECHANGEMTU */
+	case NETDEV_CHANGEMTU:
+		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
+			struct net_device *iflink = xeth_iflinks(iflinki);
+			if (nd == iflink) {
+				for (ndi = 0; ndi < xeth.n.ids; ndi++) {
+					struct net_device *xnd = xeth_nds(ndi);
+					if (xnd != NULL) {
+						struct xeth_priv *priv =
+							netdev_priv(xnd);
+						if (priv->iflinki == iflinki) {
+							dev_set_mtu(xnd,
+								    nd->mtu);
+						}
+					}
+				}
+			}
+		}
+		break;
 	}
 	return NOTIFY_DONE;
 }
