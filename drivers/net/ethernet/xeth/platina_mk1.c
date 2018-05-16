@@ -141,7 +141,7 @@ static void platina_mk1_init_ethtool_settings(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *settings = &priv->ethtool.settings; 
-	settings->base.speed = 100000;
+	settings->base.speed = 0;
 	settings->base.duplex = DUPLEX_FULL;
 	settings->base.autoneg = AUTONEG_ENABLE;
 	settings->base.port = PORT_OTHER;
