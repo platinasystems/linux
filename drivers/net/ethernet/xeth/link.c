@@ -41,9 +41,9 @@ static void xeth_link_setup(struct net_device *nd)
 	nd->priv_flags |= IFF_NO_QUEUE;
 	/* FIXME nd->priv_flags |= IFF_UNICAST_FLT; */
 	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->mtu = ETH_MAX_MTU - xeth.n.encap;
-	nd->min_mtu = 0;
-	nd->max_mtu = ETH_MAX_MTU - xeth.n.encap;
+	nd->mtu = ETH_DATA_LEN;
+	nd->min_mtu = ETH_MIN_MTU;
+	nd->max_mtu = ETH_MAX_MTU;
 	/* FIXME netif_keep_dst(nd); */
 	eth_zero_addr(nd->broadcast);
 }
@@ -84,7 +84,7 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	iflink = xeth_priv_iflink(priv);
 	if (is_zero_ether_addr(nd->broadcast))
 		memcpy(nd->broadcast, iflink->broadcast, nd->addr_len);
-	nd->mtu = iflink->mtu - xeth.n.encap;
+	nd->mtu = iflink->mtu;
 	nd->max_mtu = iflink->max_mtu - xeth.n.encap;
 	nd->flags  = iflink->flags & ~(IFF_UP | IFF_PROMISC | IFF_ALLMULTI |
 				       IFF_MASTER | IFF_SLAVE);
