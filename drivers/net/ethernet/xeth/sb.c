@@ -348,6 +348,21 @@ static inline int xeth_sb_ethtool_dump(struct socket *sock,
 	return xeth_sb_service_tx(sock);
 }
 
+static inline void xeth_sb_speed(const struct xeth_speed_msg *msg)
+{
+	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
+	struct xeth_priv *priv;
+
+	if (!nd)
+		return;
+	priv = netdev_priv(nd);
+	mutex_lock(&priv->ethtool.mutex);
+	priv->ethtool.settings.base.speed = msg->mbps;
+	mutex_unlock(&priv->ethtool.mutex);
+	xeth_pr_nd(nd, "speed %uMb/s", msg->mbps);
+}
+
+
 // return < 0 if error, 1 if sock closed, and 0 othewise
 static inline int xeth_sb_service_rx(struct socket *sock)
 {
@@ -371,21 +386,15 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 		return 0;
 	}
 	switch (hdr->op) {
-	case XETH_CARRIER_OP: {
-		struct xeth_carrier_msg *carrier =
-			(struct xeth_carrier_msg *)(xeth_sb_rxbuf);
-		xeth_sb_carrier(carrier);
-	}	break;
-	case XETH_LINK_STAT_OP: {
-		struct xeth_stat_msg *stat =
-			(struct xeth_stat_msg *)(xeth_sb_rxbuf);
-		xeth_sb_link_stat(stat);
-	}	break;
-	case XETH_ETHTOOL_STAT_OP: {
-		struct xeth_stat_msg *stat =
-			(struct xeth_stat_msg *)(xeth_sb_rxbuf);
-		xeth_sb_ethtool_stat(stat);
-	}	break;
+	case XETH_CARRIER_OP:
+		xeth_sb_carrier((struct xeth_carrier_msg *)xeth_sb_rxbuf);
+		break;
+	case XETH_LINK_STAT_OP:
+		xeth_sb_link_stat((struct xeth_stat_msg *)xeth_sb_rxbuf);
+		break;
+	case XETH_ETHTOOL_STAT_OP:
+		xeth_sb_ethtool_stat((struct xeth_stat_msg *)xeth_sb_rxbuf);
+		break;
 	case XETH_ETHTOOL_DUMP_OP: {
 		int i, err = 0;
 
@@ -398,6 +407,9 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 			return err;
 		xeth_sb_send_break();
 	}	break;
+	case XETH_SPEED_OP:
+		xeth_sb_speed((struct xeth_speed_msg *)xeth_sb_rxbuf);
+		break;
 	default:
 		xeth_pr("invalid op code: %d", hdr->op);
 		return -EINVAL;

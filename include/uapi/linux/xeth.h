@@ -35,6 +35,7 @@ enum xeth_op {
 	XETH_ETHTOOL_SETTINGS_OP,
 	XETH_ETHTOOL_DUMP_OP,
 	XETH_CARRIER_OP,
+	XETH_SPEED_OP,
 };
 
 enum xeth_carrier_flag {
@@ -76,6 +77,7 @@ xeth_ifmsg(ethtool_flags, u32 flags);
 xeth_ifmsg(ethtool_settings, struct ethtool_link_ksettings settings);
 xeth_msg(ethtool_dump);
 xeth_ifmsg(carrier, u8 flag);
+xeth_ifmsg(speed, u32 mbps);
 
 static inline bool xeth_is_hdr(struct xeth_msg_hdr *p)
 {
