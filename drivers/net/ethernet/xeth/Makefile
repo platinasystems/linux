@@ -21,7 +21,7 @@ ccflags-y += -DXETH_VERSION="$(GIT_VERSION)"
 ccflags-y += -I$(src) --include=xeth.h --include=pr.h
 
 go-platina-mk1 := $(if $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(CONFIG_SAMPLE_XETH))
-extra-$(go-platina-mk1) += platina-mk1
+extra-$(go-platina-mk1) += sample-platina-mk1
 hostprogs-$(go-platina-mk1) += gen-platina-mk1-stats
 hostprogs-$(go-platina-mk1) += gen-platina-mk1-flags
 gen-platina-mk1-stats-objs := gen_platina_mk1_stats.o platina_mk1_stats.o
@@ -35,11 +35,11 @@ go-list-go = $(foreach pkg,$(1),$(addprefix $(src)/go/src/$(pkg)/,$(shell\
 quiet_cmd_gobuild = GOBUILD $@
       cmd_gobuild = go build -o $@
 
-platina-mk1-deps := $(call go-list-go,platina-mk1 xeth)
-platina-mk1-deps += $(src)/go/src/xeth/godefed.go
+sample-platina-mk1-deps := $(call go-list-go,sample-platina-mk1 xeth)
+sample-platina-mk1-deps += $(src)/go/src/xeth/godefed.go
 
-$(obj)/platina-mk1: $(platina-mk1-deps)
-	$(call cmd,gobuild) platina-mk1
+$(obj)/sample-platina-mk1: $(sample-platina-mk1-deps)
+	$(call cmd,gobuild) $(@F)
 
 quiet_cmd_genstats = GOGEN   $@
       cmd_genstats = $(obj)/gen-platina-mk1-stats
@@ -47,10 +47,10 @@ quiet_cmd_genstats = GOGEN   $@
 quiet_cmd_genflags = GOGEN   $@
       cmd_genflags = $(obj)/gen-platina-mk1-flags
 
-$(src)/go/src/platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
+$(src)/go/src/sample-platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
 	$(call cmd,genstats) > $@
 
-$(src)/go/src/platina-mk1/flags.go: $(obj)/gen-platina-mk1-flags
+$(src)/go/src/sample-platina-mk1/flags.go: $(obj)/gen-platina-mk1-flags
 	$(call cmd,genflags) > $@
 
 quiet_cmd_godefs  = GODEFS  $@
