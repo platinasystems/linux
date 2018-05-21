@@ -340,8 +340,8 @@ static inline int xeth_sb_service_tx(struct socket *sock)
 	return err;
 }
 
-static inline int xeth_sb_ethtool_dump(struct socket *sock,
-				       struct net_device *nd)
+static inline int xeth_sb_dump_ifinfo(struct socket *sock,
+				      struct net_device *nd)
 {
 	xeth_sb_send_ethtool_flags(nd);
 	xeth_sb_send_ethtool_settings(nd);
@@ -395,13 +395,13 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	case XETH_ETHTOOL_STAT_OP:
 		xeth_sb_ethtool_stat((struct xeth_stat_msg *)xeth_sb_rxbuf);
 		break;
-	case XETH_ETHTOOL_DUMP_OP: {
+	case XETH_DUMP_IFINFO_OP: {
 		int i, err = 0;
 
 		for (i = 0; !err && i < xeth.n.ids; i++) {
 			struct net_device *nd = xeth_nds(i);
 			if (nd != NULL)
-				err = xeth_sb_ethtool_dump(sock, nd);
+				err = xeth_sb_dump_ifinfo(sock, nd);
 		}
 		if (err)
 			return err;
