@@ -33,7 +33,7 @@ enum xeth_op {
 	XETH_ETHTOOL_STAT_OP,
 	XETH_ETHTOOL_FLAGS_OP,
 	XETH_ETHTOOL_SETTINGS_OP,
-	XETH_ETHTOOL_DUMP_OP,
+	XETH_DUMP_IFINFO_OP,
 	XETH_CARRIER_OP,
 	XETH_SPEED_OP,
 };
@@ -75,7 +75,7 @@ xeth_msg(break);
 xeth_ifmsg(stat, struct xeth_stat stat);
 xeth_ifmsg(ethtool_flags, u32 flags);
 xeth_ifmsg(ethtool_settings, struct ethtool_link_ksettings settings);
-xeth_msg(ethtool_dump);
+xeth_msg(dump_ifinfo);
 xeth_ifmsg(carrier, u8 flag);
 xeth_ifmsg(speed, u32 mbps);
 
