@@ -29,6 +29,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"unsafe"
 )
 
@@ -48,7 +49,7 @@ DB	{ ifinfo | fdb }
 DEVICE	an interface name or its ifindex
 STAT	an 'ip link' or 'ethtool' statistic
 FILE,-	receive an exception frame from FILE or STDIN`)
-	xeth, err := New(name, DialOpt(false))
+	xeth, err := New(strings.TrimPrefix(name, "sample-"), DialOpt(false))
 	defer func() {
 		r := recover()
 		if err := xeth.Close(); r == nil {
@@ -173,6 +174,8 @@ func dump(buf []byte) error {
 		stringer = (*EthtoolFlagsMsg)(ptr)
 	case XETH_ETHTOOL_SETTINGS_OP:
 		stringer = (*EthtoolSettingsMsg)(ptr)
+	case XETH_IFINDEX_OP:
+		stringer = (*IfindexMsg)(ptr)
 	default:
 		return fmt.Errorf("invalid op: %d", hdr.Op)
 	}
