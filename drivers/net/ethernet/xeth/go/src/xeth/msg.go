@@ -75,7 +75,7 @@ type EthtoolSettingsMsg struct {
 }
 
 func (msg *EthtoolSettingsMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ":", &msg.Settings)
+	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", &msg.Settings)
 }
 
 type CarrierMsg struct {
@@ -85,7 +85,7 @@ type CarrierMsg struct {
 }
 
 func (msg *CarrierMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ":", msg.Flag)
+	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Flag)
 }
 
 type SpeedMsg struct {
@@ -95,5 +95,15 @@ type SpeedMsg struct {
 }
 
 func (msg *SpeedMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ":", msg.Speed)
+	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Speed)
+}
+
+type IfindexMsg struct {
+	Hdr     Hdr
+	Ifname  Ifname
+	Ifindex uint64
+}
+
+func (msg *IfindexMsg) String() string {
+	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Ifindex)
 }
