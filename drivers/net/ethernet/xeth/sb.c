@@ -289,6 +289,26 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	return xeth_sb_unlocked(0);
 }
 
+int xeth_sb_send_ifindex(struct net_device *nd)
+{
+	size_t n = sizeof(struct xeth_ifindex_msg);
+	struct xeth_sb_tx_entry *entry;
+	struct xeth_ifindex_msg *msg;
+
+	xeth_sb_lock();
+	if (!xeth_sb.connected)
+		return xeth_sb_unlocked(0);
+	entry = xeth_sb_tx_entry_alloc(n);
+	if (!entry)
+		return xeth_sb_unlocked(-ENOMEM);
+	msg = (struct xeth_ifindex_msg *)&entry->data[0];
+	xeth_set_hdr(&msg->hdr, XETH_IFINDEX_OP);
+	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
+	msg->ifindex = nd->ifindex;
+	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
+	return xeth_sb_unlocked(0);
+}
+
 static inline bool xeth_sb_service_continue(int err)
 {
 	return !err && !kthread_should_stop() &&
@@ -343,6 +363,7 @@ static inline int xeth_sb_service_tx(struct socket *sock)
 static inline int xeth_sb_dump_ifinfo(struct socket *sock,
 				      struct net_device *nd)
 {
+	xeth_sb_send_ifindex(nd);
 	xeth_sb_send_ethtool_flags(nd);
 	xeth_sb_send_ethtool_settings(nd);
 	return xeth_sb_service_tx(sock);
