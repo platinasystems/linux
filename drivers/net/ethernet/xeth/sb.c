@@ -75,8 +75,8 @@ static const char *const xeth_sb_link_stats[] = {
 static const size_t xeth_sb_n_link_stats =
 	sizeof(struct rtnl_link_stats64)/sizeof(u64);
 
-static char *xeth_sb_rxbuf;
-static struct task_struct *xeth_sb_task_main;
+static char *xeth_sb_rxbuf = NULL;
+static struct task_struct *xeth_sb_task_main = NULL;
 
 
 static struct {
@@ -289,6 +289,29 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	return xeth_sb_unlocked(0);
 }
 
+int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
+		     struct in_ifaddr *ifa)
+{
+	size_t n = sizeof(struct xeth_ifa_msg);
+	struct xeth_sb_tx_entry *entry;
+	struct xeth_ifa_msg *msg;
+
+	xeth_sb_lock();
+	if (!xeth_sb.connected)
+		return xeth_sb_unlocked(0);
+	entry = xeth_sb_tx_entry_alloc(n);
+	if (!entry)
+		return xeth_sb_unlocked(-ENOMEM);
+	msg = (struct xeth_ifa_msg *)&entry->data[0];
+	xeth_set_hdr(&msg->hdr, XETH_IFA_OP);
+	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
+	msg->ifa.event = event;
+	msg->ifa.address = ifa->ifa_address;
+	msg->ifa.mask = ifa->ifa_mask;
+	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
+	return xeth_sb_unlocked(0);
+}
+
 int xeth_sb_send_ifindex(struct net_device *nd)
 {
 	size_t n = sizeof(struct xeth_ifindex_msg);
@@ -363,6 +386,11 @@ static inline int xeth_sb_service_tx(struct socket *sock)
 static inline int xeth_sb_dump_ifinfo(struct socket *sock,
 				      struct net_device *nd)
 {
+	if (nd->ip_ptr) {
+		struct in_ifaddr *ifa;
+		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
+			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
+	}
 	xeth_sb_send_ifindex(nd);
 	xeth_sb_send_ethtool_flags(nd);
 	xeth_sb_send_ethtool_settings(nd);

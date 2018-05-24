@@ -22,7 +22,11 @@
  */
 package xeth
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+	"unsafe"
+)
 
 type Err string
 
@@ -54,8 +58,7 @@ func (msg *StatMsg) String() string {
 	default:
 		stat = Err("unknown")
 	}
-	return fmt.Sprint(op, ": ", msg.Ifname, ": ", stat, ": ",
-		msg.Stat.Count)
+	return fmt.Sprint(op, " ", msg.Ifname, " ", stat, " ", msg.Stat.Count)
 }
 
 type EthtoolFlagsMsg struct {
@@ -65,7 +68,7 @@ type EthtoolFlagsMsg struct {
 }
 
 func (msg *EthtoolFlagsMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Flags)
+	return fmt.Sprint(Op(msg.Hdr.Op), " ", &msg.Ifname, " ", msg.Flags)
 }
 
 type EthtoolSettingsMsg struct {
@@ -75,7 +78,7 @@ type EthtoolSettingsMsg struct {
 }
 
 func (msg *EthtoolSettingsMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", &msg.Settings)
+	return fmt.Sprint(Op(msg.Hdr.Op), " ", &msg.Ifname, " ", &msg.Settings)
 }
 
 type CarrierMsg struct {
@@ -85,7 +88,7 @@ type CarrierMsg struct {
 }
 
 func (msg *CarrierMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Flag)
+	return fmt.Sprint(Op(msg.Hdr.Op), " ", &msg.Ifname, " ", msg.Flag)
 }
 
 type SpeedMsg struct {
@@ -95,7 +98,7 @@ type SpeedMsg struct {
 }
 
 func (msg *SpeedMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Speed)
+	return fmt.Sprint(Op(msg.Hdr.Op), " ", &msg.Ifname, " ", msg.Speed)
 }
 
 type IfindexMsg struct {
@@ -105,5 +108,27 @@ type IfindexMsg struct {
 }
 
 func (msg *IfindexMsg) String() string {
-	return fmt.Sprint(Op(msg.Hdr.Op), ": ", &msg.Ifname, ": ", msg.Ifindex)
+	return fmt.Sprint(Op(msg.Hdr.Op), " ", &msg.Ifname, " ", msg.Ifindex)
+}
+
+type IfaMsg struct {
+	Hdr    Hdr
+	Ifname Ifname
+	Ifa    Ifa
+}
+
+func (msg *IfaMsg) String() string {
+	return fmt.Sprint(Op(msg.Hdr.Op), " ", &msg.Ifname, " ",
+		AddressEvent(msg.Ifa.Event), " ", msg.Ifa.IPNet())
+}
+
+func (ifa *Ifa) IsAdd() bool { return Event(ifa.Event) == NETDEV_UP }
+func (ifa *Ifa) IsDel() bool { return Event(ifa.Event) == NETDEV_DOWN }
+
+func (ifa *Ifa) IPNet() *net.IPNet {
+	ipBuf := make([]byte, 4)
+	maskBuf := make([]byte, 4)
+	*(*uint32)(unsafe.Pointer(&ipBuf[0])) = ifa.Address
+	*(*uint32)(unsafe.Pointer(&maskBuf[0])) = ifa.Mask
+	return &net.IPNet{net.IP(ipBuf), net.IPMask(maskBuf)}
 }

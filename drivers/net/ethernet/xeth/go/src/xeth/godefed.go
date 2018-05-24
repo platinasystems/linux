@@ -26,3 +26,8 @@ type Stat struct {
 	Index	uint64
 	Count	uint64
 }
+type Ifa struct {
+	Event	uint32
+	Address	uint32
+	Mask	uint32
+}
