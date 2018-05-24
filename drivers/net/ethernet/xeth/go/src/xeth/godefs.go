@@ -3,12 +3,9 @@
 package xeth
 
 // #define IFNAMSIZ 16
-// typedef int bool;
-// typedef unsigned long long u64;
-// typedef unsigned u32;
-// typedef unsigned short u16;
-// typedef unsigned char u8;
 // struct ethtool_link_ksettings {};
+// #include <linux/types.h>
+// #include <asm/byteorder.h>
 // #include "linux/xeth.h"
 import "C"
 
@@ -26,3 +23,4 @@ const (
 
 type Hdr C.struct_xeth_msg_hdr
 type Stat C.struct_xeth_stat
+type Ifa C.struct_xeth_ifa

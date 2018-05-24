@@ -36,6 +36,7 @@ const (
 	XETH_CARRIER_OP
 	XETH_SPEED_OP
 	XETH_IFINDEX_OP
+	XETH_IFA_OP
 )
 
 func (op Op) String() string {
@@ -49,6 +50,7 @@ func (op Op) String() string {
 		"carrier",
 		"speed",
 		"ifindex",
+		"ifa",
 	}
 	var s string
 	i := int(op)

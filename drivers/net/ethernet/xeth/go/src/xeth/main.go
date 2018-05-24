@@ -161,7 +161,6 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 }
 
 func dump(buf []byte) error {
-	var stringer fmt.Stringer
 	ptr := unsafe.Pointer(&buf[0])
 	hdr := (*Hdr)(ptr)
 	if !hdr.IsHdr() {
@@ -169,16 +168,17 @@ func dump(buf []byte) error {
 	}
 	switch Op(hdr.Op) {
 	case XETH_LINK_STAT_OP, XETH_ETHTOOL_STAT_OP:
-		stringer = (*StatMsg)(ptr)
+		fmt.Println((*StatMsg)(ptr))
 	case XETH_ETHTOOL_FLAGS_OP:
-		stringer = (*EthtoolFlagsMsg)(ptr)
+		fmt.Println((*EthtoolFlagsMsg)(ptr))
 	case XETH_ETHTOOL_SETTINGS_OP:
-		stringer = (*EthtoolSettingsMsg)(ptr)
+		fmt.Println((*EthtoolSettingsMsg)(ptr))
 	case XETH_IFINDEX_OP:
-		stringer = (*IfindexMsg)(ptr)
+		fmt.Println((*IfindexMsg)(ptr))
+	case XETH_IFA_OP:
+		fmt.Println((*IfaMsg)(ptr))
 	default:
-		return fmt.Errorf("invalid op: %d", hdr.Op)
+		fmt.Println("invalid op:", hdr.Op)
 	}
-	fmt.Println(stringer)
 	return nil
 }
