@@ -26,6 +26,7 @@
 
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
+#include <linux/inetdevice.h>
 #include <net/rtnetlink.h>
 
 #ifndef XETH_VERSION
@@ -61,8 +62,6 @@ struct xeth {
 		struct	net_device_ops ndo;
 		struct	ethtool_ops ethtool;
 	} ops;
-
-	struct	notifier_block notifier;
 
 	struct	xeth_ethtool {
 		const char * const *stats;
@@ -107,6 +106,8 @@ void xeth_vlan_exit(void);
 
 int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
+int xeth_sb_send_ifa(struct net_device *ndi, unsigned long event,
+		     struct in_ifaddr *ifa);
 
 static inline struct net_device *xeth_iflinks(int i)
 {

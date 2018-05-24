@@ -37,6 +37,7 @@ enum xeth_op {
 	XETH_CARRIER_OP,
 	XETH_SPEED_OP,
 	XETH_IFINDEX_OP,
+	XETH_IFA_OP,
 };
 
 enum xeth_carrier_flag {
@@ -72,6 +73,12 @@ struct xeth_stat {
 	u64 count;
 };
 
+struct xeth_ifa {
+	u32	event;
+	__be32	address;
+	__be32	mask;
+};
+
 xeth_msg(break);
 xeth_ifmsg(stat, struct xeth_stat stat);
 xeth_ifmsg(ethtool_flags, u32 flags);
@@ -80,6 +87,7 @@ xeth_msg(dump_ifinfo);
 xeth_ifmsg(carrier, u8 flag);
 xeth_ifmsg(speed, u32 mbps);
 xeth_ifmsg(ifindex, u64 ifindex);
+xeth_ifmsg(ifa, struct xeth_ifa ifa);
 
 static inline bool xeth_is_hdr(struct xeth_msg_hdr *p)
 {
