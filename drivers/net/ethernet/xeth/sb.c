@@ -157,7 +157,7 @@ static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
 	return nd;
 }
 
-static void xeth_sb_carrier(const struct xeth_carrier_msg *msg)
+static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 {
 	const char *onoff = "invalid";
 	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
@@ -176,35 +176,34 @@ static void xeth_sb_carrier(const struct xeth_carrier_msg *msg)
 	xeth_pr_nd(nd, "carrier %s", onoff);
 }
 
-static void xeth_sb_link_stat(const struct xeth_stat_msg *msg)
+static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 {
 	struct net_device *nd;
 	struct xeth_priv *priv;
 	u64 *stat;
 
-	if (msg->stat.index >= xeth_sb_n_link_stats) {
-		xeth_pr("invalid link stat index: %llu", msg->stat.index);
+	if (msg->index >= xeth_sb_n_link_stats) {
+		xeth_pr("invalid link stat index: %llu", msg->index);
 		return;
 	}
 	nd = xeth_sb_nd_of(msg->ifname);
 	if (!nd)
 		return;
 	priv = netdev_priv(nd);
-	stat = (u64*)&priv->link.stats + msg->stat.index;
+	stat = (u64*)&priv->link.stats + msg->index;
 	mutex_lock(&priv->link.mutex);
-	*stat = msg->stat.count;
+	*stat = msg->count;
 	mutex_unlock(&priv->link.mutex);
-	xeth_pr_nd(nd, "%s: %llu", xeth_sb_link_stats[msg->stat.index],
-		   msg->stat.count);
+	xeth_pr_nd(nd, "%s: %llu", xeth_sb_link_stats[msg->index], msg->count);
 }
 
-static void xeth_sb_ethtool_stat(const struct xeth_stat_msg *msg)
+static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 {
 	struct net_device *nd;
 	struct xeth_priv *priv;
 
-	if (msg->stat.index >= xeth.n.ethtool.stats) {
-		xeth_pr("invalid ethtool stat index: %llu", msg->stat.index);
+	if (msg->index >= xeth.n.ethtool.stats) {
+		xeth_pr("invalid ethtool stat index: %llu", msg->index);
 		return;
 	}
 	nd = xeth_sb_nd_of(msg->ifname);
@@ -212,10 +211,9 @@ static void xeth_sb_ethtool_stat(const struct xeth_stat_msg *msg)
 		return;
 	priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool.mutex);
-	priv->ethtool.stats[msg->stat.index] = msg->stat.count;
+	priv->ethtool.stats[msg->index] = msg->count;
 	mutex_unlock(&priv->ethtool.mutex);
-	xeth_pr_nd(nd, "%s: %llu", xeth.ethtool.stats[msg->stat.index],
-		   msg->stat.count);
+	xeth_pr_nd(nd, "%s: %llu", xeth.ethtool.stats[msg->index], msg->count);
 }
 
 static void xeth_sb_exception_frame(const char *buf, int n)
@@ -230,9 +228,8 @@ static void xeth_sb_exception_frame(const char *buf, int n)
 
 int xeth_sb_send_break(void)
 {
-	size_t n = sizeof(struct xeth_break_msg);
+	size_t n = sizeof(struct xeth_msg_break);
 	struct xeth_sb_tx_entry *entry;
-	struct xeth_break_msg *msg;
 
 	xeth_sb_lock();
 	if (!xeth_sb.connected)
@@ -240,8 +237,7 @@ int xeth_sb_send_break(void)
 	entry = xeth_sb_tx_entry_alloc(n);
 	if (!entry)
 		return xeth_sb_unlocked(-ENOMEM);
-	msg = (struct xeth_break_msg *)&entry->data[0];
-	xeth_set_hdr(&msg->hdr, XETH_BREAK_OP);
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_BREAK);
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
 }
@@ -249,9 +245,9 @@ int xeth_sb_send_break(void)
 int xeth_sb_send_ethtool_flags(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	size_t n = sizeof(struct xeth_ethtool_flags_msg);
+	size_t n = sizeof(struct xeth_msg_ethtool_flags);
 	struct xeth_sb_tx_entry *entry;
-	struct xeth_ethtool_flags_msg *msg;
+	struct xeth_msg_ethtool_flags *msg;
 
 	xeth_sb_lock();
 	if (!xeth_sb.connected)
@@ -259,9 +255,8 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 	entry = xeth_sb_tx_entry_alloc(n);
 	if (!entry)
 		return xeth_sb_unlocked(-ENOMEM);
-	msg = (struct xeth_ethtool_flags_msg *)&entry->data[0];
-	xeth_set_hdr(&msg->hdr, XETH_ETHTOOL_FLAGS_OP);
-	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_FLAGS, nd->name);
+	msg = (struct xeth_msg_ethtool_flags *)&entry->data[0];
 	msg->flags = priv->ethtool.flags;
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
@@ -270,9 +265,10 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 int xeth_sb_send_ethtool_settings(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	size_t n = sizeof(struct xeth_ethtool_settings_msg);
+	size_t n = sizeof(struct xeth_msg_ethtool_settings);
 	struct xeth_sb_tx_entry *entry;
-	struct xeth_ethtool_settings_msg *msg;
+	struct xeth_msg_ethtool_settings *msg;
+	int i;
 
 	xeth_sb_lock();
 	if (!xeth_sb.connected)
@@ -280,11 +276,29 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	entry = xeth_sb_tx_entry_alloc(n);
 	if (!entry)
 		return xeth_sb_unlocked(-ENOMEM);
-	msg = (struct xeth_ethtool_settings_msg *)&entry->data[0];
-	xeth_set_hdr(&msg->hdr, XETH_ETHTOOL_SETTINGS_OP);
-	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
-	memcpy(&msg->settings, &priv->ethtool.settings,
-	       sizeof(struct ethtool_link_ksettings));
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS,
+		       nd->name);
+	msg = (struct xeth_msg_ethtool_settings *)&entry->data[0];
+	msg->speed = priv->ethtool.settings.base.speed;
+	msg->duplex = priv->ethtool.settings.base.duplex;
+	msg->port = priv->ethtool.settings.base.port;
+	msg->phy_address = priv->ethtool.settings.base.phy_address;
+	msg->autoneg = priv->ethtool.settings.base.autoneg;
+	msg->mdio_support = priv->ethtool.settings.base.mdio_support;
+	msg->eth_tp_mdix = priv->ethtool.settings.base.eth_tp_mdix;
+	msg->eth_tp_mdix_ctrl = priv->ethtool.settings.base.eth_tp_mdix_ctrl;
+	msg->link_mode_masks_nwords =
+		sizeof(priv->ethtool.settings.link_modes.supported) /
+		sizeof(unsigned long);
+	for (i = 0; i < msg->link_mode_masks_nwords; i++)
+		msg->link_modes_supported[i] =
+			priv->ethtool.settings.link_modes.supported[i];
+	for (i = 0; i < msg->link_mode_masks_nwords; i++)
+		msg->link_modes_advertising[i] =
+			priv->ethtool.settings.link_modes.advertising[i];
+	for (i = 0; i < msg->link_mode_masks_nwords; i++)
+		msg->link_modes_lp_advertising[i] =
+			priv->ethtool.settings.link_modes.lp_advertising[i];
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
 }
@@ -292,9 +306,9 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa)
 {
-	size_t n = sizeof(struct xeth_ifa_msg);
+	size_t n = sizeof(struct xeth_msg_ifa);
 	struct xeth_sb_tx_entry *entry;
-	struct xeth_ifa_msg *msg;
+	struct xeth_msg_ifa *msg;
 
 	xeth_sb_lock();
 	if (!xeth_sb.connected)
@@ -302,21 +316,20 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	entry = xeth_sb_tx_entry_alloc(n);
 	if (!entry)
 		return xeth_sb_unlocked(-ENOMEM);
-	msg = (struct xeth_ifa_msg *)&entry->data[0];
-	xeth_set_hdr(&msg->hdr, XETH_IFA_OP);
-	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
-	msg->ifa.event = event;
-	msg->ifa.address = ifa->ifa_address;
-	msg->ifa.mask = ifa->ifa_mask;
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFA, nd->name);
+	msg = (struct xeth_msg_ifa *)&entry->data[0];
+	msg->event = event;
+	msg->address = ifa->ifa_address;
+	msg->mask = ifa->ifa_mask;
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
 }
 
 int xeth_sb_send_ifindex(struct net_device *nd)
 {
-	size_t n = sizeof(struct xeth_ifindex_msg);
+	size_t n = sizeof(struct xeth_msg_ifindex);
 	struct xeth_sb_tx_entry *entry;
-	struct xeth_ifindex_msg *msg;
+	struct xeth_msg_ifindex *msg;
 
 	xeth_sb_lock();
 	if (!xeth_sb.connected)
@@ -324,9 +337,8 @@ int xeth_sb_send_ifindex(struct net_device *nd)
 	entry = xeth_sb_tx_entry_alloc(n);
 	if (!entry)
 		return xeth_sb_unlocked(-ENOMEM);
-	msg = (struct xeth_ifindex_msg *)&entry->data[0];
-	xeth_set_hdr(&msg->hdr, XETH_IFINDEX_OP);
-	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINDEX, nd->name);
+	msg = (struct xeth_msg_ifindex *)&entry->data[0];
 	msg->ifindex = nd->ifindex;
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
@@ -397,7 +409,7 @@ static inline int xeth_sb_dump_ifinfo(struct socket *sock,
 	return xeth_sb_service_tx(sock);
 }
 
-static inline void xeth_sb_speed(const struct xeth_speed_msg *msg)
+static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 {
 	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
 	struct xeth_priv *priv;
@@ -415,36 +427,36 @@ static inline void xeth_sb_speed(const struct xeth_speed_msg *msg)
 // return < 0 if error, 1 if sock closed, and 0 othewise
 static inline int xeth_sb_service_rx(struct socket *sock)
 {
-	struct xeth_msg_hdr *hdr = (struct xeth_msg_hdr *)(xeth_sb_rxbuf);
-	struct msghdr msg = {};
+	struct xeth_msg *msg = (struct xeth_msg *)(xeth_sb_rxbuf);
+	struct msghdr oob = {};
 	struct kvec iov = {
 		.iov_base = xeth_sb_rxbuf,
 		.iov_len = XETH_SIZEOF_JUMBO_FRAME,
 	};
-	int ret = kernel_recvmsg(sock, &msg, &iov, 1, iov.iov_len, 0);
+	int ret = kernel_recvmsg(sock, &oob, &iov, 1, iov.iov_len, 0);
 	if (ret == -EAGAIN)
 		return 0;
 	if (ret == 0)
 		return 1;
 	if (ret < 0)
 		return xeth_pr_true_val("%d", ret);
-	if (ret < sizeof(struct xeth_msg_hdr))
+	if (ret < sizeof(struct xeth_msg))
 		return xeth_pr_true_val("%d", -EINVAL);
-	if (!xeth_is_hdr(hdr)) {
+	if (!xeth_is_msg(msg)) {
 		xeth_sb_exception_frame(xeth_sb_rxbuf, ret);
 		return 0;
 	}
-	switch (hdr->op) {
-	case XETH_CARRIER_OP:
-		xeth_sb_carrier((struct xeth_carrier_msg *)xeth_sb_rxbuf);
+	switch (msg->kind) {
+	case XETH_MSG_KIND_CARRIER:
+		xeth_sb_carrier((struct xeth_msg_carrier *)xeth_sb_rxbuf);
 		break;
-	case XETH_LINK_STAT_OP:
-		xeth_sb_link_stat((struct xeth_stat_msg *)xeth_sb_rxbuf);
+	case XETH_MSG_KIND_LINK_STAT:
+		xeth_sb_link_stat((struct xeth_msg_stat *)xeth_sb_rxbuf);
 		break;
-	case XETH_ETHTOOL_STAT_OP:
-		xeth_sb_ethtool_stat((struct xeth_stat_msg *)xeth_sb_rxbuf);
+	case XETH_MSG_KIND_ETHTOOL_STAT:
+		xeth_sb_ethtool_stat((struct xeth_msg_stat *)xeth_sb_rxbuf);
 		break;
-	case XETH_DUMP_IFINFO_OP: {
+	case XETH_MSG_KIND_DUMP_IFINFO: {
 		int i, err = 0;
 
 		for (i = 0; !err && i < xeth.n.ids; i++) {
@@ -456,11 +468,11 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 			return err;
 		xeth_sb_send_break();
 	}	break;
-	case XETH_SPEED_OP:
-		xeth_sb_speed((struct xeth_speed_msg *)xeth_sb_rxbuf);
+	case XETH_MSG_KIND_SPEED:
+		xeth_sb_speed((struct xeth_msg_speed *)xeth_sb_rxbuf);
 		break;
 	default:
-		xeth_pr("invalid op code: %d", hdr->op);
+		xeth_pr("invalid: %d", msg->kind);
 		return -EINVAL;
 	}
 	return 0;

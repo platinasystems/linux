@@ -27,79 +27,126 @@
 
 #define XETH_SIZEOF_JUMBO_FRAME		9728
 
-enum xeth_op {
-	XETH_BREAK_OP,
-	XETH_LINK_STAT_OP,
-	XETH_ETHTOOL_STAT_OP,
-	XETH_ETHTOOL_FLAGS_OP,
-	XETH_ETHTOOL_SETTINGS_OP,
-	XETH_DUMP_IFINFO_OP,
-	XETH_CARRIER_OP,
-	XETH_SPEED_OP,
-	XETH_IFINDEX_OP,
-	XETH_IFA_OP,
+enum xeth_msg_kind {
+	XETH_MSG_KIND_BREAK,
+	XETH_MSG_KIND_LINK_STAT,
+	XETH_MSG_KIND_ETHTOOL_STAT,
+	XETH_MSG_KIND_ETHTOOL_FLAGS,
+	XETH_MSG_KIND_ETHTOOL_SETTINGS,
+	XETH_MSG_KIND_DUMP_IFINFO,
+	XETH_MSG_KIND_CARRIER,
+	XETH_MSG_KIND_SPEED,
+	XETH_MSG_KIND_IFINDEX,
+	XETH_MSG_KIND_IFA,
 };
 
-enum xeth_carrier_flag {
+enum xeth_msg_carrier_flag {
 	XETH_CARRIER_OFF,
 	XETH_CARRIER_ON,
 };
 
-#define xeth_msg_name(name)	xeth_##name##_msg
+#define xeth_msg_named(name)	xeth_msg_##name
 
-#define xeth_msg(name, ...)						\
-struct xeth_msg_name(name) {						\
-	struct	xeth_msg_hdr	hdr;					\
+#define xeth_msg_def(name, ...)						\
+struct xeth_msg_named(name) {						\
+	u64	z64;							\
+	u32	z32;							\
+	u16	z16;							\
+	u8	z8;							\
+	u8	kind;							\
 	__VA_ARGS__;							\
 }
 
-#define xeth_ifmsg(name, ...)						\
-struct xeth_msg_name(name) {						\
-	struct	xeth_msg_hdr	hdr;					\
+#define xeth_ifmsg_def(name, ...)					\
+struct xeth_msg_named(name) {						\
+	u64	z64;							\
+	u32	z32;							\
+	u16	z16;							\
+	u8	z8;							\
+	u8	kind;							\
 	u8	ifname[IFNAMSIZ];					\
 	__VA_ARGS__;							\
 }
 
-struct xeth_msg_hdr {
+struct xeth_msg {
 	u64	z64;
 	u32	z32;
 	u16	z16;
 	u8	z8;
-	u8	op;
+	u8	kind;
 };
 
-struct xeth_stat {
+struct xeth_ifmsg {
+	u64	z64;
+	u32	z32;
+	u16	z16;
+	u8	z8;
+	u8	kind;
+	u8	ifname[IFNAMSIZ];
+};
+
+xeth_msg_def(break);
+
+xeth_ifmsg_def(stat,
 	u64 index;
 	u64 count;
-};
+);
 
-struct xeth_ifa {
+xeth_ifmsg_def(ethtool_flags, u32 flags);
+
+xeth_ifmsg_def(ethtool_settings,
+	u32	speed;
+	u8	duplex;
+	u8	port;
+	u8	phy_address;
+	u8	autoneg;
+	u8	mdio_support;
+	u8	eth_tp_mdix;
+	u8	eth_tp_mdix_ctrl;
+	s8	link_mode_masks_nwords;
+	u32	link_modes_supported[2];
+	u32	link_modes_advertising[2];
+	u32	link_modes_lp_advertising[2];
+);
+
+xeth_msg_def(dump_ifinfo);
+
+xeth_ifmsg_def(carrier, u8 flag);
+
+xeth_ifmsg_def(speed, u32 mbps);
+
+xeth_ifmsg_def(ifindex, u64 ifindex);
+
+xeth_ifmsg_def(ifa,
 	u32	event;
 	__be32	address;
 	__be32	mask;
-};
+);
 
-xeth_msg(break);
-xeth_ifmsg(stat, struct xeth_stat stat);
-xeth_ifmsg(ethtool_flags, u32 flags);
-xeth_ifmsg(ethtool_settings, struct ethtool_link_ksettings settings);
-xeth_msg(dump_ifinfo);
-xeth_ifmsg(carrier, u8 flag);
-xeth_ifmsg(speed, u32 mbps);
-xeth_ifmsg(ifindex, u64 ifindex);
-xeth_ifmsg(ifa, struct xeth_ifa ifa);
-
-static inline bool xeth_is_hdr(struct xeth_msg_hdr *p)
+static inline bool xeth_is_msg(struct xeth_msg *p)
 {
 	return	p->z64 == 0 && p->z32 == 0 && p->z16 == 0 && p->z8 == 0;
 }
 
-static inline void xeth_set_hdr(struct xeth_msg_hdr *hdr, u8 op)
+static inline void xeth_msg_set(void *data, u8 kind)
 {
-	hdr->z64 = 0;
-	hdr->z32 = 0;
-	hdr->z16 = 0;
-	hdr->z8 = 0;
-	hdr->op = op;
+	struct xeth_msg *msg = data;
+	msg->z64 = 0;
+	msg->z32 = 0;
+	msg->z16 = 0;
+	msg->z8 = 0;
+	msg->kind = kind;
+}
+
+static inline void xeth_ifmsg_set_ifname(void *data, char *ifname)
+{
+	struct xeth_ifmsg *ifmsg = data;
+	strlcpy(ifmsg->ifname, ifname, IFNAMSIZ);
+}
+
+static inline void xeth_ifmsg_set(void *data, u8 kind, char *ifname)
+{
+	xeth_msg_set(data, kind);
+	xeth_ifmsg_set_ifname(data, ifname);
 }
 #endif /* __XETH_UAPI_H */
