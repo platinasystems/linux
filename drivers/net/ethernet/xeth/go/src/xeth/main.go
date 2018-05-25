@@ -161,24 +161,23 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 }
 
 func dump(buf []byte) error {
-	ptr := unsafe.Pointer(&buf[0])
-	hdr := (*Hdr)(ptr)
-	if !hdr.IsHdr() {
+	if !IsMsg(buf) {
 		return fmt.Errorf("invalid xeth msg: %#x", buf)
 	}
-	switch Op(hdr.Op) {
-	case XETH_LINK_STAT_OP, XETH_ETHTOOL_STAT_OP:
-		fmt.Println((*StatMsg)(ptr))
-	case XETH_ETHTOOL_FLAGS_OP:
-		fmt.Println((*EthtoolFlagsMsg)(ptr))
-	case XETH_ETHTOOL_SETTINGS_OP:
-		fmt.Println((*EthtoolSettingsMsg)(ptr))
-	case XETH_IFINDEX_OP:
-		fmt.Println((*IfindexMsg)(ptr))
-	case XETH_IFA_OP:
-		fmt.Println((*IfaMsg)(ptr))
+	ptr := unsafe.Pointer(&buf[0])
+	switch kind := Kind((*Msg)(ptr).Kind); kind {
+	case XETH_MSG_KIND_LINK_STAT, XETH_MSG_KIND_ETHTOOL_STAT:
+		fmt.Println((*MsgStat)(ptr))
+	case XETH_MSG_KIND_ETHTOOL_FLAGS:
+		fmt.Println((*MsgEthtoolFlags)(ptr))
+	case XETH_MSG_KIND_ETHTOOL_SETTINGS:
+		fmt.Println((*MsgEthtoolSettings)(ptr))
+	case XETH_MSG_KIND_IFINDEX:
+		fmt.Println((*MsgIfindex)(ptr))
+	case XETH_MSG_KIND_IFA:
+		fmt.Println((*MsgIfa)(ptr))
 	default:
-		fmt.Println("invalid op:", hdr.Op)
+		fmt.Println("unexpected:", kind)
 	}
 	return nil
 }
