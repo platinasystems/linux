@@ -24,23 +24,23 @@ package xeth
 
 import "fmt"
 
-type Op uint8
+type Kind uint8
 
 const (
-	XETH_BREAK_OP Op = iota
-	XETH_LINK_STAT_OP
-	XETH_ETHTOOL_STAT_OP
-	XETH_ETHTOOL_FLAGS_OP
-	XETH_ETHTOOL_SETTINGS_OP
-	XETH_DUMP_IFINFO_OP
-	XETH_CARRIER_OP
-	XETH_SPEED_OP
-	XETH_IFINDEX_OP
-	XETH_IFA_OP
+	XETH_MSG_KIND_BREAK Kind = iota
+	XETH_MSG_KIND_LINK_STAT
+	XETH_MSG_KIND_ETHTOOL_STAT
+	XETH_MSG_KIND_ETHTOOL_FLAGS
+	XETH_MSG_KIND_ETHTOOL_SETTINGS
+	XETH_MSG_KIND_DUMP_IFINFO
+	XETH_MSG_KIND_CARRIER
+	XETH_MSG_KIND_SPEED
+	XETH_MSG_KIND_IFINDEX
+	XETH_MSG_KIND_IFA
 )
 
-func (op Op) String() string {
-	var ops = []string{
+func (kind Kind) String() string {
+	var kinds = []string{
 		"break",
 		"link-stat",
 		"ethtool-stat",
@@ -53,9 +53,9 @@ func (op Op) String() string {
 		"ifa",
 	}
 	var s string
-	i := int(op)
-	if i < len(ops) {
-		s = ops[i]
+	i := int(kind)
+	if i < len(kinds) {
+		s = kinds[i]
 	} else {
 		s = fmt.Sprint("op[", i, "]")
 	}
