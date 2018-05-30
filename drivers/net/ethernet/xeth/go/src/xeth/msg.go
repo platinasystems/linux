@@ -82,8 +82,11 @@ func (msg *MsgSpeed) String() string {
 }
 
 func (msg *MsgIfindex) String() string {
-	return fmt.Sprint(Kind(msg.Kind), " ", (*Ifname)(&msg.Ifname), " ",
-		msg.Ifindex)
+	return fmt.Sprint(Kind(msg.Kind),
+		" ", (*Ifname)(&msg.Ifname),
+		"\n\tindex: ", msg.Ifindex,
+		"\n\tnet: ", fmt.Sprintf("%#x", msg.Net),
+	)
 }
 
 func (msg *MsgIfa) String() string {

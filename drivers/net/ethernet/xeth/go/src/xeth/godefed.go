@@ -14,7 +14,7 @@ const (
 	SizeofMsgDumpIfinfo		= 0x10
 	SizeofMsgCarrier		= 0x28
 	SizeofMsgSpeed			= 0x28
-	SizeofMsgIfindex		= 0x28
+	SizeofMsgIfindex		= 0x30
 	SizeofMsgIfa			= 0x30
 )
 
@@ -109,6 +109,7 @@ type MsgIfindex struct {
 	Kind	uint8
 	Ifname	[16]uint8
 	Ifindex	uint64
+	Net	uint64
 }
 type MsgIfa struct {
 	Z64		uint64

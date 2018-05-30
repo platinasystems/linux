@@ -115,7 +115,10 @@ xeth_ifmsg_def(carrier, u8 flag);
 
 xeth_ifmsg_def(speed, u32 mbps);
 
-xeth_ifmsg_def(ifindex, u64 ifindex);
+xeth_ifmsg_def(ifindex,
+	u64 ifindex;
+	u64 net;
+);
 
 xeth_ifmsg_def(ifa,
 	u32	event;
