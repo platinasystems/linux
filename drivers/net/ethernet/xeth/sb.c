@@ -339,7 +339,8 @@ int xeth_sb_send_ifindex(struct net_device *nd)
 		return xeth_sb_unlocked(-ENOMEM);
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINDEX, nd->name);
 	msg = (struct xeth_msg_ifindex *)&entry->data[0];
-	msg->ifindex = nd->ifindex;
+	msg->ifindex = (u64)nd->ifindex;
+	msg->net = (u64)dev_net(nd);
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
 }
