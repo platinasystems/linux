@@ -15,9 +15,8 @@ platina-mk1-y += platina_mk1_flags.o
 platina-mk1-y += $(xeth-y)
 platina-mk1-y += $(vlan-y)
 
-GIT_VERSION := $(shell git describe --always --long --dirty || echo "unknown")
-
-ccflags-y += -DXETH_VERSION="$(GIT_VERSION)"
+xeth_ver = $(shell cat $(objtree)/include/config/kernel.release 2> /dev/null)
+ccflags-y += -DXETH_VERSION="$(if $(xeth_ver),$(xeth_ver),unknown)"
 ccflags-y += -I$(src) --include=xeth.h --include=pr.h
 
 go-platina-mk1 := $(if $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(CONFIG_SAMPLE_XETH))
@@ -30,8 +29,9 @@ gen-platina-mk1-flags-objs := gen_platina_mk1_flags.o platina_mk1_flags.o
 GOPATH := $(realpath $(srctree)/$(src)/go)
 export GOPATH
 
-go-list-go = $(foreach pkg,$(1),$(addprefix $(src)/go/src/$(pkg)/,$(shell\
-	go list -f '{{ join .GoFiles " "}}' $(srctree)/$(src)/go/src/$(pkg))))
+go-list-go = $(foreach pkg,$(1),$(addprefix $(GOPATH)/src/$(pkg)/,\
+	$(shell env GOPATH=$(GOPATH)\
+		go list -f '{{ join .GoFiles " "}}' $(pkg))))
 quiet_cmd_gobuild = GOBUILD $@
       cmd_gobuild = go build -o $@
 
