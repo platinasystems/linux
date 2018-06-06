@@ -171,8 +171,8 @@ func dump(buf []byte) error {
 		stringer = (*MsgEthtoolFlags)(ptr)
 	case XETH_MSG_KIND_ETHTOOL_SETTINGS:
 		stringer = (*MsgEthtoolSettings)(ptr)
-	case XETH_MSG_KIND_IFINDEX:
-		stringer = (*MsgIfindex)(ptr)
+	case XETH_MSG_KIND_IFINFO:
+		stringer = (*MsgIfinfo)(ptr)
 	case XETH_MSG_KIND_IFA:
 		stringer = (*MsgIfa)(ptr)
 	}

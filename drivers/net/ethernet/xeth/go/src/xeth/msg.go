@@ -85,11 +85,14 @@ func (msg *MsgSpeed) String() string {
 		Mbps(msg.Mbps))
 }
 
-func (msg *MsgIfindex) String() string {
+func (msg *MsgIfinfo) String() string {
 	return fmt.Sprint(Kind(msg.Kind),
 		" ", (*Ifname)(&msg.Ifname),
-		"\n\tindex: ", msg.Ifindex,
-		"\n\tnet: ", fmt.Sprintf("%#x", msg.Net),
+		"[", msg.Ifindex, "]",
+		"@", cachedIflink(msg.Iflinkindex).Name,
+		" <", Iff(msg.Flags), ">",
+		" id ", msg.Id,
+		" net ", fmt.Sprintf("%#x", msg.Net),
 	)
 }
 
@@ -107,4 +110,24 @@ func (msg *MsgIfa) IPNet() *net.IPNet {
 	*(*uint32)(unsafe.Pointer(&ipBuf[0])) = msg.Address
 	*(*uint32)(unsafe.Pointer(&maskBuf[0])) = msg.Mask
 	return &net.IPNet{net.IP(ipBuf), net.IPMask(maskBuf)}
+}
+
+var iflinkcache map[int32]*net.Interface
+
+func cachedIflink(ifindex int32) *net.Interface {
+	if iflinkcache == nil {
+		iflinkcache = make(map[int32]*net.Interface)
+	}
+	if iflink, found := iflinkcache[ifindex]; found {
+		return iflink
+	}
+	iflink, err := net.InterfaceByIndex(int(ifindex))
+	if err != nil {
+		iflink = &net.Interface{
+			Index: int(ifindex),
+			Name:  "unknown",
+		}
+	}
+	iflinkcache[ifindex] = iflink
+	return iflink
 }
