@@ -36,7 +36,7 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_DUMP_IFINFO,
 	XETH_MSG_KIND_CARRIER,
 	XETH_MSG_KIND_SPEED,
-	XETH_MSG_KIND_IFINDEX,
+	XETH_MSG_KIND_IFINFO,
 	XETH_MSG_KIND_IFA,
 };
 
@@ -115,9 +115,12 @@ xeth_ifmsg_def(carrier, u8 flag);
 
 xeth_ifmsg_def(speed, u32 mbps);
 
-xeth_ifmsg_def(ifindex,
-	u64 ifindex;
+xeth_ifmsg_def(ifinfo,
 	u64 net;
+	s32 ifindex;
+	s32 iflinkindex;
+	u32 flags;
+	u16 id;
 );
 
 xeth_ifmsg_def(ifa,

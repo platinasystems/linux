@@ -325,11 +325,13 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	return xeth_sb_unlocked(0);
 }
 
-int xeth_sb_send_ifindex(struct net_device *nd)
+int xeth_sb_send_ifinfo(struct net_device *nd)
 {
-	size_t n = sizeof(struct xeth_msg_ifindex);
+	size_t n = sizeof(struct xeth_msg_ifinfo);
 	struct xeth_sb_tx_entry *entry;
-	struct xeth_msg_ifindex *msg;
+	struct xeth_msg_ifinfo *msg;
+	struct xeth_priv *priv = netdev_priv(nd);
+	struct net_device *iflink = xeth_priv_iflink(priv);
 
 	xeth_sb_lock();
 	if (!xeth_sb.connected)
@@ -337,10 +339,13 @@ int xeth_sb_send_ifindex(struct net_device *nd)
 	entry = xeth_sb_tx_entry_alloc(n);
 	if (!entry)
 		return xeth_sb_unlocked(-ENOMEM);
-	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINDEX, nd->name);
-	msg = (struct xeth_msg_ifindex *)&entry->data[0];
-	msg->ifindex = (u64)nd->ifindex;
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
+	msg = (struct xeth_msg_ifinfo *)&entry->data[0];
 	msg->net = (u64)dev_net(nd);
+	msg->ifindex = nd->ifindex;
+	msg->iflinkindex = iflink->ifindex;
+	msg->flags = nd->flags;
+	msg->id = priv->id;
 	list_add_tail_rcu(&entry->list, &xeth_sb.tx);
 	return xeth_sb_unlocked(0);
 }
@@ -404,7 +409,7 @@ static inline int xeth_sb_dump_ifinfo(struct socket *sock,
 		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
 	}
-	xeth_sb_send_ifindex(nd);
+	xeth_sb_send_ifinfo(nd);
 	xeth_sb_send_ethtool_flags(nd);
 	xeth_sb_send_ethtool_settings(nd);
 	return xeth_sb_service_tx(sock);
