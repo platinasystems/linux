@@ -1,5 +1,5 @@
 // Created by cgo -godefs - DO NOT EDIT
-// cgo -godefs -- -I./arch/x86/include -I./arch/x86/include/generated -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/kconfig.h ./drivers/net/ethernet/xeth/go/src/xeth/godefs.go
+// cgo -godefs -- -I/home/tgrennan/src/github.com/platinasystems/linux/arch/x86/include -I./arch/x86/include/generated -I/home/tgrennan/src/github.com/platinasystems/linux/include -I./include -I/home/tgrennan/src/github.com/platinasystems/linux/arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I/home/tgrennan/src/github.com/platinasystems/linux/include/uapi -I./include/generated/uapi -include /home/tgrennan/src/github.com/platinasystems/linux/include/linux/kconfig.h /home/tgrennan/src/github.com/platinasystems/linux/drivers/net/ethernet/xeth/go/src/xeth/godefs.go
 
 package xeth
 
@@ -14,7 +14,7 @@ const (
 	SizeofMsgDumpIfinfo		= 0x10
 	SizeofMsgCarrier		= 0x28
 	SizeofMsgSpeed			= 0x28
-	SizeofMsgIfindex		= 0x30
+	SizeofMsgIfinfo			= 0x38
 	SizeofMsgIfa			= 0x30
 )
 
@@ -101,15 +101,19 @@ type MsgSpeed struct {
 	Mbps		uint32
 	Pad_cgo_0	[4]byte
 }
-type MsgIfindex struct {
-	Z64	uint64
-	Z32	uint32
-	Z16	uint16
-	Z8	uint8
-	Kind	uint8
-	Ifname	[16]uint8
-	Ifindex	uint64
-	Net	uint64
+type MsgIfinfo struct {
+	Z64		uint64
+	Z32		uint32
+	Z16		uint16
+	Z8		uint8
+	Kind		uint8
+	Ifname		[16]uint8
+	Net		uint64
+	Ifindex		int32
+	Iflinkindex	int32
+	Flags		uint32
+	Id		uint16
+	Pad_cgo_0	[2]byte
 }
 type MsgIfa struct {
 	Z64		uint64

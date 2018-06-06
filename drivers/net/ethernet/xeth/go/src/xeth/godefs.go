@@ -19,7 +19,7 @@ const (
 	SizeofMsgDumpIfinfo      = C.sizeof_struct_xeth_msg_dump_ifinfo
 	SizeofMsgCarrier         = C.sizeof_struct_xeth_msg_carrier
 	SizeofMsgSpeed           = C.sizeof_struct_xeth_msg_speed
-	SizeofMsgIfindex         = C.sizeof_struct_xeth_msg_ifindex
+	SizeofMsgIfinfo          = C.sizeof_struct_xeth_msg_ifinfo
 	SizeofMsgIfa             = C.sizeof_struct_xeth_msg_ifa
 )
 
@@ -31,5 +31,5 @@ type MsgEthtoolFlags C.struct_xeth_msg_ethtool_flags
 type MsgEthtoolSettings C.struct_xeth_msg_ethtool_settings
 type MsgCarrier C.struct_xeth_msg_carrier
 type MsgSpeed C.struct_xeth_msg_speed
-type MsgIfindex C.struct_xeth_msg_ifindex
+type MsgIfinfo C.struct_xeth_msg_ifinfo
 type MsgIfa C.struct_xeth_msg_ifa
