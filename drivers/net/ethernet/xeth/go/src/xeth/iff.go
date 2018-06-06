@@ -22,43 +22,68 @@
  */
 package xeth
 
-import "fmt"
-
-type Kind uint8
-
-const XETH_MSG_KIND_INVALID = Kind(0xff)
-const (
-	XETH_MSG_KIND_BREAK Kind = iota
-	XETH_MSG_KIND_LINK_STAT
-	XETH_MSG_KIND_ETHTOOL_STAT
-	XETH_MSG_KIND_ETHTOOL_FLAGS
-	XETH_MSG_KIND_ETHTOOL_SETTINGS
-	XETH_MSG_KIND_DUMP_IFINFO
-	XETH_MSG_KIND_CARRIER
-	XETH_MSG_KIND_SPEED
-	XETH_MSG_KIND_IFINFO
-	XETH_MSG_KIND_IFA
+import (
+	"bytes"
+	"fmt"
 )
 
-func (kind Kind) String() string {
-	var kinds = []string{
-		"break",
-		"link-stat",
-		"ethtool-stat",
-		"ethtool-flags",
-		"ethtool-settings",
-		"dump-ifinfo",
-		"carrier",
-		"speed",
-		"ifinfo",
-		"ifa",
+type Iff uint32
+
+const (
+	IFF_UP Iff = 1 << iota
+	IFF_BROADCAST
+	IFF_DEBUG
+	IFF_LOOPBACK
+	IFF_POINTOPOINT
+	IFF_NOTRAILERS
+	IFF_RUNNING
+	IFF_NOARP
+	IFF_PROMISC
+	IFF_ALLMULTI
+	IFF_MASTER
+	IFF_SLAVE
+	IFF_MULTICAST
+	IFF_PORTSEL
+	IFF_AUTOMEDIA
+	IFF_DYNAMIC
+	IFF_LOWER_UP
+	IFF_DORMANT
+	IFF_ECHO
+)
+
+func (iff Iff) String() string {
+	var iffs = []string{
+		"up",
+		"broadcast",
+		"debug",
+		"loopback",
+		"pointopoint",
+		"notrailers",
+		"running",
+		"noarp",
+		"promisc",
+		"allmulti",
+		"master",
+		"slave",
+		"multicast",
+		"portsel",
+		"automedia",
+		"dynamic",
+		"lower_up",
+		"dormant",
+		"echo",
 	}
-	var s string
-	i := int(kind)
-	if i < len(kinds) {
-		s = kinds[i]
-	} else {
-		s = fmt.Sprint("kind[", i, "]")
+	var sep string
+	if iff == 0 {
+		return "none"
 	}
-	return s
+	buf := new(bytes.Buffer)
+	for i, s := range iffs {
+		bit := Iff(1) << uint(i)
+		if iff&bit == bit {
+			fmt.Fprint(buf, sep, s)
+			sep = ", "
+		}
+	}
+	return buf.String()
 }
