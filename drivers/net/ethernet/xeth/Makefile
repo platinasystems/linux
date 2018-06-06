@@ -32,11 +32,12 @@ export GOPATH
 go-list-go = $(foreach pkg,$(1),$(addprefix $(GOPATH)/src/$(pkg)/,\
 	$(shell env GOPATH=$(GOPATH)\
 		go list -f '{{ join .GoFiles " "}}' $(pkg))))
+
 quiet_cmd_gobuild = GOBUILD $@
       cmd_gobuild = go build -o $@
 
 sample-platina-mk1-deps := $(call go-list-go,sample-platina-mk1 xeth)
-sample-platina-mk1-deps += $(src)/go/src/xeth/godefed.go
+sample-platina-mk1-deps += $(GOPATH)/src/xeth/godefed.go
 
 $(obj)/sample-platina-mk1: $(sample-platina-mk1-deps)
 	$(call cmd,gobuild) $(@F)
@@ -47,17 +48,17 @@ quiet_cmd_genstats = GOGEN   $@
 quiet_cmd_genflags = GOGEN   $@
       cmd_genflags = $(obj)/gen-platina-mk1-flags
 
-$(src)/go/src/sample-platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
+$(GOPATH)/src/sample-platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
 	$(call cmd,genstats) > $@
 
-$(src)/go/src/sample-platina-mk1/flags.go: $(obj)/gen-platina-mk1-flags
+$(GOPATH)/src/sample-platina-mk1/flags.go: $(obj)/gen-platina-mk1-flags
 	$(call cmd,genflags) > $@
 
 quiet_cmd_godefs  = GODEFS  $@
       cmd_godefs  = go tool cgo -godefs -- $(LINUXINCLUDE)
 
-xeth-godefed-deps := $(src)/go/src/xeth/godefs.go
+xeth-godefed-deps := $(GOPATH)/src/xeth/godefs.go
 xeth-godefed-deps += $(srctree)/include/uapi/linux/xeth.h
 
-$(src)/go/src/xeth/godefed.go: $(xeth-godefed-deps)
-	$(call cmd,godefs) $(srctree)/$< > $@
+$(GOPATH)/src/xeth/godefed.go: $(xeth-godefed-deps)
+	$(call cmd,godefs) $< > $@
