@@ -24,7 +24,6 @@
 
 #include <linux/if_vlan.h>
 #include <linux/module.h>
-#include "sysfs.h"
 
 #define platina_mk1_n_ports	32
 #define platina_mk1_n_subports	4
