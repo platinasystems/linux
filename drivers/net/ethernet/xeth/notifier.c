@@ -25,25 +25,24 @@
 
 static int xeth_notifier_netdevice(struct notifier_block *nb,
 				   unsigned long event, void *ptr);
+static int xeth_notifier_inetaddr(struct notifier_block *nb,
+				  unsigned long event, void *ptr);
+static int xeth_notifier_fib(struct notifier_block *nb,
+			     unsigned long event, void *ptr);
 
 static struct notifier_block xeth_notifier_block_netdevice = {
 	.notifier_call = xeth_notifier_netdevice,
 };
+static struct notifier_block xeth_notifier_block_inetaddr = {
+	.notifier_call = xeth_notifier_inetaddr,
+};
+static struct notifier_block xeth_notifier_block_fib = {
+	.notifier_call = xeth_notifier_fib,
+};
 
 static bool xeth_notifier_registered_netdevice = false;
-
-static int xeth_notifier_register_netdevice(void) {
-	int err =  register_netdevice_notifier(&xeth_notifier_block_netdevice);
-	if (!err)
-		xeth_notifier_registered_netdevice = true;
-	return err;
-}
-
-static void xeth_notifier_unregister_netdevice(void) {
-	if (xeth_notifier_registered_netdevice)
-		unregister_netdevice_notifier(&xeth_notifier_block_netdevice);
-	xeth_notifier_registered_netdevice = false;
-}
+static bool xeth_notifier_registered_inetaddr = false;
+static bool xeth_notifier_registered_fib = false;
 
 static int xeth_notifier_netdevice(struct notifier_block *nb,
 				   unsigned long event, void *ptr)
@@ -87,26 +86,19 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
-static int xeth_notifier_inetaddr(struct notifier_block *nb,
-				  unsigned long event, void *ptr);
-
-static struct notifier_block xeth_notifier_block_inetaddr = {
-	.notifier_call = xeth_notifier_inetaddr,
-};
-
-static bool xeth_notifier_registered_inetaddr = false;
-
-static int xeth_notifier_register_inetaddr(void) {
-	int err = register_inetaddr_notifier(&xeth_notifier_block_inetaddr);
+static int xeth_notifier_register_netdevice(void)
+{
+	int err = register_netdevice_notifier(&xeth_notifier_block_netdevice);
 	if (!err)
-		xeth_notifier_registered_inetaddr = true;
+		xeth_notifier_registered_netdevice = true;
 	return err;
 }
 
-static void xeth_notifier_unregister_inetaddr(void) {
-	if (xeth_notifier_registered_inetaddr)
-		unregister_inetaddr_notifier(&xeth_notifier_block_inetaddr);
-	xeth_notifier_registered_inetaddr = false;
+static void xeth_notifier_unregister_netdevice(void)
+{
+	if (xeth_notifier_registered_netdevice)
+		unregister_netdevice_notifier(&xeth_notifier_block_netdevice);
+	xeth_notifier_registered_netdevice = false;
 }
 
 static int xeth_notifier_inetaddr(struct notifier_block *nb,
@@ -131,12 +123,68 @@ static int xeth_notifier_inetaddr(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+static int xeth_notifier_register_inetaddr(void)
+{
+	int err = register_inetaddr_notifier(&xeth_notifier_block_inetaddr);
+	if (!err)
+		xeth_notifier_registered_inetaddr = true;
+	return err;
+}
+
+static void xeth_notifier_unregister_inetaddr(void)
+{
+	if (xeth_notifier_registered_inetaddr)
+		unregister_inetaddr_notifier(&xeth_notifier_block_inetaddr);
+	xeth_notifier_registered_inetaddr = false;
+}
+
+static int xeth_notifier_fib(struct notifier_block *nb,
+			     unsigned long event, void *ptr)
+{
+	if (nb != &xeth_notifier_block_fib)
+		return NOTIFY_DONE;
+	switch (event) {
+	case FIB_EVENT_ENTRY_REPLACE:
+	case FIB_EVENT_ENTRY_APPEND:
+	case FIB_EVENT_ENTRY_ADD:
+	case FIB_EVENT_ENTRY_DEL: {
+		struct fib_entry_notifier_info *info =
+			(struct fib_entry_notifier_info *)ptr;
+		xeth_pr_true_val("%d", xeth_sb_send_fibentry(event, info));
+	};	break;
+	default:
+		xeth_pr("unsupported fib event %ld", event);
+	}
+	return NOTIFY_DONE;
+}
+
+static void xeth_notifier_fib_cb(struct notifier_block *nb)
+{
+	xeth_pr("register_fib_cb");
+}
+
+int xeth_notifier_register_fib(void)
+{
+	int err = register_fib_notifier(&xeth_notifier_block_fib,
+					xeth_notifier_fib_cb);
+	if (!err)
+		xeth_notifier_registered_fib = true;
+	return err;
+}
+
+void xeth_notifier_unregister_fib(void)
+{
+	if (xeth_notifier_registered_fib)
+		unregister_fib_notifier(&xeth_notifier_block_fib);
+	xeth_notifier_registered_fib = false;
+}
+
 int xeth_notifier_init(void)
 {
 	int (*const registers[])(void) = {
 		xeth_notifier_register_netdevice,
 		xeth_notifier_register_inetaddr,
-		/* xeth_notifier_register_fib on command instead of @ init */
+		/* xeth_notifier_register_fib w/ sb command instead of init */
 		NULL,
 	};
 	int i;
@@ -156,6 +204,7 @@ void xeth_notifier_exit(void)
 	void (*const unregisters[])(void) = {
 		xeth_notifier_unregister_netdevice,
 		xeth_notifier_unregister_inetaddr,
+		xeth_notifier_unregister_fib,
 		NULL,
 	};
 	int i;

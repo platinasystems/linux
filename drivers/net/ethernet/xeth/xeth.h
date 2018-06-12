@@ -28,6 +28,7 @@
 #include <linux/ethtool.h>
 #include <linux/inetdevice.h>
 #include <net/rtnetlink.h>
+#include <net/ip_fib.h>
 
 #ifndef XETH_VERSION
 #define XETH_VERSION unknown
@@ -84,6 +85,12 @@ struct xeth {
 	/* RCU protected pointers */
 	struct	net_device	**iflinks;
 	struct	net_device	**nds;
+
+	struct {
+		struct	list_head __rcu	tx;
+		struct	task_struct	*main;
+		char	*rxbuf;
+	} sb;
 };
 
 extern struct xeth xeth;
@@ -104,10 +111,15 @@ void xeth_notifier_exit(void);
 void xeth_sb_exit(void);
 void xeth_vlan_exit(void);
 
+int xeth_notifier_register_fib(void);
+void xeth_notifier_unregister_fib(void);
+
 int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
 int xeth_sb_send_ifa(struct net_device *ndi, unsigned long event,
 		     struct in_ifaddr *ifa);
+int xeth_sb_send_fibentry(unsigned long event,
+			  struct fib_entry_notifier_info *info);
 
 static inline struct net_device *xeth_iflinks(int i)
 {

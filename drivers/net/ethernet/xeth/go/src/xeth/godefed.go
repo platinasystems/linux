@@ -16,6 +16,8 @@ const (
 	SizeofMsgSpeed			= 0x28
 	SizeofMsgIfinfo			= 0x38
 	SizeofMsgIfa			= 0x30
+	SizeofMsgFibentry		= 0x28
+	SizeofNextHop			= 0x18
 )
 
 type Msg struct {
@@ -126,4 +128,27 @@ type MsgIfa struct {
 	Address		uint32
 	Mask		uint32
 	Pad_cgo_0	[4]byte
+}
+type MsgFibentry struct {
+	Z64	uint64
+	Z32	uint32
+	Z16	uint16
+	Z8	uint8
+	Kind	uint8
+	Net	uint64
+	Address	uint32
+	Mask	uint32
+	Event	uint8
+	Nhs	uint8
+	Tos	uint8
+	Type	uint8
+	Id	uint32
+}
+type NextHop struct {
+	Ifindex		int32
+	Weight		int32
+	Flags		uint32
+	Gw		uint32
+	Scope		uint8
+	Reserved	[7]uint8
 }
