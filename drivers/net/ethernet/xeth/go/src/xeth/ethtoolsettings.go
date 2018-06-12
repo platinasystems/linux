@@ -20,25 +20,23 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
+
 package xeth
 
 import "fmt"
 
-const (
-	DUPLEX_HALF = iota
-	DUPLEX_FULL
-)
-
-type Duplex uint8
-
-func (duplex Duplex) String() string {
-	var duplexs = []string{
-		"half",
-		"full",
-	}
-	i := int(duplex)
-	if i < len(duplexs) {
-		return duplexs[i]
-	}
-	return fmt.Sprint("@", i)
+func (msg *MsgEthtoolSettings) String() string {
+	kind := Kind(msg.Kind)
+	ifname := (*Ifname)(&msg.Ifname)
+	return fmt.Sprintln(kind, " ", ifname) +
+		fmt.Sprintln("\tspeed:", Mbps(msg.Speed)) +
+		fmt.Sprintln("\tduplex:", Duplex(msg.Duplex)) +
+		fmt.Sprintln("\tport:", Port(msg.Port)) +
+		fmt.Sprintln("\tautoneg:", Autoneg(msg.Autoneg)) +
+		fmt.Sprintln("\tsupported:",
+			(*EthtoolLinkModeBits)(&msg.Link_modes_supported)) +
+		fmt.Sprintln("\tadvertising:",
+			(*EthtoolLinkModeBits)(&msg.Link_modes_advertising)) +
+		fmt.Sprintln("\tpartner:",
+			(*EthtoolLinkModeBits)(&msg.Link_modes_lp_advertising))
 }

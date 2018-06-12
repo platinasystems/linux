@@ -20,25 +20,18 @@
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
+
 package xeth
 
 import "fmt"
 
-const (
-	DUPLEX_HALF = iota
-	DUPLEX_FULL
-)
-
-type Duplex uint8
-
-func (duplex Duplex) String() string {
-	var duplexs = []string{
-		"half",
-		"full",
-	}
-	i := int(duplex)
-	if i < len(duplexs) {
-		return duplexs[i]
-	}
-	return fmt.Sprint("@", i)
+func (info *MsgIfinfo) String() string {
+	kind := Kind(info.Kind)
+	ifname := (*Ifname)(&info.Ifname)
+	iflink := InterfaceByIndex(info.Iflinkindex).Name
+	iff := Iff(info.Flags)
+	ns := fmt.Sprintf("%#x", info.Net)
+	return fmt.Sprint(kind, " ", ifname, "[", info.Ifindex, "]",
+		"@", iflink, " <", iff, ">", " id ", info.Id, " net ", ns,
+		"\n")
 }
