@@ -23,7 +23,14 @@
 
 package xeth
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+)
+
+func (info *MsgIfinfo) HardwareAddr() net.HardwareAddr {
+	return net.HardwareAddr(info.Addr[:])
+}
 
 func (info *MsgIfinfo) String() string {
 	kind := Kind(info.Kind)
@@ -32,6 +39,10 @@ func (info *MsgIfinfo) String() string {
 	iff := Iff(info.Flags)
 	ns := fmt.Sprintf("%#x", info.Net)
 	return fmt.Sprint(kind, " ", ifname, "[", info.Ifindex, "]",
-		"@", iflink, " <", iff, ">", " id ", info.Id, " net ", ns,
+		"@", iflink,
+		" <", iff, ">",
+		" id ", info.Id,
+		" addr ", info.HardwareAddr(),
+		" net ", ns,
 		"\n")
 }
