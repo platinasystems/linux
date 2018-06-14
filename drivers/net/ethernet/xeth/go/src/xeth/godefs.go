@@ -5,6 +5,7 @@ package xeth
 // #include <linux/types.h>
 // #include <asm/byteorder.h>
 // #define IFNAMSIZ 16
+// #define ETH_ALEN 6
 // #include "linux/xeth.h"
 import "C"
 
