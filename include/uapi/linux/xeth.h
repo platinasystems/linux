@@ -94,7 +94,10 @@ xeth_ifmsg_def(stat,
 	u64 count;
 );
 
-xeth_ifmsg_def(ethtool_flags, u32 flags);
+xeth_ifmsg_def(ethtool_flags,
+	u32	flags;
+	u8	pad[4];
+);
 
 xeth_ifmsg_def(ethtool_settings,
 	u32	speed;
@@ -109,26 +112,36 @@ xeth_ifmsg_def(ethtool_settings,
 	u32	link_modes_supported[2];
 	u32	link_modes_advertising[2];
 	u32	link_modes_lp_advertising[2];
+	u8	pad[4];
 );
 
 xeth_msg_def(dump_ifinfo);
 
-xeth_ifmsg_def(carrier, u8 flag);
+xeth_ifmsg_def(carrier,
+	u8	flag;
+	u8	pad[7];
+);
 
-xeth_ifmsg_def(speed, u32 mbps);
+xeth_ifmsg_def(speed,
+	u32	mbps;
+	u8	pad[4];
+);
 
 xeth_ifmsg_def(ifinfo,
-	u64 net;
-	s32 ifindex;
-	s32 iflinkindex;
-	u32 flags;
-	u16 id;
+	u64	net;
+	s32	ifindex;
+	s32	iflinkindex;
+	u32	flags;
+	u16	id;
+	u8 	addr[ETH_ALEN];
+	u8	pad[4];
 );
 
 xeth_ifmsg_def(ifa,
 	u32	event;
 	__be32	address;
 	__be32	mask;
+	u8	pad[4];
 );
 
 xeth_msg_def(dump_fibinfo);
@@ -139,7 +152,7 @@ struct xeth_next_hop {
 	u32	flags;
 	__be32	gw;
 	u8	scope;
-	u8	reserved[7];
+	u8	pad[7];
 };
 
 xeth_msg_def(fibentry,

@@ -14,7 +14,7 @@ const (
 	SizeofMsgDumpIfinfo		= 0x10
 	SizeofMsgCarrier		= 0x28
 	SizeofMsgSpeed			= 0x28
-	SizeofMsgIfinfo			= 0x38
+	SizeofMsgIfinfo			= 0x40
 	SizeofMsgIfa			= 0x30
 	SizeofMsgFibentry		= 0x28
 	SizeofNextHop			= 0x18
@@ -53,14 +53,14 @@ type MsgStat struct {
 	Count	uint64
 }
 type MsgEthtoolFlags struct {
-	Z64		uint64
-	Z32		uint32
-	Z16		uint16
-	Z8		uint8
-	Kind		uint8
-	Ifname		[16]uint8
-	Flags		uint32
-	Pad_cgo_0	[4]byte
+	Z64	uint64
+	Z32	uint32
+	Z16	uint16
+	Z8	uint8
+	Kind	uint8
+	Ifname	[16]uint8
+	Flags	uint32
+	Pad	[4]uint8
 }
 type MsgEthtoolSettings struct {
 	Z64				uint64
@@ -81,27 +81,27 @@ type MsgEthtoolSettings struct {
 	Link_modes_supported		[2]uint32
 	Link_modes_advertising		[2]uint32
 	Link_modes_lp_advertising	[2]uint32
-	Pad_cgo_0			[4]byte
+	Pad				[4]uint8
 }
 type MsgCarrier struct {
-	Z64		uint64
-	Z32		uint32
-	Z16		uint16
-	Z8		uint8
-	Kind		uint8
-	Ifname		[16]uint8
-	Flag		uint8
-	Pad_cgo_0	[7]byte
+	Z64	uint64
+	Z32	uint32
+	Z16	uint16
+	Z8	uint8
+	Kind	uint8
+	Ifname	[16]uint8
+	Flag	uint8
+	Pad	[7]uint8
 }
 type MsgSpeed struct {
-	Z64		uint64
-	Z32		uint32
-	Z16		uint16
-	Z8		uint8
-	Kind		uint8
-	Ifname		[16]uint8
-	Mbps		uint32
-	Pad_cgo_0	[4]byte
+	Z64	uint64
+	Z32	uint32
+	Z16	uint16
+	Z8	uint8
+	Kind	uint8
+	Ifname	[16]uint8
+	Mbps	uint32
+	Pad	[4]uint8
 }
 type MsgIfinfo struct {
 	Z64		uint64
@@ -115,19 +115,20 @@ type MsgIfinfo struct {
 	Iflinkindex	int32
 	Flags		uint32
 	Id		uint16
-	Pad_cgo_0	[2]byte
+	Addr		[6]uint8
+	Pad		[4]uint8
 }
 type MsgIfa struct {
-	Z64		uint64
-	Z32		uint32
-	Z16		uint16
-	Z8		uint8
-	Kind		uint8
-	Ifname		[16]uint8
-	Event		uint32
-	Address		uint32
-	Mask		uint32
-	Pad_cgo_0	[4]byte
+	Z64	uint64
+	Z32	uint32
+	Z16	uint16
+	Z8	uint8
+	Kind	uint8
+	Ifname	[16]uint8
+	Event	uint32
+	Address	uint32
+	Mask	uint32
+	Pad	[4]uint8
 }
 type MsgFibentry struct {
 	Z64	uint64
@@ -145,10 +146,10 @@ type MsgFibentry struct {
 	Id	uint32
 }
 type NextHop struct {
-	Ifindex		int32
-	Weight		int32
-	Flags		uint32
-	Gw		uint32
-	Scope		uint8
-	Reserved	[7]uint8
+	Ifindex	int32
+	Weight	int32
+	Flags	uint32
+	Gw	uint32
+	Scope	uint8
+	Pad	[7]uint8
 }
