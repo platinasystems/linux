@@ -39,13 +39,18 @@ int xeth_init(void)
 			       GFP_KERNEL);
 	if (!xeth.iflinks)
 		goto egress;
+	xeth.ea_iflinks = kcalloc(xeth.n.iflinks, sizeof(u64), GFP_KERNEL);
+	if (!xeth.ea_iflinks)
+		goto egress;
 	for (i = 0; i < xeth.n.iflinks; i++)
 		xeth_reset_iflinks(i);
 	for (i = 0; i < xeth.n.nds; i++)
-		xeth_reset_nds(i);
+		xeth_reset_nd(i);
 	return 0;
 
 egress:
+	if (xeth.ea_iflinks)
+		kfree(xeth.ea_iflinks);
 	if (xeth.iflinks)
 		kfree(xeth.iflinks);
 	if (xeth.nds)
@@ -57,6 +62,8 @@ egress:
 
 void xeth_exit(void)
 {
+	if (xeth.ea_iflinks)
+		kfree(xeth.ea_iflinks);
 	if (xeth.iflinks) {
 		int i;
 		for (i = 0; i < xeth.n.iflinks; i++) {

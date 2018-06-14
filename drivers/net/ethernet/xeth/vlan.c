@@ -136,6 +136,12 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 	u16 pcp = (u16)(skb->priority) << VLAN_PRIO_SHIFT;
 	u16 tci = pcp | priv->id;
 
+	if (priv->ndi < 0) {
+		kfree_skb(skb);
+		atomic_long_inc(&nd->tx_dropped);
+		return xeth_pr_nd_val(nd, "0x%02x, non-forwarding device",
+				      NETDEV_TX_OK);
+	}
 	if (iflink == NULL) {
 		kfree_skb(skb);
 		atomic_long_inc(&nd->tx_dropped);
