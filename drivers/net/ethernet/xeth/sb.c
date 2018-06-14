@@ -138,29 +138,46 @@ static void xeth_sb_reset_nd_stats(struct net_device *nd)
 
 static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
 {
-	struct net_device *nd;
-	char ifname[IFNAMSIZ];
 	int err;
-	u16 id, ndi, iflinki;
+	char ifname[IFNAMSIZ];
+	struct net_device *nd;
+	struct xeth_priv priv;
 
 	strlcpy(ifname, msg_ifname, IFNAMSIZ);
-	err = xeth.ops.parse_name(ifname, &id, &ndi, &iflinki);
+	err = xeth.ops.parse_name(ifname, &priv);
 	if (err) {
 		xeth_pr("\"%s\" invalid", ifname);
 		return NULL;
 	}
-	nd = to_xeth_nd(id);
-	if (!nd)
-		xeth_pr("\"%s\" no such device", ifname);
+	nd = to_xeth_nd(priv.id);
+	if (!nd) {
+		nd = dev_get_by_name(&init_net, msg_ifname);
+		if (!nd) {
+			xeth_pr("\"%s\" no such device", ifname);
+		 } else if (nd->netdev_ops != &xeth.ops.ndo) {
+			xeth_pr("\"%s\" not an xeth device", ifname);
+			dev_put(nd);
+			nd = NULL;
+		 }
+	}
 	return nd;
+}
+
+static void xeth_sb_nd_put(struct net_device *nd)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+	if (priv->ndi < 0)
+		dev_put(nd);
 }
 
 static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 {
 	const char *onoff = "invalid";
 	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
+	struct xeth_priv *priv;
 	if (!nd)
 		return;
+	priv = netdev_priv(nd);
 	switch (msg->flag) {
 	case XETH_CARRIER_ON:
 		netif_carrier_on(nd);
@@ -172,6 +189,7 @@ static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 		break;
 	}
 	xeth_pr_nd(nd, "carrier %s", onoff);
+	xeth_sb_nd_put(nd);
 }
 
 static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
@@ -193,6 +211,7 @@ static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 	*stat = msg->count;
 	mutex_unlock(&priv->link.mutex);
 	xeth_pr_nd(nd, "%s: %llu", xeth_sb_link_stats[msg->index], msg->count);
+	xeth_sb_nd_put(nd);
 }
 
 static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
@@ -212,6 +231,7 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	priv->ethtool.stats[msg->index] = msg->count;
 	mutex_unlock(&priv->ethtool.mutex);
 	xeth_pr_nd(nd, "%s: %llu", xeth.ethtool.stats[msg->index], msg->count);
+	xeth_sb_nd_put(nd);
 }
 
 static void xeth_sb_exception_frame(const char *buf, int n)
@@ -424,6 +444,7 @@ static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 	priv->ethtool.settings.base.speed = msg->mbps;
 	mutex_unlock(&priv->ethtool.mutex);
 	xeth_pr_nd(nd, "speed %uMb/s", msg->mbps);
+	xeth_sb_nd_put(nd);
 }
 
 

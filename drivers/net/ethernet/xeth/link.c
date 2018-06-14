@@ -68,13 +68,11 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	nla_strlcpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	ifname[IFNAMSIZ] = '\0';
 	err = xeth_pr_nd_true_val(nd, "%d",
-				  xeth.ops.parse_name(ifname,
-						      &priv->id,
-						      &priv->ndi,
-						      &priv->iflinki));
+				  xeth.ops.parse_name(ifname, priv));
 	if (err)
 		return err;
-	xeth.ndi_by_id[priv->id] = priv->ndi;
+	if (priv->ndi > 0)
+		xeth.ndi_by_id[priv->id] = priv->ndi;
 	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.assert_iflinks());
 	if (err)
 		return err;
@@ -117,7 +115,7 @@ static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 
-	xeth_reset_nds(priv->ndi);
+	xeth_reset_nd(priv->ndi);
 	xeth_pr_nd_void(nd, unregister_netdevice_queue(nd, head));
 }
 

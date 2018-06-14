@@ -45,14 +45,14 @@ struct	xeth_priv {
 		u64	*stats;
 		u32	flags;
 	} ethtool;
-	u16	id, ndi, iflinki;
+	u16	id;
+	s16	ndi, iflinki;
 };
 
 struct xeth {
 	struct	xeth_ops {
 		int	(*assert_iflinks)(void);
-		int	(*parse_name)(const char *name,
-				  u16 *id, u16 *ndi, u16 *iflinki);
+		int	(*parse_name)(const char *name, struct xeth_priv *priv);
 		int	(*set_lladdr)(struct net_device *nd);
 		rx_handler_result_t	(*rx_handler)(struct sk_buff **pskb);
 		ssize_t	(*side_band_rx)(struct sk_buff *skb);
@@ -81,6 +81,7 @@ struct xeth {
 	} n;
 
 	u16	*ndi_by_id;
+	u64	*ea_iflinks;
 
 	/* RCU protected pointers */
 	struct	net_device	**iflinks;
@@ -116,7 +117,7 @@ void xeth_notifier_unregister_fib(void);
 
 int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
-int xeth_sb_send_ifa(struct net_device *ndi, unsigned long event,
+int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
@@ -128,14 +129,18 @@ static inline struct net_device *xeth_iflinks(int i)
 
 static inline void xeth_reset_iflinks(int i)
 {
-	if (i < xeth.n.iflinks)
+	if (i < xeth.n.iflinks) {
 		RCU_INIT_POINTER(xeth.iflinks[i], NULL);
+		xeth.ea_iflinks[i] = 0;
+	}
 }
 
 static inline void xeth_set_iflinks(int i, struct net_device *iflink)
 {
-	if (i < xeth.n.iflinks)
+	if (i < xeth.n.iflinks) {
 		rcu_assign_pointer(xeth.iflinks[i], iflink);
+		xeth.ea_iflinks[i] = ether_addr_to_u64(iflink->dev_addr);
+	}
 }
 
 static inline struct net_device *xeth_nds(int i)
@@ -159,15 +164,15 @@ static inline struct net_device *to_xeth_nd(u16 id)
 	return (id < xeth.n.ids) ? xeth_nds(xeth.ndi_by_id[id]) : NULL;
 }
 
-static inline void xeth_reset_nds(int i)
+static inline void xeth_reset_nd(int i)
 {
-	if (i < xeth.n.nds)
+	if (0 <= i && i < xeth.n.nds)
 		RCU_INIT_POINTER(xeth.nds[i], NULL);
 }
 
-static inline void xeth_set_nds(int i, struct net_device *nd)
+static inline void xeth_set_nd(int i, struct net_device *nd)
 {
-	if (i < xeth.n.nds)
+	if (0 <= i && i < xeth.n.nds)
 		rcu_assign_pointer(xeth.nds[i], nd);
 }
 
@@ -179,6 +184,6 @@ static inline struct net_device *xeth_priv_iflink(struct xeth_priv *priv)
 static inline void xeth_priv_set_nd(struct xeth_priv *priv,
 				    struct net_device *nd)
 {
-	xeth_set_nds(priv->ndi, nd);
+	xeth_set_nd(priv->ndi, nd);
 }
 #endif /* __XETH_H */
