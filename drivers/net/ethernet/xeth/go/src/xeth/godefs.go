@@ -11,6 +11,7 @@ import "C"
 
 const (
 	IFNAMSIZ                 = C.IFNAMSIZ
+	ETH_ALEN                 = C.ETH_ALEN
 	SizeofJumboFrame         = C.XETH_SIZEOF_JUMBO_FRAME
 	SizeofMsg                = C.sizeof_struct_xeth_msg
 	SizeofMsgBreak           = C.sizeof_struct_xeth_msg_break
