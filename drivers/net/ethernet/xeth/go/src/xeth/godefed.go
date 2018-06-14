@@ -5,6 +5,7 @@ package xeth
 
 const (
 	IFNAMSIZ			= 0x10
+	ETH_ALEN			= 0x6
 	SizeofJumboFrame		= 0x2600
 	SizeofMsg			= 0x10
 	SizeofMsgBreak			= 0x10
