@@ -113,6 +113,24 @@ static int xeth_ethtool_get_link_ksettings(struct net_device *nd,
 	return 0;
 }
 
+static int xeth_ethtool_validate_duplex(struct net_device *nd,
+					const struct ethtool_link_ksettings
+					*req)
+{
+	int err;
+	switch (req->base.duplex) {
+	case DUPLEX_HALF:
+	case DUPLEX_FULL:
+	case DUPLEX_UNKNOWN:
+		err = 0;
+		break;
+	default:
+		xeth_pr_nd(nd, "invalid duplex: %u: ", req->base.duplex);
+		err = -EINVAL;
+	}
+	return err;
+}
+
 static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 					   const struct ethtool_link_ksettings
 					   *req)
@@ -124,37 +142,41 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	if (req->base.autoneg == AUTONEG_DISABLE) {
 		if (xeth.ops.validate_speed)
 			err = xeth.ops.validate_speed(nd, req->base.speed);
-		switch (req->base.duplex) {
-		case DUPLEX_HALF:
-		case DUPLEX_FULL:
-		case DUPLEX_UNKNOWN:
-			break;
-		default:
-			xeth_pr_nd(nd, "invalid duplex: %d: ",
-				   req->base.duplex);
-			err = -EINVAL;
-		}
+		if (!err)
+			err = xeth_ethtool_validate_duplex(nd, req);
 		if (!err) {
 			settings->base.autoneg = req->base.autoneg;
 			settings->base.speed = req->base.speed;
 			settings->base.duplex = req->base.duplex;
 		}
 	} else {
-		int i;
-		const int n = sizeof(req->link_modes.advertising);
-		for (i = 0; i < req->base.link_mode_masks_nwords; i++) {
-			if (req->link_modes.advertising[i] &
-			    ~settings->link_modes.supported[i]) {
-				xeth_pr_nd(nd, "can't advertise: %*pbl: ", n,
-					   req->link_modes.advertising);
-				err = -EINVAL;
-				break;
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(res);
+		if (bitmap_andnot(res,
+				  req->link_modes.advertising,
+				  settings->link_modes.supported,
+				  __ETHTOOL_LINK_MODE_MASK_NBITS)) {
+			xeth_pr_nd(nd, "capn't advertise: %*pbl"
+				   "\nrequest: %*pbl"
+				   "\nsupport: %*pbl",
+				   __ETHTOOL_LINK_MODE_MASK_NBITS,
+				   res,
+				   __ETHTOOL_LINK_MODE_MASK_NBITS,
+				   req->link_modes.advertising,
+				   __ETHTOOL_LINK_MODE_MASK_NBITS,
+				   settings->link_modes.supported);
+			err = -EINVAL;
+		} else {
+			int err;
+			err = xeth_ethtool_validate_duplex(nd, req);
+			if (!err) {
+				bitmap_copy(settings->link_modes.advertising,
+					    req->link_modes.advertising,
+					    __ETHTOOL_LINK_MODE_MASK_NBITS);
+				settings->base.autoneg = AUTONEG_ENABLE;
+				settings->base.speed = 0;
+				settings->base.duplex = req->base.duplex;
 			}
 		}
-		if (!err)
-			memcpy(settings->link_modes.advertising,
-			       req->link_modes.advertising,
-			       sizeof(settings->link_modes.advertising));
 	}
 	if (!err)
 		err = xeth_sb_send_ethtool_settings(nd);
