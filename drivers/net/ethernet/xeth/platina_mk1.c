@@ -289,9 +289,9 @@ static void platina_mk1_init_ethtool_settings(struct net_device *nd)
 					     100000baseCR4_Full);
 	ethtool_link_ksettings_add_link_mode(settings, supported,
 					     100000baseLR4_ER4_Full);
-	memcpy(settings->link_modes.advertising,
-	       settings->link_modes.supported,
-	       sizeof(settings->link_modes.supported));
+	bitmap_copy(settings->link_modes.advertising,
+		    settings->link_modes.supported,
+		    __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
 
 static int platina_mk1_validate_speed(struct net_device *nd, u32 speed)
