@@ -46,7 +46,9 @@ struct	xeth_priv {
 		u32	flags;
 	} ethtool;
 	u16	id;
-	s16	ndi, iflinki;
+	s16	ndi, iflinki, porti;
+	s8	subporti;
+	u8	devtype;
 };
 
 struct xeth {
