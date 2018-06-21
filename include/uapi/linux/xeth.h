@@ -127,6 +127,13 @@ xeth_ifmsg_def(speed,
 	u8	pad[4];
 );
 
+enum xeth_msg_ifinfo_devtype {
+	XETH_DEVTYPE_PORT,
+	XETH_DEVTYPE_BRIDGE,
+	XETH_DEVTYPE_TAGGED_BRIDGE_PORT,
+	XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT,
+};
+
 xeth_ifmsg_def(ifinfo,
 	u64	net;
 	s32	ifindex;
@@ -134,7 +141,9 @@ xeth_ifmsg_def(ifinfo,
 	u32	flags;
 	u16	id;
 	u8 	addr[ETH_ALEN];
-	u8	pad[4];
+	s16	portindex;
+	s8	subportindex;
+	u8	devtype;
 );
 
 xeth_ifmsg_def(ifa,

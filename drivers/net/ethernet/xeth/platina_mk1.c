@@ -24,6 +24,7 @@
 
 #include <linux/if_vlan.h>
 #include <linux/module.h>
+#include <uapi/linux/xeth.h>
 
 #define platina_mk1_n_ports	32
 #define platina_mk1_n_subports	4
@@ -158,8 +159,10 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 		priv->id = id;
 		priv->ndi = priv->id;
 		priv->iflinki = id & 1;
-	} else if (sscanf(name, "xeth%hu-%hu.%hu", &port, &sub, &id) == 3 ||
-		   sscanf(name, "xeth%hu-%hu.%hut", &port, &sub, &id) == 3) {
+		priv->porti = -1;
+		priv->subporti = -1;
+		priv->devtype = XETH_DEVTYPE_BRIDGE;
+	} else if (sscanf(name, "xeth%hu-%hu.%huu", &port, &sub, &id) == 3) {
 		err = platina_mk1_validate_xeth_port(&port);
 		if (err)
 			return err;
@@ -172,8 +175,26 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 		priv->id = id;
 		priv->ndi = -1;
 		priv->iflinki = id & 1;
-	} else if (sscanf(name, "xeth%hu.%hu", &port, &id) == 2 ||
-		   sscanf(name, "xeth%hu.%hut", &port, &id) == 2) {
+		priv->porti = port;
+		priv->subporti = sub;
+		priv->devtype = XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT;
+	} else if (sscanf(name, "xeth%hu-%hu.%hut", &port, &sub, &id) == 3) {
+		err = platina_mk1_validate_xeth_port(&port);
+		if (err)
+			return err;
+		err = platina_mk1_validate_xeth_subport(&sub);
+		if (err)
+			return err;
+		err = platina_mk1_validate_xeth_id(id);
+		if (err)
+			return err;
+		priv->id = id;
+		priv->ndi = -1;
+		priv->iflinki = id & 1;
+		priv->porti = port;
+		priv->subporti = sub;
+		priv->devtype = XETH_DEVTYPE_TAGGED_BRIDGE_PORT;
+	} else if (sscanf(name, "xeth%hu.%huu", &port, &id) == 2) {
 		err = platina_mk1_validate_xeth_port(&port);
 		if (err)
 			return err;
@@ -183,6 +204,22 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 		priv->id = id;
 		priv->ndi = -1;
 		priv->iflinki = id & 1;
+		priv->porti = port;
+		priv->subporti = -1;
+		priv->devtype = XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT;
+	} else if (sscanf(name, "xeth%hu.%hut", &port, &id) == 2) {
+		err = platina_mk1_validate_xeth_port(&port);
+		if (err)
+			return err;
+		err = platina_mk1_validate_xeth_id(id);
+		if (err)
+			return err;
+		priv->id = id;
+		priv->ndi = -1;
+		priv->iflinki = id & 1;
+		priv->porti = port;
+		priv->subporti = -1;
+		priv->devtype = XETH_DEVTYPE_TAGGED_BRIDGE_PORT;
 	} else if (sscanf(name, "xeth%hu-%hu", &port, &sub) == 2) {
 		err = platina_mk1_validate_xeth_port(&port);
 		if (err)
@@ -193,6 +230,9 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 		priv->id = platina_mk1_xeth_port_vlan(port, sub);
 		priv->ndi = priv->id;
 		priv->iflinki = port & 1;
+		priv->porti = port;
+		priv->subporti = sub;
+		priv->devtype = XETH_DEVTYPE_PORT;
 	} else if (sscanf(name, "xeth%hu", &port) == 1) {
 		err = platina_mk1_validate_xeth_port(&port);
 		if (err)
@@ -200,6 +240,9 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 		priv->id = platina_mk1_xeth_port_vlan(port, 0);
 		priv->ndi = priv->id;
 		priv->iflinki = port & 1;
+		priv->porti = port;
+		priv->subporti = -1;
+		priv->devtype = XETH_DEVTYPE_PORT;
 	} else {
 		return xeth_pr_val("%d: invalid xeth format", -EINVAL);
 	}
