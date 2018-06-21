@@ -340,6 +340,9 @@ int xeth_sb_send_ifinfo(struct net_device *nd)
 	msg->flags = nd->flags;
 	msg->id = priv->id;
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
+	msg->portindex = priv->porti;
+	msg->subportindex = priv->subporti;
+	msg->devtype = priv->devtype;
 	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
 	return 0;
 }
