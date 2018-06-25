@@ -118,6 +118,9 @@ static int platina_mk1_parse_eth(const char *name, struct xeth_priv *priv)
 	priv->id = 1 + ((port ^ 1) * platina_mk1_n_subports) + subport + 1;
 	priv->ndi = (port * platina_mk1_n_subports) + subport;
 	priv->iflinki = port >= (platina_mk1_n_ports / 2) ? 1 : 0;
+	priv->porti = port;
+	priv->subporti = subport;
+	priv->devtype = XETH_DEVTYPE_PORT;
 	return 0;
 }
 
