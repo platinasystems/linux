@@ -88,24 +88,24 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	return RX_HANDLER_CONSUMED;
 }
 
-static ssize_t xeth_vlan_sb(struct sk_buff *skb)
+static void xeth_vlan_sb(const char *buf, size_t n)
 {
-	struct vlan_ethhdr *ve = (struct vlan_ethhdr *)skb->data;
 	u16 vid;
-	char eaddrs[2*ETH_ALEN];
-	ssize_t n = skb->len;
 	struct net_device *nd;
+	struct sk_buff *skb;
+	struct vlan_ethhdr *ve = (struct vlan_ethhdr *)buf;
 
-	if (!xeth_pr_false_val("%d", xeth_vlan_is_8021X(ve->h_vlan_proto)))
-		return -EINVAL;
+	if (!xeth_vlan_is_8021X(ve->h_vlan_proto))
+		xeth_pr_return("missing vlan encap");
 	vid = be16_to_cpu(ve->h_vlan_TCI) & VLAN_VID_MASK;
 	nd = to_xeth_nd(vid);
-	if (nd == NULL) {
-		xeth_pr_val("%d unknown", vid);
-		return -ENOENT;
-	}
-	skb->dev = nd;
-	memcpy(eaddrs, skb->data, 2*ETH_ALEN);
+	if (nd == NULL)
+		xeth_pr_return("no device with vid %d", vid);
+	skb = netdev_alloc_skb(nd, n);
+	if (!skb)
+		xeth_pr_return("failed to alloc skb");
+	skb_put(skb, n);
+	memcpy(skb->data, buf, n);
 	if (xeth_vlan_is_8021X(ve->h_vlan_encapsulated_proto)) {
 		const size_t vesz = sizeof(struct vlan_ethhdr);
 		struct vlan_hdr *iv = (struct vlan_hdr *)(skb->data + vesz);
@@ -116,13 +116,12 @@ static ssize_t xeth_vlan_sb(struct sk_buff *skb)
 		skb_pull(skb, VLAN_HLEN);
 	}
 	/* restore mac addrs to beginning of de-encapsulated frame */
-	memcpy(skb->data, eaddrs, 2*ETH_ALEN);
+	memcpy(skb->data, buf, 2*ETH_ALEN);
 	xeth_pr_skb_hex_dump(skb);
 	skb->protocol = eth_type_trans(skb, skb->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
-	if (xeth_pr_nd_true_val(skb->dev, "%d", netif_rx(skb) == NET_RX_DROP))
-		n = -EBUSY;
-	return n;
+	if (netif_rx(skb) == NET_RX_DROP);
+		atomic_long_inc(&nd->rx_dropped);
 }
 
 /* Push outer VLAN tag with xeth's vid and skb's priority. */
