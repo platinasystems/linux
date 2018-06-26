@@ -234,16 +234,6 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	xeth_sb_nd_put(nd);
 }
 
-static void xeth_sb_exception_frame(const char *buf, int n)
-{
-	struct sk_buff *skb = netdev_alloc_skb(xeth.iflinks[0], n);
-	if (xeth_pr_is_err_val(skb))
-		return;
-	skb_put(skb, n);
-	memcpy(skb->data, buf, n);
-	xeth_pr_val("%zd", xeth.ops.side_band_rx(skb));
-}
-
 int xeth_sb_send_break(void)
 {
 	size_t n = sizeof(struct xeth_msg_break);
@@ -472,7 +462,7 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	if (ret < sizeof(struct xeth_msg))
 		return xeth_pr_true_val("%d", -EINVAL);
 	if (!xeth_is_msg(msg)) {
-		xeth_sb_exception_frame(xeth.sb.rxbuf, ret);
+		xeth.ops.side_band_rx(xeth.sb.rxbuf, ret);
 		return 0;
 	}
 	switch (msg->kind) {
