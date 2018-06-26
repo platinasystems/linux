@@ -25,6 +25,11 @@
 #define __XETH_PR_H
 
 #define xeth_pr(fmt, ...)	pr_debug(fmt "\n", ##__VA_ARGS__)
+#define xeth_pr_return(fmt, ...)					\
+	do {								\
+		pr_debug(fmt "\n", ##__VA_ARGS__);			\
+		return;							\
+	} while(0)
 #define xeth_pr_is_err_val(ptr)						\
 	({								\
 		int err = 0;						\
