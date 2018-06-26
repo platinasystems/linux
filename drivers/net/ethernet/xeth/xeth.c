@@ -46,6 +46,7 @@ int xeth_init(void)
 		xeth_reset_iflinks(i);
 	for (i = 0; i < xeth.n.nds; i++)
 		xeth_reset_nd(i);
+	INIT_LIST_HEAD_RCU(&xeth.list);
 	return 0;
 
 egress:
@@ -82,4 +83,6 @@ void xeth_exit(void)
 		kfree(xeth.nds);
 	if (xeth.ndi_by_id)
 		kfree(xeth.ndi_by_id);
+	rcu_assign_pointer(xeth.list.next, NULL);
+	rcu_assign_pointer(xeth.list.prev, NULL);
 }

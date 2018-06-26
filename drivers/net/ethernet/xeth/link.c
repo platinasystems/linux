@@ -108,6 +108,8 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 		nd->ethtool_ops = &xeth.ops.ethtool;
 	if (xeth.ops.init_ethtool_settings)
 		xeth.ops.init_ethtool_settings(nd);
+	priv->nd = nd;
+	list_add_tail_rcu(&priv->list, &xeth.list);
 	return 0;
 }
 
@@ -115,6 +117,8 @@ static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 
+	priv->nd = NULL;
+	list_del_rcu(&priv->list);
 	xeth_reset_nd(priv->ndi);
 	xeth_pr_nd_void(nd, unregister_netdevice_queue(nd, head));
 }

@@ -486,16 +486,15 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 		xeth_sb_ethtool_stat((struct xeth_msg_stat *)xeth.sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_DUMP_IFINFO: {
-		int i, err = 0;
-
-		for (i = 0; !err && i < xeth.n.ids; i++) {
-			struct net_device *nd = xeth_nds(i);
-			if (nd != NULL)
-				err = xeth_sb_dump_ifinfo(sock, nd);
+		int err = 0;
+		struct xeth_priv *priv;
+		list_for_each_entry_rcu(priv, &xeth.list, list) {
+			if (!err)
+				err = xeth_sb_dump_ifinfo(sock, priv->nd);
 		}
+		xeth_sb_send_break();
 		if (err)
 			return err;
-		xeth_sb_send_break();
 	}	break;
 	case XETH_MSG_KIND_SPEED:
 		xeth_sb_speed((struct xeth_msg_speed *)xeth.sb.rxbuf);
