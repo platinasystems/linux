@@ -60,7 +60,7 @@ struct xeth {
 		int	(*parse_name)(const char *name, struct xeth_priv *priv);
 		int	(*set_lladdr)(struct net_device *nd);
 		rx_handler_result_t	(*rx_handler)(struct sk_buff **pskb);
-		ssize_t	(*side_band_rx)(struct sk_buff *skb);
+		void	(*side_band_rx)(const char *buf, size_t n);
 		void	(*destructor)(struct net_device *nd);
 		void	(*init_ethtool_settings)(struct net_device *nd);
 		int	(*validate_speed)(struct net_device *nd, u32 speed);
