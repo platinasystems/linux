@@ -35,6 +35,8 @@
 #endif
 
 struct	xeth_priv {
+	struct	list_head __rcu	list;
+	struct	net_device	*nd;
 	struct xeth_priv_link {
 		struct	mutex mutex;
 		struct	rtnl_link_stats64 stats;
@@ -52,6 +54,7 @@ struct	xeth_priv {
 };
 
 struct xeth {
+	struct	list_head __rcu	list;
 	struct	xeth_ops {
 		int	(*assert_iflinks)(void);
 		int	(*parse_name)(const char *name, struct xeth_priv *priv);
