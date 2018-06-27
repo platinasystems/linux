@@ -96,6 +96,7 @@ struct xeth {
 		struct	list_head __rcu	tx;
 		struct	task_struct	*main;
 		char	*rxbuf;
+		atomic_t		connected;
 	} sb;
 };
 
@@ -190,5 +191,20 @@ static inline void xeth_priv_set_nd(struct xeth_priv *priv,
 				    struct net_device *nd)
 {
 	xeth_set_nd(priv->ndi, nd);
+}
+
+static inline void xeth_sb_connected(void)
+{
+	atomic_set(&xeth.sb.connected, 1);
+}
+
+static inline void xeth_sb_disconnected(void)
+{
+	atomic_set(&xeth.sb.connected, 0);
+}
+
+static inline bool xeth_sb_is_disconnected(void)
+{
+	return !atomic_read(&xeth.sb.connected);
 }
 #endif /* __XETH_H */

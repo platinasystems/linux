@@ -236,8 +236,12 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 
 int xeth_sb_send_break(void)
 {
+	struct xeth_sb_tx_entry *entry;
 	size_t n = sizeof(struct xeth_msg_break);
-	struct xeth_sb_tx_entry *entry =  xeth_sb_alloc(n);
+
+	if (xeth_sb_is_disconnected())
+		return 0;
+	entry =  xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_BREAK);
@@ -247,10 +251,14 @@ int xeth_sb_send_break(void)
 
 int xeth_sb_send_ethtool_flags(struct net_device *nd)
 {
+	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ethtool_flags *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ethtool_flags);
-	struct xeth_sb_tx_entry *entry = xeth_sb_alloc(n);
+
+	if (xeth_sb_is_disconnected())
+		return 0;
+	entry =  xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_FLAGS, nd->name);
@@ -263,10 +271,14 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 int xeth_sb_send_ethtool_settings(struct net_device *nd)
 {
 	int i;
+	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ethtool_settings *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ethtool_settings);
-	struct xeth_sb_tx_entry *entry = xeth_sb_alloc(n);
+
+	if (xeth_sb_is_disconnected())
+		return 0;
+	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS,
@@ -299,9 +311,13 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa)
 {
+	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ifa *msg;
 	size_t n = sizeof(struct xeth_msg_ifa);
-	struct xeth_sb_tx_entry *entry = xeth_sb_alloc(n);
+
+	if (xeth_sb_is_disconnected())
+		return 0;
+	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFA, nd->name);
@@ -315,11 +331,15 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 
 int xeth_sb_send_ifinfo(struct net_device *nd)
 {
+	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ifinfo *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
 	struct net_device *iflink = xeth_priv_iflink(priv);
 	size_t n = sizeof(struct xeth_msg_ifinfo);
-	struct xeth_sb_tx_entry *entry = xeth_sb_alloc(n);
+
+	if (xeth_sb_is_disconnected())
+		return 0;
+	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
@@ -341,11 +361,15 @@ int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info)
 {
 	int i;
+	struct xeth_sb_tx_entry *entry;
 	struct xeth_next_hop *nh;
 	struct xeth_msg_fibentry *msg;
 	size_t n = sizeof(struct xeth_msg_fibentry) +
 		(info->fi->fib_nhs * sizeof(struct xeth_next_hop));
-	struct xeth_sb_tx_entry *entry = xeth_sb_alloc(n);
+
+	if (xeth_sb_is_disconnected())
+		return 0;
+	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	msg = (struct xeth_msg_fibentry *)&entry->data[0];
@@ -516,10 +540,12 @@ static inline int xeth_sb_service(struct socket *sock)
 						     sizeof(struct timeval)));
 	if (err < 0)
 		return err;
+	xeth_sb_connected();
 	while (xeth_sb_service_continue(err)) {
 		err = xeth_sb_service_tx(sock);
 		err = err ? err : xeth_sb_service_rx(sock);
 	}
+	xeth_sb_disconnected();
 	sock_release(sock);
 	xeth_notifier_unregister_fib();
 	if (err > 0) {
@@ -536,7 +562,7 @@ static int xeth_sb_main(void *data)
 	struct socket *ln = NULL;
 	struct sockaddr *paddr = (struct sockaddr *)&addr;
 	int n, err;
-	
+
 	xeth_pr("start");
 	// set_current_state(TASK_INTERRUPTIBLE);
 	err = xeth_pr_true_val("%d",
@@ -589,6 +615,7 @@ xeth_sb_main_egress:
 int xeth_sb_init(void)
 {
 	INIT_LIST_HEAD_RCU(&xeth.sb.tx);
+	xeth_sb_disconnected();
 	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth.sb.rxbuf)
 		return -ENOMEM;
