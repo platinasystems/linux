@@ -120,8 +120,7 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 	xeth_pr_skb_hex_dump(skb);
 	skb->protocol = eth_type_trans(skb, skb->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
-	if (netif_rx(skb) == NET_RX_DROP);
-		atomic_long_inc(&nd->rx_dropped);
+	netif_rx(skb);
 }
 
 /* Push outer VLAN tag with xeth's vid and skb's priority. */
