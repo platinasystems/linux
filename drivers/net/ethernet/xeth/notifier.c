@@ -117,6 +117,7 @@ static int xeth_notifier_inetaddr(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	for (i = 0; i < xeth.n.ids; i++) {
 		if (nd == xeth_nds(i)) {
+			xeth_sb_send_ifa(nd, event, ifa);
 			break;
 		}
 	}
