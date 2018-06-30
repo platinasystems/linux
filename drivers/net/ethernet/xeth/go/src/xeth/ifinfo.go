@@ -33,19 +33,16 @@ func (info *MsgIfinfo) HardwareAddr() net.HardwareAddr {
 }
 
 func (info *MsgIfinfo) String() string {
-	kind := Kind(info.Kind)
-	ifname := (*Ifname)(&info.Ifname)
-	iflink := InterfaceByIndex(info.Iflinkindex).Name
-	iff := Iff(info.Flags)
-	devtype := DevType(info.Devtype)
-	return fmt.Sprint(kind, " ", ifname, "[", info.Ifindex, "]",
-		"@", iflink,
-		" <", iff, ">",
-		" id=", info.Id,
-		" addr=", info.HardwareAddr(),
-		" port=", info.Portindex,
-		" subport=", info.Subportindex,
-		" devtype=", devtype,
-		" netns=", Netns(info.Net),
+	return fmt.Sprint(Kind(info.Kind),
+		" ", DevType(info.Devtype),
+		" ", (*Ifname)(&info.Ifname),
+		"[", info.Ifindex, "]",
+		"@", InterfaceByIndex(info.Iflinkindex).Name,
+		" <", Iff(info.Flags), ">",
+		" ", info.HardwareAddr(),
+		" id[", info.Id, "]",
+		" port[", info.Portindex, "]",
+		" subport[", info.Subportindex, "]",
+		" netns ", Netns(info.Net),
 		"\n")
 }
