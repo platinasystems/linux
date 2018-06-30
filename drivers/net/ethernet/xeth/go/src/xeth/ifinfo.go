@@ -38,7 +38,6 @@ func (info *MsgIfinfo) String() string {
 	iflink := InterfaceByIndex(info.Iflinkindex).Name
 	iff := Iff(info.Flags)
 	devtype := DevType(info.Devtype)
-	ns := fmt.Sprintf("%#x", info.Net)
 	return fmt.Sprint(kind, " ", ifname, "[", info.Ifindex, "]",
 		"@", iflink,
 		" <", iff, ">",
@@ -47,6 +46,6 @@ func (info *MsgIfinfo) String() string {
 		" port=", info.Portindex,
 		" subport=", info.Subportindex,
 		" devtype=", devtype,
-		" net=", ns,
+		" netns=", Netns(info.Net),
 		"\n")
 }
