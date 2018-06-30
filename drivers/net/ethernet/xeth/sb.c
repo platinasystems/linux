@@ -188,7 +188,7 @@ static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 		onoff = "off";
 		break;
 	}
-	xeth_pr_nd(nd, "carrier %s", onoff);
+	may_xeth_pr_nd(false, nd, "carrier %s", onoff);
 	xeth_sb_nd_put(nd);
 }
 
@@ -210,7 +210,8 @@ static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 	mutex_lock(&priv->link.mutex);
 	*stat = msg->count;
 	mutex_unlock(&priv->link.mutex);
-	xeth_pr_nd(nd, "%s: %llu", xeth_sb_link_stats[msg->index], msg->count);
+	may_xeth_pr_nd(false, nd, "%s: %llu",
+		       xeth_sb_link_stats[msg->index], msg->count);
 	xeth_sb_nd_put(nd);
 }
 
@@ -230,7 +231,8 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	mutex_lock(&priv->ethtool.mutex);
 	priv->ethtool.stats[msg->index] = msg->count;
 	mutex_unlock(&priv->ethtool.mutex);
-	xeth_pr_nd(nd, "%s: %llu", xeth.ethtool.stats[msg->index], msg->count);
+	may_xeth_pr_nd(false, nd, "%s: %llu",
+		       xeth.ethtool.stats[msg->index], msg->count);
 	xeth_sb_nd_put(nd);
 }
 
@@ -335,6 +337,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd)
 	struct xeth_msg_ifinfo *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
 	struct net_device *iflink = xeth_priv_iflink(priv);
+	struct net *ndnet = dev_net(nd);
 	size_t n = sizeof(struct xeth_msg_ifinfo);
 
 	if (xeth_sb_is_disconnected())
@@ -344,7 +347,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
 	msg = (struct xeth_msg_ifinfo *)&entry->data[0];
-	msg->net = (u64)dev_net(nd);
+	msg->net = (ndnet == &init_net) ? 1 : ndnet->ns.inum;
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = iflink->ifindex;
 	msg->flags = nd->flags;
@@ -462,7 +465,7 @@ static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 	mutex_lock(&priv->ethtool.mutex);
 	priv->ethtool.settings.base.speed = msg->mbps;
 	mutex_unlock(&priv->ethtool.mutex);
-	xeth_pr_nd(nd, "speed %uMb/s", msg->mbps);
+	may_xeth_pr_nd(false, nd, "speed %uMb/s", msg->mbps);
 	xeth_sb_nd_put(nd);
 }
 
@@ -597,10 +600,11 @@ static int xeth_sb_main(void *data)
 			continue;
 		}
 		if (!err) {
+			static const bool clog = false;
 			xeth_foreach_nd(xeth_sb_reset_nd_stats);
-			xeth_pr("@%s: connected", addr.sun_path+1);
+			may_xeth_pr(clog, "@%s: connected", addr.sun_path+1);
 			err = xeth_pr_true_val("%d", xeth_sb_service(conn));
-			xeth_pr("@%s: disconnected", addr.sun_path+1);
+			may_xeth_pr(clog, "@%s: disconnected", addr.sun_path+1);
 		}
 	}
 xeth_sb_main_egress:

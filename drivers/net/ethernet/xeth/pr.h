@@ -24,110 +24,125 @@
 #ifndef __XETH_PR_H
 #define __XETH_PR_H
 
-#define xeth_pr(fmt, ...)	pr_debug(fmt "\n", ##__VA_ARGS__)
-#define xeth_pr_return(fmt, ...)					\
-	do {								\
-		pr_debug(fmt "\n", ##__VA_ARGS__);			\
-		return;							\
-	} while(0)
-#define xeth_pr_is_err_val(ptr)						\
-	({								\
-		int err = 0;						\
-	 	if (!ptr) {						\
-	 		err = -ENOMEM;					\
-	 		xeth_pr("%s is NULL", #ptr);			\
-		} else if (IS_ERR(ptr)) {				\
-			err = PTR_ERR(ptr);				\
-			xeth_pr("%s error: %d", #ptr, err);		\
-			(ptr) = NULL;					\
-		}							\
-		(err);							\
-	})
-#define xeth_pr_void(expr)						\
-	do {								\
-		(expr);							\
-		xeth_debug_pr("%s: OK", #expr);				\
-	} while(0)
-#define xeth_pr_val(fmt, val, ...)					\
-	({								\
-		typeof(val) _val = (val);				\
-		xeth_pr("%s: " fmt, #val, _val, ##__VA_ARGS__);		\
-		(_val);							\
-	})
-#define xeth_pr_true_val(fmt, val, ...)					\
-	({								\
-		typeof(val) _val = (val);				\
-	 	if (!!(_val))						\
-			xeth_pr("%s: " fmt, #val, _val,	##__VA_ARGS__);	\
-		(_val);							\
-	})
-#define xeth_pr_false_val(fmt, val, ...)				\
-	({								\
-		typeof(val) _val = (val);				\
-	 	if (!(_val))						\
-			xeth_pr("%s: " fmt, #val, _val, ##__VA_ARGS__);	\
-		(_val);							\
-	})
-#if 1
-#define xeth_pr_nd(nd, fmt, ...)					\
-	pr_debug("%s: " fmt "\n", netdev_name(nd), ##__VA_ARGS__)
+#if defined(CONFIG_DYNAMIC_DEBUG)
+#define XETH_PR_DYNAMIC_DEBUG	true
 #else
-#define xeth_pr_nd(nd, fmt, ...)					\
-	netdev_dbg((nd), fmt "\n", ##__VA_ARGS__)
+#define XETH_PR_DYNAMIC_DEBUG	false
 #endif
+
+#define may_xeth_pr(qualifier, format, args...)				\
+do {									\
+	if (qualifier && XETH_PR_DYNAMIC_DEBUG)				\
+		pr_debug(format "\n", ##args);				\
+	else								\
+		no_printk(KERN_DEBUG pr_fmt(format), ##args);		\
+} while(0)
+
+#define xeth_pr(format, args...)					\
+	may_xeth_pr(true, format, ##args)
+
+#define may_xeth_pr_nd(qualifier, nd, format, args...)			\
+do {									\
+	if (qualifier && XETH_PR_DYNAMIC_DEBUG)				\
+		netdev_dbg(nd, format "\n", ##args);			\
+} while(0)
+
+#define xeth_pr_nd(nd, format, args...)					\
+	may_xeth_pr_nd(true, nd, format, ##args)
+
+#define may_xeth_pr_skb_hex_dump(qualifier, skb)			\
+do {									\
+	if (qualifier && XETH_PR_DYNAMIC_DEBUG) {			\
+		char prefix[64];					\
+		snprintf(prefix, sizeof(prefix), "%s:%s:%s: ",		\
+			 xeth.ops.rtnl.kind, __func__,			\
+			 netdev_name(skb->dev));			\
+		print_hex_dump_bytes(prefix, DUMP_PREFIX_NONE,		\
+				     skb->data,	skb->len);		\
+	}								\
+} while(0)
+
+#define may_xeth_pr_buf_hex_dump(qualifier, buf, len)			\
+do {									\
+	if (qualifier && XETH_PR_DYNAMIC_DEBUG) {			\
+		char prefix[64];					\
+		snprintf(prefix, sizeof(prefix), "%s:%s: ",		\
+			 xeth.ops.rtnl.kind, __func__);			\
+		print_hex_dump_bytes(prefix, DUMP_PREFIX_NONE,		\
+				     buf, len);				\
+	}								\
+} while(0)
+
+#define may_xeth_pr_return(qualifier, format, args...)			\
+do {									\
+	may_xeth_pr(qualifier, format, ##args);				\
+	return;								\
+} while(0)
+
+#define xeth_pr_is_err_val(ptr)						\
+({									\
+	int err = 0;							\
+	if (!ptr) {							\
+		err = -ENOMEM;						\
+		xeth_pr("%s is NULL", #ptr);				\
+	} else if (IS_ERR(ptr)) {					\
+		err = PTR_ERR(ptr);					\
+		xeth_pr("%s error: %d", #ptr, err);			\
+		(ptr) = NULL;						\
+	}								\
+	(err);								\
+})
+
+#define xeth_pr_val(format, val, args...)				\
+({									\
+	typeof(val) _val = (val);					\
+	xeth_pr("%s: " format, #val, _val, ##args);			\
+	(_val);								\
+})
+
+#define xeth_pr_true_val(format, val, args...)				\
+({									\
+	typeof(val) _val = (val);					\
+	if (!!(_val))							\
+		xeth_pr("%s: " format, #val, _val, ##args);		\
+	(_val);								\
+})
+
+#define xeth_pr_false_val(format, val, args...)				\
+({									\
+	typeof(val) _val = (val);					\
+	if (!(_val))							\
+		xeth_pr("%s: " format, #val, _val, ##args);		\
+	(_val);								\
+})
+
 #define xeth_pr_nd_void(nd, expr)					\
-	do {								\
-		(expr);							\
-		xeth_pr_nd((nd), "%s: OK", #expr);			\
-	} while(0)
-#define xeth_pr_nd_val(nd, fmt, val, ...)				\
-	({								\
-		typeof(val) _val = (val);				\
-		xeth_pr_nd((nd), "%s: " fmt, #val, _val, ##__VA_ARGS__);\
-		(_val);							\
-	})
-#define xeth_pr_nd_true_val(nd, fmt, val, ...)				\
-	({								\
-		typeof(val) _val = (val);				\
-	 	if (!!(_val))						\
-			xeth_pr_nd((nd), "%s: " fmt, #val, _val,	\
-				   ##__VA_ARGS__);			\
-		(_val);							\
-	})
-#define xeth_pr_nd_false_val(nd, fmt, val, ...)				\
-	({								\
-		typeof(val) _val = (val);				\
-	 	if (!(_val))						\
-			xeth_pr_nd((nd), "%s: " fmt, #val, _val,	\
-				   ##__VA_ARGS__);			\
-		(_val);							\
-	})
+do {									\
+	(expr);								\
+	xeth_pr_nd((nd), "%s: OK", #expr);				\
+} while(0)
 
-static inline void _xeth_pr_skb_hex_dump(const char *func, struct sk_buff *skb)
-{
-#if defined(CONFIG_DYNAMIC_DEBUG)
-	char dev_prefix_str[64];
+#define xeth_pr_nd_val(nd, format, val, args...)			\
+({									\
+	typeof(val) _val = (val);					\
+	xeth_pr_nd((nd), "%s: " format, #val, _val, ##args);		\
+	(_val);								\
+})
 
-	snprintf(dev_prefix_str, sizeof(dev_prefix_str), "%s:%s:%s: ",
-		 xeth.ops.rtnl.kind, func, netdev_name(skb->dev));
-	print_hex_dump_bytes(dev_prefix_str, DUMP_PREFIX_NONE,
-			     skb->data,	skb->len);
-#endif
-}
+#define xeth_pr_nd_true_val(nd, format, val, args...)				\
+({									\
+	typeof(val) _val = (val);					\
+	if (!!(_val))							\
+		xeth_pr_nd((nd), "%s: " format, #val, _val, ##args);	\
+	(_val);								\
+})
 
-#define xeth_pr_skb_hex_dump(skb) _xeth_pr_skb_hex_dump(__func__, skb)
-
-static inline void _xeth_pr_buf_hex_dump(const char *func, char *buf, int len)
-{
-#if defined(CONFIG_DYNAMIC_DEBUG)
-	char prefix_str[64];
-
-	snprintf(prefix_str, sizeof(prefix_str), "%s:%s: ",
-		 xeth.ops.rtnl.kind, func);
-	print_hex_dump_bytes(prefix_str, DUMP_PREFIX_NONE, buf, len);
-#endif
-}
-
-#define xeth_pr_buf_hex_dump(buf,len) _xeth_pr_buf_hex_dump(__func__, buf, len)
+#define xeth_pr_nd_false_val(nd, format, val, args...)			\
+({									\
+	typeof(val) _val = (val);					\
+	if (!(_val))							\
+		xeth_pr_nd((nd), "%s: " format, #val, _val, ##args);	\
+	(_val);								\
+})
 
 #endif /* __XETH_PR_H */
