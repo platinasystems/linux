@@ -36,34 +36,31 @@ static inline bool xeth_vlan_is_8021X(__be16 proto)
  */
 static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 {
-	struct sk_buff *skb = *pskb;
-	struct net_device *nd;
 	u16 vid;
-	int res;
+	struct net_device *nd;
 	struct xeth_priv *priv;
 	struct net_device *iflink;
+	struct sk_buff *skb = *pskb;
 	
-	if (!xeth_vlan_is_8021X(skb->vlan_proto))
-		return xeth_pr_nd_val(skb->dev, "%d, vlan_proto: 0x%04hx",
-				      RX_HANDLER_PASS,
-				      be16_to_cpu(skb->vlan_proto));
+	if (!xeth_vlan_is_8021X(skb->vlan_proto)) {
+		atomic_long_inc(&skb->dev->rx_dropped);
+		kfree_skb(skb);
+		return RX_HANDLER_CONSUMED;
+	}
 	skb->priority =
 		(typeof(skb->priority))(skb->vlan_tci >> VLAN_PRIO_SHIFT);
 	vid = skb->vlan_tci & VLAN_VID_MASK;
 	nd = to_xeth_nd(vid);
 	if (nd == NULL) {
+		atomic_long_inc(&skb->dev->rx_dropped);
 		kfree_skb(skb);
-		xeth_pr_nd_val(skb->dev, "%d unknown", vid);
 		return RX_HANDLER_CONSUMED;
 	}
 	priv = netdev_priv(nd);
-	if (vid != priv->id) {
-		xeth_pr_nd(nd, "mismatched vid: %d, expect %d", vid, priv->id);
-		return RX_HANDLER_CONSUMED;
-	}
 	iflink = xeth_priv_iflink(priv);
-	if (skb->dev != iflink) {
-		xeth_pr_nd(nd, "mismatched iflink");
+	if (vid != priv->id || skb->dev != iflink) {
+		atomic_long_inc(&nd->rx_dropped);
+		kfree_skb(skb);
 		return RX_HANDLER_CONSUMED;
 	}
 	if (skb->protocol == cpu_to_be16(ETH_P_8021Q)) {
@@ -81,10 +78,8 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	}
 	skb_push(skb, ETH_HLEN);
 	skb->dev = nd;
-	xeth_pr_skb_hex_dump(skb);
-	res = xeth_pr_nd_true_val(nd, "%d", dev_forward_skb(nd, skb));
-	if (res == NET_RX_DROP)
-		atomic_long_inc(&nd->rx_dropped);
+	may_xeth_pr_skb_hex_dump(false, skb);
+	dev_forward_skb(nd, skb);
 	return RX_HANDLER_CONSUMED;
 }
 
@@ -96,14 +91,14 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 	struct vlan_ethhdr *ve = (struct vlan_ethhdr *)buf;
 
 	if (!xeth_vlan_is_8021X(ve->h_vlan_proto))
-		xeth_pr_return("missing vlan encap");
+		may_xeth_pr_return(false, "missing vlan encap");
 	vid = be16_to_cpu(ve->h_vlan_TCI) & VLAN_VID_MASK;
 	nd = to_xeth_nd(vid);
 	if (nd == NULL)
-		xeth_pr_return("no device with vid %d", vid);
+		may_xeth_pr_return(false, "no device with vid %d", vid);
 	skb = netdev_alloc_skb(nd, n);
 	if (!skb)
-		xeth_pr_return("failed to alloc skb");
+		may_xeth_pr_return(false, "failed to alloc skb");
 	skb_put(skb, n);
 	memcpy(skb->data, buf, n);
 	if (xeth_vlan_is_8021X(ve->h_vlan_encapsulated_proto)) {
@@ -117,10 +112,10 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 	}
 	/* restore mac addrs to beginning of de-encapsulated frame */
 	memcpy(skb->data, buf, 2*ETH_ALEN);
-	xeth_pr_skb_hex_dump(skb);
+	may_xeth_pr_skb_hex_dump(false, skb);
 	skb->protocol = eth_type_trans(skb, skb->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
-	netif_rx(skb);
+	netif_rx_ni(skb);
 }
 
 /* Push outer VLAN tag with xeth's vid and skb's priority. */
@@ -150,7 +145,7 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 		atomic_long_inc(&nd->tx_dropped);
 		return xeth_pr_val("%d, couldn't insert tag", NETDEV_TX_OK);
 	}
-	xeth_pr_skb_hex_dump(skb);
+	may_xeth_pr_skb_hex_dump(false, skb);
 	skb->dev = iflink;
 	return xeth_pr_nd_true_val(iflink, "%d", dev_queue_xmit(skb));
 }
