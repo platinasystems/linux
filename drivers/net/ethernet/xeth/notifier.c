@@ -56,9 +56,9 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 	switch (event) {
 	case NETDEV_UNREGISTER:
 		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
-			struct net_device *iflink = xeth_iflinks(iflinki);
+			struct net_device *iflink = xeth_iflink(iflinki);
 			if (nd == iflink) {
-				xeth_reset_iflinks(iflinki);
+				xeth_reset_iflink(iflinki);
 				netdev_rx_handler_unregister(iflink);
 				dev_put(iflink);
 			}
@@ -66,10 +66,10 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 		break;
 	case NETDEV_CHANGEMTU:
 		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
-			struct net_device *iflink = xeth_iflinks(iflinki);
+			struct net_device *iflink = xeth_iflink(iflinki);
 			if (nd == iflink) {
 				for (ndi = 0; ndi < xeth.n.ids; ndi++) {
-					struct net_device *xnd = xeth_nds(ndi);
+					struct net_device *xnd = xeth_nd(ndi);
 					if (xnd != NULL) {
 						struct xeth_priv *priv =
 							netdev_priv(xnd);
@@ -116,7 +116,7 @@ static int xeth_notifier_inetaddr(struct notifier_block *nb,
 	if (nd == NULL)
 		return NOTIFY_DONE;
 	for (i = 0; i < xeth.n.ids; i++) {
-		if (nd == xeth_nds(i)) {
+		if (nd == xeth_nd(i)) {
 			xeth_sb_send_ifa(nd, event, ifa);
 			break;
 		}
@@ -148,11 +148,10 @@ static int xeth_notifier_fib(struct notifier_block *nb,
 	case FIB_EVENT_ENTRY_REPLACE:
 	case FIB_EVENT_ENTRY_APPEND:
 	case FIB_EVENT_ENTRY_ADD:
-	case FIB_EVENT_ENTRY_DEL: {
-		struct fib_entry_notifier_info *info =
-			(struct fib_entry_notifier_info *)ptr;
-		xeth_pr_true_val("%d", xeth_sb_send_fibentry(event, info));
-	};	break;
+	case FIB_EVENT_ENTRY_DEL:
+		xeth_sb_send_fibentry(event,
+				      (struct fib_entry_notifier_info *)ptr);
+		break;
 	default:
 		xeth_pr("unsupported fib event %ld", event);
 	}

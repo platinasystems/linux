@@ -117,18 +117,15 @@ static int xeth_ethtool_validate_duplex(struct net_device *nd,
 					const struct ethtool_link_ksettings
 					*req)
 {
-	int err;
 	switch (req->base.duplex) {
 	case DUPLEX_HALF:
 	case DUPLEX_FULL:
 	case DUPLEX_UNKNOWN:
-		err = 0;
 		break;
 	default:
-		xeth_pr_nd(nd, "invalid duplex: %u: ", req->base.duplex);
-		err = -EINVAL;
+		return -EINVAL;
 	}
-	return err;
+	return 0;
 }
 
 static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
