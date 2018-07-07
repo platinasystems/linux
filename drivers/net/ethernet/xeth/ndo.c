@@ -26,7 +26,7 @@
 static int xeth_ndo_open(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_priv_iflink(priv);
+	struct net_device *iflink = xeth_iflink(priv->iflinki);
 	unsigned long iflink_flags;
 
 	if (!iflink)
@@ -42,8 +42,6 @@ static int xeth_ndo_open(struct net_device *nd)
 		if (err)
 			return err;
 	}
-	if (true || netif_carrier_ok(iflink))	/* FIXME */
-		netif_carrier_on(nd);
 	return 0;
 }
 
@@ -74,8 +72,8 @@ static void xeth_ndo_get_stats64(struct net_device *nd,
 static int xeth_ndo_get_iflink(const struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_priv_iflink(priv);
-	return xeth_pr_nd_false_val(nd, "%d", iflink ? iflink->ifindex : 0);
+	struct net_device *iflink = xeth_iflink(priv->iflinki);
+	return iflink ? iflink->ifindex : 0;
 }
 
 int xeth_ndo_init(void)
