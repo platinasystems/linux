@@ -52,34 +52,33 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 			 struct nlattr *tb[], struct nlattr *data[],
 			 struct netlink_ext_ack *extack)
 {
-	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink;
-	char ifname[IFNAMSIZ+1];
 	int err;
+	char ifname[IFNAMSIZ+1];
+	struct net_device *iflink;
+	struct xeth_priv *priv = netdev_priv(nd);
 
 	priv->ethtool.stats = kcalloc(xeth.n.ethtool.stats, sizeof(u64),
 				      GFP_KERNEL);
 	if (!priv->ethtool.stats)
 		return -ENOMEM;
-	if (tb[IFLA_IFNAME] == NULL)
-		return xeth_pr_nd_val(nd, "%d, missing name", -EINVAL);
-	if (tb[IFLA_ADDRESS] != NULL)
-		return xeth_pr_nd_val(nd, "%d, can't change lladdr", -EINVAL);
+	if (xeth_pr_true_expr(tb[IFLA_IFNAME] == NULL, "missing name"))
+		return -EINVAL;
+	if (xeth_pr_true_expr(tb[IFLA_ADDRESS] != NULL, "can't change lladdr"))
+		return -EINVAL;
 	nla_strlcpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	ifname[IFNAMSIZ] = '\0';
-	err = xeth_pr_nd_true_val(nd, "%d",
-				  xeth.ops.parse_name(ifname, priv));
+	err = xeth_pr_nd_err(nd, xeth.ops.parse(ifname, priv));
 	if (err)
 		return err;
 	if (priv->ndi > 0)
 		xeth.ndi_by_id[priv->id] = priv->ndi;
-	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.assert_iflinks());
+	err = xeth_pr_nd_err(nd, xeth.ops.assert_iflinks());
 	if (err)
 		return err;
-	err = xeth_pr_nd_true_val(nd, "%d", xeth.ops.set_lladdr(nd));
+	err = xeth_pr_nd_err(nd, xeth.ops.set_lladdr(nd));
 	if (err)
 		return err;
-	iflink = xeth_priv_iflink(priv);
+	iflink = xeth_iflink(priv->iflinki);
 	if (is_zero_ether_addr(nd->broadcast))
 		memcpy(nd->broadcast, iflink->broadcast, nd->addr_len);
 	nd->mtu = iflink->mtu;
@@ -100,27 +99,29 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	/* FIXME dev->dev_id = real_dev->dev_id; */
 	/* FIXME SET_NETDEV_DEVTYPE(nd, &vlan_type); */
 
-	err = xeth_pr_nd_true_val(nd, "%d", register_netdevice(nd));
+	err = xeth_pr_nd_err(nd, register_netdevice(nd));
 	if (err)
 		return err;
-	xeth_priv_set_nd(priv, nd);
+	xeth_set_nd(priv->ndi, nd);
 	if (xeth.ops.ethtool.get_link)
 		nd->ethtool_ops = &xeth.ops.ethtool;
 	if (xeth.ops.init_ethtool_settings)
 		xeth.ops.init_ethtool_settings(nd);
 	priv->nd = nd;
 	list_add_tail_rcu(&priv->list, &xeth.list);
-	return 0;
+	xeth_priv_reset_counters(priv);
+	return xeth_sysfs_add(priv);
 }
 
 static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 
+	xeth_sysfs_del(priv);
 	priv->nd = NULL;
 	list_del_rcu(&priv->list);
 	xeth_reset_nd(priv->ndi);
-	xeth_pr_nd_void(nd, unregister_netdevice_queue(nd, head));
+	unregister_netdevice_queue(nd, head);
 }
 
 static int xeth_link_validate(struct nlattr *tb[], struct nlattr *data[],
@@ -139,7 +140,7 @@ static int xeth_link_validate(struct nlattr *tb[], struct nlattr *data[],
 static struct net *xeth_link_get_net(const struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_priv_iflink(priv);
+	struct net_device *iflink = xeth_iflink(priv->iflinki);
 	return iflink ? dev_net(iflink) : &init_net;
 }
 
@@ -171,7 +172,6 @@ static void xeth_link_reset(void)
 int xeth_link_init(void)
 {
 	int err;
-
 	xeth.ops.rtnl.priv_size         = sizeof(struct xeth_priv);
 	xeth.ops.rtnl.setup             = xeth_link_setup;
 	xeth.ops.rtnl.newlink           = xeth_link_new;
@@ -180,7 +180,7 @@ int xeth_link_init(void)
 	xeth.ops.rtnl.get_link_net      = xeth_link_get_net;
 	xeth.ops.rtnl.get_num_rx_queues = xeth_link_get_num_rx_queues;
 	xeth.ops.rtnl.get_num_tx_queues = xeth_link_get_num_tx_queues;	
-	err = xeth_pr_true_val("%d", rtnl_link_register(&xeth.ops.rtnl));
+	err = xeth_pr_err(rtnl_link_register(&xeth.ops.rtnl));
 	if (err)
 		xeth_link_reset();
 	return err;

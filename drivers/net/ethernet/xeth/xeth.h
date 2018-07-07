@@ -24,8 +24,11 @@
 #ifndef __XETH_H
 #define __XETH_H
 
+#include <count.h>
+#include <pr.h>
+#include <priv.h>
+
 #include <linux/etherdevice.h>
-#include <linux/ethtool.h>
 #include <linux/inetdevice.h>
 #include <net/rtnetlink.h>
 #include <net/ip_fib.h>
@@ -34,30 +37,11 @@
 #define XETH_VERSION unknown
 #endif
 
-struct	xeth_priv {
-	struct	list_head __rcu	list;
-	struct	net_device	*nd;
-	struct xeth_priv_link {
-		struct	mutex mutex;
-		struct	rtnl_link_stats64 stats;
-	} link;
-	struct	xeth_priv_ethtool {
-		struct	mutex	mutex;
-		struct	ethtool_link_ksettings settings;
-		u64	*stats;
-		u32	flags;
-	} ethtool;
-	u16	id;
-	s16	ndi, iflinki, porti;
-	s8	subporti;
-	u8	devtype;
-};
-
 struct xeth {
 	struct	list_head __rcu	list;
-	struct	xeth_ops {
+	struct {
 		int	(*assert_iflinks)(void);
-		int	(*parse_name)(const char *name, struct xeth_priv *priv);
+		int	(*parse)(const char *name, struct xeth_priv *priv);
 		int	(*set_lladdr)(struct net_device *nd);
 		rx_handler_result_t	(*rx_handler)(struct sk_buff **pskb);
 		void	(*side_band_rx)(const char *buf, size_t n);
@@ -69,12 +53,14 @@ struct xeth {
 		struct	ethtool_ops ethtool;
 	} ops;
 
-	struct	xeth_ethtool {
+	struct {
 		const char * const *stats;
 		const char * const *flags;
 	} ethtool;
 
-	struct	xeth_sizes {
+	atomic64_t	count[n_xeth_count];
+
+	struct {
 		size_t	iflinks;
 		size_t	nds;
 		size_t	ids;
@@ -89,16 +75,19 @@ struct xeth {
 	u64	*ea_iflinks;
 
 	/* RCU protected pointers */
-	struct	net_device	**iflinks;
-	struct	net_device	**nds;
+	struct	net_device
+		**iflinks, **nds;
 
 	struct {
-		struct	list_head __rcu	tx;
-		struct	task_struct	*main;
+		struct	list_head __rcu
+			tx;
+		struct	task_struct
+			*main;
 		char	*rxbuf;
-		atomic_t		connected;
 	} sb;
 };
+
+#define to_xeth(x)	container_of((x), struct xeth, kobj)
 
 extern struct xeth xeth;
 
@@ -128,12 +117,15 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
 
-static inline struct net_device *xeth_iflinks(int i)
+int xeth_sysfs_add(struct xeth_priv *priv);
+void xeth_sysfs_del(struct xeth_priv *priv);
+
+static inline struct net_device *xeth_iflink(int i)
 {
 	return (i < xeth.n.iflinks) ? rtnl_dereference(xeth.iflinks[i]) : NULL;
 }
 
-static inline void xeth_reset_iflinks(int i)
+static inline void xeth_reset_iflink(int i)
 {
 	if (i < xeth.n.iflinks) {
 		RCU_INIT_POINTER(xeth.iflinks[i], NULL);
@@ -141,7 +133,7 @@ static inline void xeth_reset_iflinks(int i)
 	}
 }
 
-static inline void xeth_set_iflinks(int i, struct net_device *iflink)
+static inline void xeth_set_iflink(int i, struct net_device *iflink)
 {
 	if (i < xeth.n.iflinks) {
 		rcu_assign_pointer(xeth.iflinks[i], iflink);
@@ -149,7 +141,7 @@ static inline void xeth_set_iflinks(int i, struct net_device *iflink)
 	}
 }
 
-static inline struct net_device *xeth_nds(int i)
+static inline struct net_device *xeth_nd(int i)
 {
 	return (i < xeth.n.nds) ? rtnl_dereference(xeth.nds[i]) : NULL;
 }
@@ -159,7 +151,7 @@ static inline void xeth_foreach_nd(void (*op)(struct net_device *nd))
 	int i;
 
 	for (i = 0; i < xeth.n.ids; i++) {
-		struct net_device *nd = xeth_nds(i);
+		struct net_device *nd = xeth_nd(i);
 		if (nd != NULL)
 			op(nd);
 	}
@@ -167,7 +159,7 @@ static inline void xeth_foreach_nd(void (*op)(struct net_device *nd))
 
 static inline struct net_device *to_xeth_nd(u16 id)
 {
-	return (id < xeth.n.ids) ? xeth_nds(xeth.ndi_by_id[id]) : NULL;
+	return (id < xeth.n.ids) ? xeth_nd(xeth.ndi_by_id[id]) : NULL;
 }
 
 static inline void xeth_reset_nd(int i)
@@ -182,29 +174,11 @@ static inline void xeth_set_nd(int i, struct net_device *nd)
 		rcu_assign_pointer(xeth.nds[i], nd);
 }
 
-static inline struct net_device *xeth_priv_iflink(struct xeth_priv *priv)
+static inline void xeth_reset_counters(void)
 {
-	return xeth_iflinks(priv->iflinki);
+	int i;
+	for (i = 0; i < n_xeth_count; i++)
+		atomic64_set(&xeth.count[i], 0);
 }
 
-static inline void xeth_priv_set_nd(struct xeth_priv *priv,
-				    struct net_device *nd)
-{
-	xeth_set_nd(priv->ndi, nd);
-}
-
-static inline void xeth_sb_connected(void)
-{
-	atomic_set(&xeth.sb.connected, 1);
-}
-
-static inline void xeth_sb_disconnected(void)
-{
-	atomic_set(&xeth.sb.connected, 0);
-}
-
-static inline bool xeth_sb_is_disconnected(void)
-{
-	return !atomic_read(&xeth.sb.connected);
-}
 #endif /* __XETH_H */

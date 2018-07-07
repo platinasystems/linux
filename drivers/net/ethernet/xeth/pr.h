@@ -30,7 +30,7 @@
 #define XETH_PR_DYNAMIC_DEBUG	false
 #endif
 
-#define may_xeth_pr(qualifier, format, args...)				\
+#define __xeth_pr(qualifier, format, args...)				\
 do {									\
 	if (qualifier && XETH_PR_DYNAMIC_DEBUG)				\
 		pr_debug(format "\n", ##args);				\
@@ -38,19 +38,29 @@ do {									\
 		no_printk(KERN_DEBUG pr_fmt(format), ##args);		\
 } while(0)
 
-#define xeth_pr(format, args...)					\
-	may_xeth_pr(true, format, ##args)
-
-#define may_xeth_pr_nd(qualifier, nd, format, args...)			\
+#define __xeth_pr_nd(qualifier, nd, format, args...)			\
 do {									\
 	if (qualifier && XETH_PR_DYNAMIC_DEBUG)				\
 		netdev_dbg(nd, format "\n", ##args);			\
 } while(0)
 
-#define xeth_pr_nd(nd, format, args...)					\
-	may_xeth_pr_nd(true, nd, format, ##args)
+#define __xeth_pr_err(qualifier, expr)					\
+({									\
+	int _err = (expr);						\
+	if (_err)							\
+		__xeth_pr(qualifier, "%s == %d", #expr, _err);		\
+	(_err);								\
+})
 
-#define may_xeth_pr_skb_hex_dump(qualifier, skb)			\
+#define __xeth_pr_nd_err(qualifier, nd, expr)				\
+({									\
+	int _err = (expr);						\
+	if (_err)							\
+		__xeth_pr_nd(qualifier, nd, "%s == %d", #expr, _err);	\
+	(_err);								\
+})
+
+#define __xeth_pr_skb_hex_dump(qualifier, skb)				\
 do {									\
 	if (qualifier && XETH_PR_DYNAMIC_DEBUG) {			\
 		char prefix[64];					\
@@ -62,7 +72,7 @@ do {									\
 	}								\
 } while(0)
 
-#define may_xeth_pr_buf_hex_dump(qualifier, buf, len)			\
+#define __xeth_pr_buf_hex_dump(qualifier, buf, len)			\
 do {									\
 	if (qualifier && XETH_PR_DYNAMIC_DEBUG) {			\
 		char prefix[64];					\
@@ -73,13 +83,7 @@ do {									\
 	}								\
 } while(0)
 
-#define may_xeth_pr_return(qualifier, format, args...)			\
-do {									\
-	may_xeth_pr(qualifier, format, ##args);				\
-	return;								\
-} while(0)
-
-#define xeth_pr_is_err_val(ptr)						\
+#define __xeth_pr_is_err_val(qualifier, ptr)				\
 ({									\
 	int err = 0;							\
 	if (!ptr) {							\
@@ -87,62 +91,87 @@ do {									\
 		xeth_pr("%s is NULL", #ptr);				\
 	} else if (IS_ERR(ptr)) {					\
 		err = PTR_ERR(ptr);					\
-		xeth_pr("%s error: %d", #ptr, err);			\
+		__xeth_pr(qualifier, "%s error: %d", #ptr, err);	\
 		(ptr) = NULL;						\
 	}								\
 	(err);								\
 })
 
-#define xeth_pr_val(format, val, args...)				\
+#define __xeth_pr_true_expr(qualifier, expr, format, args...)		\
 ({									\
-	typeof(val) _val = (val);					\
-	xeth_pr("%s: " format, #val, _val, ##args);			\
-	(_val);								\
+	bool _res = (expr);						\
+	if (_res)							\
+		__xeth_pr(qualifier, "%s%s" format, #expr,		\
+			  ", ", ##args);				\
+	(_res);								\
 })
 
-#define xeth_pr_true_val(format, val, args...)				\
+#define __xeth_pr_nd_true_expr(qualifier, nd, expr, format, args...)	\
 ({									\
-	typeof(val) _val = (val);					\
-	if (!!(_val))							\
-		xeth_pr("%s: " format, #val, _val, ##args);		\
-	(_val);								\
+	bool _res = (expr);						\
+ 	if (_res)							\
+		__xeth_pr_nd(qualifier, nd, "%s%s" format, #expr,	\
+			     ", ", ##args);				\
+	(_res);								\
 })
 
-#define xeth_pr_false_val(format, val, args...)				\
-({									\
-	typeof(val) _val = (val);					\
-	if (!(_val))							\
-		xeth_pr("%s: " format, #val, _val, ##args);		\
-	(_val);								\
-})
-
-#define xeth_pr_nd_void(nd, expr)					\
+#define __xeth_pr_count(qualifier, counter)				\
 do {									\
-	(expr);								\
-	xeth_pr_nd((nd), "%s: OK", #expr);				\
+	u64 n = xeth_count_##counter;					\
+	if (n) __xeth_pr(qualifier, "%s: %llu", #counter, n);		\
 } while(0)
 
-#define xeth_pr_nd_val(nd, format, val, args...)			\
-({									\
-	typeof(val) _val = (val);					\
-	xeth_pr_nd((nd), "%s: " format, #val, _val, ##args);		\
-	(_val);								\
-})
+#define __xeth_pr_count_priv(qualifier, priv,counter)			\
+do {									\
+	u64 n = xeth_count_priv_##counter;				\
+	if (n)								\
+		__xeth_pr_nd(qualifier, (priv)->nd, "%s: %llu",		\
+			     #counter, n);				\
+} while(0)
 
-#define xeth_pr_nd_true_val(nd, format, val, args...)				\
-({									\
-	typeof(val) _val = (val);					\
-	if (!!(_val))							\
-		xeth_pr_nd((nd), "%s: " format, #val, _val, ##args);	\
-	(_val);								\
-})
-
-#define xeth_pr_nd_false_val(nd, format, val, args...)			\
-({									\
-	typeof(val) _val = (val);					\
-	if (!(_val))							\
-		xeth_pr_nd((nd), "%s: " format, #val, _val, ##args);	\
-	(_val);								\
-})
+#define xeth_pr(format, args...)					\
+	__xeth_pr(true, format, ##args)
+#define no_xeth_pr(format, args...)					\
+	__xeth_pr(false, format, ##args)
+#define xeth_pr_nd(nd, format, args...)					\
+	__xeth_pr_nd(true, nd, format, ##args)
+#define no_xeth_pr_nd(nd, format, args...)				\
+	__xeth_pr_nd(false, nd, format, ##args)
+#define xeth_pr_err(expr)						\
+	__xeth_pr_err(true, expr)
+#define no_xeth_pr_err(expr)						\
+	__xeth_pr_err(false, expr)
+#define xeth_pr_nd_err(nd, expr)					\
+	__xeth_pr_nd_err(true, nd, expr)
+#define no_xeth_pr_nd_err(nd, expr)					\
+	__xeth_pr_nd_err(false, nd, expr)
+#define xeth_pr_skb_hex_dump(skb)					\
+	__xeth_pr_skb_hex_dump(true, skb)
+#define no_xeth_pr_skb_hex_dump(skb)					\
+	__xeth_pr_skb_hex_dump(false, skb)
+#define xeth_pr_buf_hex_dump(buf, len)					\
+	__xeth_pr_buf_hex_dump(true, buf, len)
+#define no_xeth_pr_buf_hex_dump(buf, len)				\
+	__xeth_pr_buf_hex_dump(false, buf, len)
+#define xeth_pr_is_err_val(ptr)						\
+	__xeth_pr_is_err_val(true, ptr)
+#define no_xeth_pr_is_err_val(ptr)					\
+	__xeth_pr_is_err_val(false, ptr)
+#define xeth_pr_true_expr(expr, format, args...)			\
+	__xeth_pr_true_expr(true, expr, format, ##args)
+#define no_xeth_pr_true_expr(expr, format, args...)			\
+	__xeth_pr_true_expr(false, expr, format, ##args)
+#define xeth_pr_nd_true_expr(nd, expr, format, args...)			\
+	__xeth_pr_nd_true_expr(true, nd, expr, format, ##args)
+#define no_xeth_pr_nd_true_expr(nd, expr, format, args...)		\
+	__xeth_pr_nd_true_expr(false, nd, expr, format, ##args)
+#define xeth_pr_count(counter)						\
+	__xeth_pr_count(true, counter)
+#define no_xeth_pr_count(counter)					\
+	__xeth_pr_count(false, counter)
+#define xeth_pr_count_priv(priv, counter)				\
+	__xeth_pr_count_priv(true, priv, counter)
+#define no_xeth_pr_count_priv(priv, counter)				\
+	__xeth_pr_count_priv(false, priv, counter)
 
 #endif /* __XETH_PR_H */
