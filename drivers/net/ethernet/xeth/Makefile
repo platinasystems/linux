@@ -4,6 +4,7 @@ xeth-$(CONFIG_NET_XETH) += link.o
 xeth-$(CONFIG_NET_XETH) += ndo.o
 xeth-$(CONFIG_NET_XETH) += notifier.o
 xeth-$(CONFIG_NET_XETH) += sb.o
+xeth-$(CONFIG_NET_XETH) += sysfs.o
 
 vlan-$(CONFIG_NET_XETH) := vlan.o
 
@@ -17,7 +18,7 @@ platina-mk1-y += $(vlan-y)
 
 xeth_ver = $(shell cat $(objtree)/include/config/kernel.release 2> /dev/null)
 ccflags-y += -DXETH_VERSION="$(if $(xeth_ver),$(xeth_ver),unknown)"
-ccflags-y += -I$(src) --include=xeth.h --include=pr.h
+ccflags-y += -I$(src) --include=xeth.h
 
 go-platina-mk1 := $(if $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(CONFIG_SAMPLE_XETH))
 extra-$(go-platina-mk1) += sample-platina-mk1

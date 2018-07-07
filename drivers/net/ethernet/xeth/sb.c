@@ -144,7 +144,7 @@ static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
 	struct xeth_priv priv;
 
 	strlcpy(ifname, msg_ifname, IFNAMSIZ);
-	err = xeth.ops.parse_name(ifname, &priv);
+	err = xeth.ops.parse(ifname, &priv);
 	if (err) {
 		xeth_pr("\"%s\" invalid", ifname);
 		return NULL;
@@ -172,23 +172,23 @@ static void xeth_sb_nd_put(struct net_device *nd)
 
 static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 {
-	const char *onoff = "invalid";
 	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
 	struct xeth_priv *priv;
-	if (!nd)
+	if (!nd) {
+		xeth_count_inc(sb_no_dev);
 		return;
+	}
 	priv = netdev_priv(nd);
 	switch (msg->flag) {
 	case XETH_CARRIER_ON:
 		netif_carrier_on(nd);
-		onoff = "on";
+		xeth_count_priv_set(priv, sb_carrier, 1);
 		break;
 	case XETH_CARRIER_OFF:
 		netif_carrier_off(nd);
-		onoff = "off";
+		xeth_count_priv_set(priv, sb_carrier, 0);
 		break;
 	}
-	may_xeth_pr_nd(false, nd, "carrier %s", onoff);
 	xeth_sb_nd_put(nd);
 }
 
@@ -199,19 +199,20 @@ static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 	u64 *stat;
 
 	if (msg->index >= xeth_sb_n_link_stats) {
-		xeth_pr("invalid link stat index: %llu", msg->index);
+		xeth_count_inc(sb_invalid);
 		return;
 	}
 	nd = xeth_sb_nd_of(msg->ifname);
-	if (!nd)
+	if (!nd) {
+		xeth_count_inc(sb_no_dev);
 		return;
+	}
 	priv = netdev_priv(nd);
 	stat = (u64*)&priv->link.stats + msg->index;
 	mutex_lock(&priv->link.mutex);
 	*stat = msg->count;
 	mutex_unlock(&priv->link.mutex);
-	may_xeth_pr_nd(false, nd, "%s: %llu",
-		       xeth_sb_link_stats[msg->index], msg->count);
+	xeth_count_priv_inc(priv, sb_link_stats);
 	xeth_sb_nd_put(nd);
 }
 
@@ -221,18 +222,19 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	struct xeth_priv *priv;
 
 	if (msg->index >= xeth.n.ethtool.stats) {
-		xeth_pr("invalid ethtool stat index: %llu", msg->index);
+		xeth_count_inc(sb_invalid);
 		return;
 	}
 	nd = xeth_sb_nd_of(msg->ifname);
-	if (!nd)
+	if (!nd) {
+		xeth_count_inc(sb_no_dev);
 		return;
+	}
 	priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool.mutex);
 	priv->ethtool.stats[msg->index] = msg->count;
 	mutex_unlock(&priv->ethtool.mutex);
-	may_xeth_pr_nd(false, nd, "%s: %llu",
-		       xeth.ethtool.stats[msg->index], msg->count);
+	xeth_count_priv_inc(priv, sb_ethtool_stats);
 	xeth_sb_nd_put(nd);
 }
 
@@ -241,7 +243,7 @@ int xeth_sb_send_break(void)
 	struct xeth_sb_tx_entry *entry;
 	size_t n = sizeof(struct xeth_msg_break);
 
-	if (xeth_sb_is_disconnected())
+	if (xeth_count(sb_connections) == 0)
 		return 0;
 	entry =  xeth_sb_alloc(n);
 	if (!entry)
@@ -258,7 +260,7 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ethtool_flags);
 
-	if (xeth_sb_is_disconnected())
+	if (xeth_count(sb_connections) == 0)
 		return 0;
 	entry =  xeth_sb_alloc(n);
 	if (!entry)
@@ -278,7 +280,7 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ethtool_settings);
 
-	if (xeth_sb_is_disconnected())
+	if (xeth_count(sb_connections) == 0)
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
@@ -317,7 +319,7 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	struct xeth_msg_ifa *msg;
 	size_t n = sizeof(struct xeth_msg_ifa);
 
-	if (xeth_sb_is_disconnected())
+	if (xeth_count(sb_connections) == 0)
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
@@ -336,11 +338,11 @@ int xeth_sb_send_ifinfo(struct net_device *nd)
 	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ifinfo *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_priv_iflink(priv);
+	struct net_device *iflink = xeth_iflink(priv->iflinki);
 	struct net *ndnet = dev_net(nd);
 	size_t n = sizeof(struct xeth_msg_ifinfo);
 
-	if (xeth_sb_is_disconnected())
+	if (xeth_count(sb_connections) == 0)
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
@@ -370,7 +372,7 @@ int xeth_sb_send_fibentry(unsigned long event,
 	size_t n = sizeof(struct xeth_msg_fibentry) +
 		(info->fi->fib_nhs * sizeof(struct xeth_next_hop));
 
-	if (xeth_sb_is_disconnected())
+	if (xeth_count(sb_connections) == 0)
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
@@ -400,8 +402,7 @@ int xeth_sb_send_fibentry(unsigned long event,
 
 static inline bool xeth_sb_service_continue(int err)
 {
-	return !err && !kthread_should_stop() &&
-		!signal_pending(xeth.sb.main);
+	return !err && !kthread_should_stop() && !signal_pending(xeth.sb.main);
 }
 
 // return < 0 if error; 1 if closed, and 0 othewise
@@ -459,13 +460,14 @@ static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
 	struct xeth_priv *priv;
 
-	if (!nd)
+	if (!nd) {
+		xeth_count_inc(sb_no_dev);
 		return;
+	}
 	priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool.mutex);
 	priv->ethtool.settings.base.speed = msg->mbps;
 	mutex_unlock(&priv->ethtool.mutex);
-	may_xeth_pr_nd(false, nd, "speed %uMb/s", msg->mbps);
 	xeth_sb_nd_put(nd);
 }
 
@@ -485,9 +487,9 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	if (ret == 0)
 		return 1;
 	if (ret < 0)
-		return xeth_pr_true_val("%d", ret);
+		return ret;
 	if (ret < sizeof(struct xeth_msg))
-		return xeth_pr_true_val("%d", -EINVAL);
+		return -EINVAL;
 	if (!xeth_is_msg(msg)) {
 		xeth.ops.side_band_rx(xeth.sb.rxbuf, ret);
 		return 0;
@@ -517,13 +519,13 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 		xeth_sb_speed((struct xeth_msg_speed *)xeth.sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_DUMP_FIBINFO: {
-		int err = xeth_pr_true_val("%d", xeth_notifier_register_fib());
+		int err = xeth_pr_err(xeth_notifier_register_fib());
 		xeth_sb_send_break();
 		if (err)
 			return err;
 	}	break;
 	default:
-		xeth_pr("invalid: %d", msg->kind);
+		xeth_count_inc(sb_invalid);
 		return -EINVAL;
 	}
 	return 0;
@@ -536,25 +538,21 @@ static inline int xeth_sb_service(struct socket *sock)
 		.tv_sec = 0,
 		.tv_usec = 100000,
 	};
-	int err = xeth_pr_true_val("%d",
-				   kernel_setsockopt(sock, SOL_SOCKET,
-						     SO_RCVTIMEO,
-						     (char *)&tv,
-						     sizeof(struct timeval)));
+	int err = kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+				    (char *)&tv, sizeof(struct timeval));
 	if (err < 0)
 		return err;
-	xeth_sb_connected();
+	xeth_count_inc(sb_connections);
 	while (xeth_sb_service_continue(err)) {
 		err = xeth_sb_service_tx(sock);
 		err = err ? err : xeth_sb_service_rx(sock);
 	}
-	xeth_sb_disconnected();
+	xeth_count_dec(sb_connections);
 	sock_release(sock);
 	xeth_notifier_unregister_fib();
-	if (err > 0) {
-		xeth_pr("closed");
+	xeth_foreach_nd(netif_carrier_off);
+	if (err > 0)	/* closed */
 		err = 0;
-	}
 	return err;
 }
 
@@ -566,12 +564,10 @@ static int xeth_sb_main(void *data)
 	struct sockaddr *paddr = (struct sockaddr *)&addr;
 	int n, err;
 
-	xeth_pr("start");
+	no_xeth_pr("start");
 	// set_current_state(TASK_INTERRUPTIBLE);
-	err = xeth_pr_true_val("%d",
-			       sock_create_kern(current->nsproxy->net_ns,
-						AF_UNIX, SOCK_SEQPACKET, 0,
-						&ln));
+	err = xeth_pr_err(sock_create_kern(current->nsproxy->net_ns, AF_UNIX,
+					   SOCK_SEQPACKET, 0, &ln));
 	if (err)
 		goto xeth_sb_main_egress;
 	SOCK_INODE(ln)->i_mode &= ~(S_IRWXG | S_IRWXO);
@@ -581,11 +577,11 @@ static int xeth_sb_main(void *data)
 	n = sizeof(sa_family_t) + 1 +
 		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1,
 			  "%s/xeth", xeth.ops.rtnl.kind);
-	xeth_pr("@%s: listen", addr.sun_path+1);
-	err = xeth_pr_true_val("%d", kernel_bind(ln, paddr, n));
+	no_xeth_pr("@%s: listen", addr.sun_path+1);
+	err = xeth_pr_err(kernel_bind(ln, paddr, n));
 	if (err)
 		goto xeth_sb_main_egress;
-	err = xeth_pr_true_val("%d", kernel_listen(ln, backlog));
+	err = xeth_pr_err(kernel_listen(ln, backlog));
 	if (err)
 		goto xeth_sb_main_egress;
 	allow_signal(SIGKILL);
@@ -600,11 +596,10 @@ static int xeth_sb_main(void *data)
 			continue;
 		}
 		if (!err) {
-			static const bool clog = false;
 			xeth_foreach_nd(xeth_sb_reset_nd_stats);
-			may_xeth_pr(clog, "@%s: connected", addr.sun_path+1);
-			err = xeth_pr_true_val("%d", xeth_sb_service(conn));
-			may_xeth_pr(clog, "@%s: disconnected", addr.sun_path+1);
+			no_xeth_pr("@%s: connected", addr.sun_path+1);
+			err = xeth_sb_service(conn);
+			no_xeth_pr("@%s: disconnected", addr.sun_path+1);
 		}
 	}
 xeth_sb_main_egress:
@@ -612,14 +607,13 @@ xeth_sb_main_egress:
 		xeth_pr("@%s: err %d", addr.sun_path+1, err);
 	if (ln)
 		sock_release(ln);
-	xeth_pr("finished");
+	no_xeth_pr("finished");
 	return err;
 }
 
 int xeth_sb_init(void)
 {
 	INIT_LIST_HEAD_RCU(&xeth.sb.tx);
-	xeth_sb_disconnected();
 	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth.sb.rxbuf)
 		return -ENOMEM;

@@ -43,10 +43,11 @@ int xeth_init(void)
 	if (!xeth.ea_iflinks)
 		goto egress;
 	for (i = 0; i < xeth.n.iflinks; i++)
-		xeth_reset_iflinks(i);
+		xeth_reset_iflink(i);
 	for (i = 0; i < xeth.n.nds; i++)
 		xeth_reset_nd(i);
 	INIT_LIST_HEAD_RCU(&xeth.list);
+	xeth_reset_counters();
 	return 0;
 
 egress:
@@ -68,9 +69,9 @@ void xeth_exit(void)
 	if (xeth.iflinks) {
 		int i;
 		for (i = 0; i < xeth.n.iflinks; i++) {
-			struct net_device *iflink = xeth_iflinks(i);
+			struct net_device *iflink = xeth_iflink(i);
 			if (iflink) {
-				xeth_reset_iflinks(i);
+				xeth_reset_iflink(i);
 				rtnl_lock();
 				netdev_rx_handler_unregister(iflink);
 				rtnl_unlock();
