@@ -353,6 +353,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd)
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = iflink->ifindex;
 	msg->flags = nd->flags;
+	msg->portid = priv->portid;
 	msg->id = priv->id;
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
 	msg->portindex = priv->porti;

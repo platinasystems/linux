@@ -50,6 +50,7 @@ struct	xeth_priv {
 	atomic64_t	count[n_xeth_count_priv];
 
 	u16	id;
+	s16	portid;
 	s16	ndi, iflinki, porti;
 	s8	subporti;
 	u8	devtype;
