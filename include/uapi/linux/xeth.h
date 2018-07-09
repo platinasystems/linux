@@ -144,6 +144,8 @@ xeth_ifmsg_def(ifinfo,
 	s16	portindex;
 	s8	subportindex;
 	u8	devtype;
+	s16	portid;
+	u8	pad[6];
 );
 
 xeth_ifmsg_def(ifa,
