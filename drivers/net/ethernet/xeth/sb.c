@@ -532,17 +532,19 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	return 0;
 }
 
-// return < 0 if error and 0 otherwise
-static inline int xeth_sb_service(struct socket *sock)
+static inline void xeth_sb_service(struct socket *sock)
 {
+	int err;
 	struct timeval tv = {
 		.tv_sec = 0,
 		.tv_usec = 100000,
 	};
-	int err = kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
-				    (char *)&tv, sizeof(struct timeval));
+
+	err = xeth_pr_err(kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+					    (char *)&tv,
+					    sizeof(struct timeval)));
 	if (err < 0)
-		return err;
+		return;
 	xeth_count_inc(sb_connections);
 	while (xeth_sb_service_continue(err)) {
 		err = xeth_sb_service_tx(sock);
@@ -552,9 +554,6 @@ static inline int xeth_sb_service(struct socket *sock)
 	sock_release(sock);
 	xeth_notifier_unregister_fib();
 	xeth_foreach_nd(netif_carrier_off);
-	if (err > 0)	/* closed */
-		err = 0;
-	return err;
 }
 
 static int xeth_sb_main(void *data)
@@ -599,7 +598,7 @@ static int xeth_sb_main(void *data)
 		if (!err) {
 			xeth_foreach_nd(xeth_sb_reset_nd_stats);
 			no_xeth_pr("@%s: connected", addr.sun_path+1);
-			err = xeth_sb_service(conn);
+			xeth_sb_service(conn);
 			no_xeth_pr("@%s: disconnected", addr.sun_path+1);
 		}
 	}
@@ -609,6 +608,7 @@ xeth_sb_main_egress:
 	if (ln)
 		sock_release(ln);
 	no_xeth_pr("finished");
+	xeth.sb.main = NULL;
 	return err;
 }
 
@@ -626,7 +626,7 @@ void xeth_sb_exit(void)
 {
 	if (xeth.sb.main) {
 		kthread_stop(xeth.sb.main);
-		xeth.sb.main = NULL;
+		while (xeth.sb.main) ;
 	}
 	if (xeth.sb.rxbuf) {
 		kfree(xeth.sb.rxbuf);
