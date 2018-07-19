@@ -42,12 +42,14 @@ static int xeth_ndo_open(struct net_device *nd)
 		if (err)
 			return err;
 	}
+	xeth_pr_err(xeth_sb_send_ifinfo(nd, nd->flags | IFF_UP));
 	return 0;
 }
 
 static int xeth_ndo_stop(struct net_device *nd)
 {
 	netif_carrier_off(nd);
+	xeth_pr_err(xeth_sb_send_ifinfo(nd, nd->flags & ~IFF_UP));
 	return 0;
 }
 
