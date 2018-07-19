@@ -333,7 +333,7 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	return 0;
 }
 
-int xeth_sb_send_ifinfo(struct net_device *nd)
+int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 {
 	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ifinfo *msg;
@@ -352,7 +352,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd)
 	msg->net = (ndnet == &init_net) ? 1 : ndnet->ns.inum;
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = iflink->ifindex;
-	msg->flags = nd->flags;
+	msg->flags = modiff ? modiff : nd->flags;
 	msg->portid = priv->portid;
 	msg->id = priv->id;
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
@@ -450,7 +450,7 @@ static inline int xeth_sb_dump_ifinfo(struct socket *sock,
 		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
 	}
-	xeth_sb_send_ifinfo(nd);
+	xeth_sb_send_ifinfo(nd, 0);
 	xeth_sb_send_ethtool_flags(nd);
 	xeth_sb_send_ethtool_settings(nd);
 	return xeth_sb_service_tx(sock);
