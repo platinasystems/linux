@@ -114,6 +114,7 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
+int xeth_sb_send_ifdel(struct net_device *nd);
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff);
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
