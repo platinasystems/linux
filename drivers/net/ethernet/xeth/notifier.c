@@ -54,6 +54,12 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	nd = netdev_notifier_info_to_dev(ptr);
 	switch (event) {
+	case NETDEV_REGISTER:
+		/* called from dev_change_net_namespace */
+		for (ndi = 0; ndi < xeth.n.ids; ndi++)
+			if (nd == xeth_nd(ndi))
+				xeth_sb_send_ifinfo(nd, 0);
+		break;
 	case NETDEV_UNREGISTER:
 		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
 			struct net_device *iflink = xeth_iflink(iflinki);
