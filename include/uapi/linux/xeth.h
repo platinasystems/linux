@@ -40,6 +40,7 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_IFA,
 	XETH_MSG_KIND_DUMP_FIBINFO,
 	XETH_MSG_KIND_FIBENTRY,
+	XETH_MSG_KIND_IFDEL,
 };
 
 enum xeth_msg_carrier_flag {
@@ -176,6 +177,12 @@ xeth_msg_def(fibentry,
 	u8	type;
 	u32	tb_id;
 	struct xeth_next_hop nh[];
+);
+
+xeth_ifmsg_def(ifdel,
+	s32	ifindex;
+	u8	devtype;
+	u8	pad[3];
 );
 
 static inline bool xeth_is_msg(struct xeth_msg *p)
