@@ -109,12 +109,12 @@ static int platina_mk1_parse_eth(const char *name, struct xeth_priv *priv)
 	if (xeth_pr_true_expr(sscanf(name, "%hu-%hu", &port, &subport) != 2,
 			      "invalid eth-PORT-SUBPORT"))
 		return -EINVAL;
-	if (xeth_pr_true_expr((port > (platina_mk1_n_ports + base)) ||
+	if (xeth_pr_true_expr((port >= (platina_mk1_n_ports + base)) ||
 			      (port < base),
 			      "invalid PORT"))
 		return -EINVAL;
 	port -= base;
-	if (xeth_pr_true_expr((subport > (platina_mk1_n_subports + base)) ||
+	if (xeth_pr_true_expr((subport >= (platina_mk1_n_subports + base)) ||
 			      (subport < base),
 			      "invalid SUBPORT"))
 		return -EINVAL;
