@@ -333,6 +333,26 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	return 0;
 }
 
+int xeth_sb_send_ifdel(struct net_device *nd)
+{
+	struct xeth_sb_tx_entry *entry;
+	struct xeth_msg_ifdel *msg;
+	struct xeth_priv *priv = netdev_priv(nd);
+	size_t n = sizeof(struct xeth_msg_ifdel);
+
+	if (xeth_count(sb_connections) == 0)
+		return 0;
+	entry = xeth_sb_alloc(n);
+	if (!entry)
+		return -ENOMEM;
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
+	msg = (struct xeth_msg_ifdel *)&entry->data[0];
+	msg->ifindex = nd->ifindex;
+	msg->devtype = priv->devtype;
+	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	return 0;
+}
+
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 {
 	struct xeth_sb_tx_entry *entry;

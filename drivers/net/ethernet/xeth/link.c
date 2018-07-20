@@ -117,6 +117,7 @@ static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 
+	xeth_sb_send_ifdel(nd);
 	xeth_sysfs_del(priv);
 	priv->nd = NULL;
 	list_del_rcu(&priv->list);
