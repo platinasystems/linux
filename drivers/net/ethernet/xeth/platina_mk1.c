@@ -105,18 +105,21 @@ static int platina_mk1_parse_eth(const char *name, struct xeth_priv *priv)
 {
 	int base = alpha ? 0 : 1;
 	u16 port, subport;
+	const char *p = name + 4;
 
-	if (xeth_pr_true_expr(sscanf(name, "%hu-%hu", &port, &subport) != 2,
-			      "invalid eth-PORT-SUBPORT"))
+	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
+		return -EINVAL;
+	if (xeth_pr_true_expr(sscanf(p, "%hu-%hu", &port, &subport) != 2,
+			      "[%s] invalid eth-PORT-SUBPORT", name))
 		return -EINVAL;
 	if (xeth_pr_true_expr((port >= (platina_mk1_n_ports + base)) ||
 			      (port < base),
-			      "invalid PORT"))
+			      "[%s] out-of-range PORT %u", name, port))
 		return -EINVAL;
 	port -= base;
 	if (xeth_pr_true_expr((subport >= (platina_mk1_n_subports + base)) ||
 			      (subport < base),
-			      "invalid SUBPORT"))
+			      "[%s] out-of-range SUBPORT %u", name, subport))
 		return -EINVAL;
 	subport -= base;
 	priv->portid = 1 + ((port ^ 1) * platina_mk1_n_subports) + subport + 1;
@@ -132,11 +135,15 @@ static int platina_mk1_parse_eth(const char *name, struct xeth_priv *priv)
 static int platina_mk1_parse_xethbr(const char *name, struct xeth_priv *priv)
 {
 	u16 u;
+	const char *p = name + 7;
 
-	if (xeth_pr_true_expr(sscanf(name, "%hu", &u) != 1, "invalid BRIDGE"))
+	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
+		return -EINVAL;
+	if (xeth_pr_true_expr(sscanf(p, "%hu", &u) != 1,
+			      "[%s] invalid BRIDGE", name))
 		return -EINVAL;
 	if (xeth_pr_true_expr(1 > u || u >= platina_mk1_xeth_base_port_id,
-			      "out of range ID"))
+			      "[%s] out-of-range ID %u", name, u))
 		return -EINVAL;
 	priv->porti = -1;
 	priv->subporti = -1;
@@ -152,48 +159,50 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 {
 	int n;
 	u16 u;
+	const char *p = name + 4;
 
-	if (xeth_pr_true_expr(strlen(name) == 0, "incomplete xeth ifname"))
+	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
 		return -EINVAL;
-	if (xeth_pr_true_expr(sscanf(name, "%hu%n", &u, &n) != 1,
-			      "invalid PORT"))
+	if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
+			      "[%s] invalid PORT [%s]", name, p))
 		return -EINVAL;
-	name += n;
+	p += n;
 	if (!alpha)
 		u -= 1;
-	if (xeth_pr_true_expr(u >= platina_mk1_n_ports, "out of range PORT"))
+	if (xeth_pr_true_expr(u >= platina_mk1_n_ports,
+			      "[%s] out-of-range PORT %u", name, u))
 		return -EINVAL;
 	priv->porti = u;
 	priv->subporti = -1;
 	priv->portid = 4094 - u;
 	priv->id = priv->portid;
 	priv->devtype = XETH_DEVTYPE_PORT;
-	if (*name == '-') {
-		name++;
-		if (xeth_pr_true_expr(sscanf(name, "%hu%n", &u, &n) != 1,
-				      "invalid SUBPORT"))
+	if (*p == '-') {
+		p++;
+		if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
+				      "[%s] invalid SUBPORT [%s]", name, p))
 			return -EINVAL;
 		if (!alpha)
 			u -= 1;
 		if (xeth_pr_true_expr(u >= platina_mk1_n_subports,
-				      "out of range SUBPORT"))
+				      "[%s] out-of-range SUBPORT %u", name, u))
 			return -EINVAL;
-		name += n;
+		p += n;
 		priv->subporti = u;
 		priv->portid -= (u * platina_mk1_n_ports);
 		priv->id = priv->portid;
 	}
-	if (*name == '.') {
-		name++;
-		if (xeth_pr_true_expr(sscanf(name, "%hu%n", &u, &n) != 1,
-				      "invalid ID"))
+	if (*p == '.') {
+		p++;
+		if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
+				      "[%s] invalid ID [%s]", name, p))
 			return -EINVAL;
 		if (xeth_pr_true_expr(1 > u ||
 				      u >= platina_mk1_xeth_base_port_id,
-				      "out of range ID"))
+				      "[%s] out-of-range ID %u", name, u))
 			return -EINVAL;
-		name += n;
-		switch (*name) {
+		p += n;
+		switch (*p) {
 		case 't':
 			priv->devtype = XETH_DEVTYPE_TAGGED_BRIDGE_PORT;
 			break;
@@ -201,14 +210,17 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 			priv->devtype = XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT;
 			break;
 		default:
-			xeth_pr("invalid BRIDGE-PORT");
+			xeth_pr("[%s] invalid suffix [%s]", name, p);
 			return -EINVAL;
 		}
+		p++;
 		priv->id = u;
 		priv->ndi = -1;
 	} else {
 		priv->ndi = priv->id;
 	}
+	if (xeth_pr_true_expr(*p, "[%s] invalid suffix [%s]", name, p))
+		return -EINVAL;
 	priv->iflinki = priv->id & 1;
 	return 0;
 }
@@ -216,13 +228,13 @@ static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
 static int platina_mk1_parse(const char *name, struct xeth_priv *priv)
 {
 	if (memcmp(name, "eth-", 4) == 0)
-		return platina_mk1_parse_eth(name+4, priv);
+		return platina_mk1_parse_eth(name, priv);
 	else if (memcmp(name, "xethbr.", 7) == 0)
-		return platina_mk1_parse_xethbr(name+7, priv);
+		return platina_mk1_parse_xethbr(name, priv);
 	else if (memcmp(name, "xeth", 4) == 0)
-		return platina_mk1_parse_xeth(name+4, priv);
-	xeth_pr("invalid name");
-	return  -EINVAL;
+		return platina_mk1_parse_xeth(name, priv);
+	xeth_pr("'%s' invalid ifname", name);
+	return -EINVAL;
 }
 
 static int platina_mk1_set_lladdr(struct net_device *nd)
