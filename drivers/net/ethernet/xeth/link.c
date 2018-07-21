@@ -67,7 +67,7 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 		return -EINVAL;
 	nla_strlcpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	ifname[IFNAMSIZ] = '\0';
-	err = xeth_pr_nd_err(nd, xeth.ops.parse(ifname, priv));
+	err = xeth.ops.parse(ifname, priv);
 	if (err)
 		return err;
 	if (priv->ndi > 0)
