@@ -401,8 +401,7 @@ int xeth_sb_send_fibentry(unsigned long event,
 	msg = (struct xeth_msg_fibentry *)&entry->data[0];
 	nh = (struct xeth_next_hop*)&msg->nh[0];
 	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_FIBENTRY);
-	msg->net = (info->fi->fib_net == &init_net) ? 1 :
-		(u64)info->fi->fib_net;
+	msg->net = (info->info.net == &init_net) ? 1 : info->info.net->ns.inum;
 	msg->address = htonl(info->dst);
 	msg->mask = inet_make_mask(info->dst_len);
 	msg->event = (u8)event;
