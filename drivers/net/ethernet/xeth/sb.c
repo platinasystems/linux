@@ -369,7 +369,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
 	msg = (struct xeth_msg_ifinfo *)&entry->data[0];
-	msg->net = (ndnet == &init_net) ? 1 : ndnet->ns.inum;
+	msg->net = net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = iflink->ifindex;
 	msg->flags = modiff ? modiff : nd->flags;
@@ -401,7 +401,8 @@ int xeth_sb_send_fibentry(unsigned long event,
 	msg = (struct xeth_msg_fibentry *)&entry->data[0];
 	nh = (struct xeth_next_hop*)&msg->nh[0];
 	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_FIBENTRY);
-	msg->net = (info->info.net == &init_net) ? 1 : info->info.net->ns.inum;
+	msg->net = net_eq(info->info.net, &init_net) ? 1 :
+		info->info.net->ns.inum;
 	msg->address = htonl(info->dst);
 	msg->mask = inet_make_mask(info->dst_len);
 	msg->event = (u8)event;
