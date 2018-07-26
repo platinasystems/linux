@@ -421,6 +421,37 @@ int xeth_sb_send_fibentry(unsigned long event,
 	return 0;
 }
 
+int xeth_sb_send_neigh_update(struct neighbour *neigh)
+{
+	struct xeth_sb_tx_entry *entry;
+	struct xeth_msg_neigh_update *msg;
+	struct net *ndnet = dev_net(neigh->dev);
+	size_t n = sizeof(struct xeth_msg_neigh_update);
+
+	if (xeth_count(sb_connections) == 0)
+		return 0;
+	entry = xeth_sb_alloc(n);
+	if (!entry)
+		return -ENOMEM;
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_NEIGH_UPDATE,
+		       neigh->dev->name);
+	msg = (struct xeth_msg_neigh_update *)&entry->data[0];
+	msg->net = net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
+	msg->ifindex = neigh->dev->ifindex;
+	msg->family = neigh->ops->family;
+	msg->len = neigh->tbl->key_len;
+	memcpy(msg->dst, neigh->primary_key, neigh->tbl->key_len);
+	read_lock_bh(&neigh->lock);
+	if (neigh->nud_state & NUD_VALID) {
+		char ha[MAX_ADDR_LEN];
+		neigh_ha_snapshot(ha, neigh, neigh->dev);
+		memcpy(&msg->lladdr[0], ha, ETH_ALEN);
+	}
+	read_unlock_bh(&neigh->lock);
+	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	return 0;
+}
+
 static inline bool xeth_sb_service_continue(int err)
 {
 	return !err && !kthread_should_stop() && !signal_pending(xeth.sb.main);
