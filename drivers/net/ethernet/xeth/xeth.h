@@ -32,6 +32,7 @@
 #include <linux/inetdevice.h>
 #include <net/rtnetlink.h>
 #include <net/ip_fib.h>
+#include <net/netevent.h>
 
 #ifndef XETH_VERSION
 #define XETH_VERSION unknown
@@ -118,6 +119,7 @@ int xeth_sb_send_ifdel(struct net_device *nd);
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff);
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
+int xeth_sb_send_neigh_update(struct neighbour *neigh);
 
 int xeth_sysfs_add(struct xeth_priv *priv);
 void xeth_sysfs_del(struct xeth_priv *priv);
