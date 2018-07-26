@@ -27,6 +27,8 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 				   unsigned long event, void *ptr);
 static int xeth_notifier_inetaddr(struct notifier_block *nb,
 				  unsigned long event, void *ptr);
+static int xeth_notifier_netevent(struct notifier_block *nb,
+				  unsigned long event, void *ptr);
 static int xeth_notifier_fib(struct notifier_block *nb,
 			     unsigned long event, void *ptr);
 
@@ -36,12 +38,17 @@ static struct notifier_block xeth_notifier_block_netdevice = {
 static struct notifier_block xeth_notifier_block_inetaddr = {
 	.notifier_call = xeth_notifier_inetaddr,
 };
+static struct notifier_block xeth_notifier_block_netevent = {
+	.notifier_call = xeth_notifier_netevent,
+};
 static struct notifier_block xeth_notifier_block_fib = {
 	.notifier_call = xeth_notifier_fib,
 };
 
+
 static bool xeth_notifier_registered_netdevice = false;
 static bool xeth_notifier_registered_inetaddr = false;
+static bool xeth_notifier_registered_netevent = false;
 static bool xeth_notifier_registered_fib = false;
 
 static int xeth_notifier_netdevice(struct notifier_block *nb,
@@ -145,6 +152,34 @@ static void xeth_notifier_unregister_inetaddr(void)
 	xeth_notifier_registered_inetaddr = false;
 }
 
+static int xeth_notifier_netevent(struct notifier_block *nb,
+				  unsigned long event, void *ptr)
+{
+	if (nb != &xeth_notifier_block_netevent)
+		return NOTIFY_DONE;
+	switch (event) {
+	case NETEVENT_NEIGH_UPDATE:
+		xeth_sb_send_neigh_update(ptr);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static int xeth_notifier_register_netevent(void)
+{
+	int err = register_netevent_notifier(&xeth_notifier_block_netevent);
+	if (!err)
+		xeth_notifier_registered_netevent = true;
+	return err;
+}
+
+static void xeth_notifier_unregister_netevent(void)
+{
+	if (xeth_notifier_registered_netevent)
+		unregister_netevent_notifier(&xeth_notifier_block_netevent);
+	xeth_notifier_registered_netevent = false;
+}
+
 static int xeth_notifier_fib(struct notifier_block *nb,
 			     unsigned long event, void *ptr)
 {
@@ -171,8 +206,12 @@ static void xeth_notifier_fib_cb(struct notifier_block *nb)
 
 int xeth_notifier_register_fib(void)
 {
-	int err = register_fib_notifier(&xeth_notifier_block_fib,
-					xeth_notifier_fib_cb);
+	int err;
+	
+	if (xeth_notifier_registered_fib)
+		return 0;
+	err = register_fib_notifier(&xeth_notifier_block_fib,
+				    xeth_notifier_fib_cb);
 	if (!err)
 		xeth_notifier_registered_fib = true;
 	return err;
@@ -190,6 +229,7 @@ int xeth_notifier_init(void)
 	int (*const registers[])(void) = {
 		xeth_notifier_register_netdevice,
 		xeth_notifier_register_inetaddr,
+		xeth_notifier_register_netevent,
 		/* xeth_notifier_register_fib w/ sb command instead of init */
 		NULL,
 	};
@@ -208,9 +248,10 @@ int xeth_notifier_init(void)
 void xeth_notifier_exit(void)
 {
 	void (*const unregisters[])(void) = {
-		xeth_notifier_unregister_netdevice,
-		xeth_notifier_unregister_inetaddr,
 		xeth_notifier_unregister_fib,
+		xeth_notifier_unregister_netevent,
+		xeth_notifier_unregister_inetaddr,
+		xeth_notifier_unregister_netdevice,
 		NULL,
 	};
 	int i;
