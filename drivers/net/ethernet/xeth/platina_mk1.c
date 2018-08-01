@@ -380,7 +380,6 @@ static int __init platina_mk1_init(void)
 	xeth.ops.assert_iflinks = platina_mk1_assert_iflinks;
 	xeth.ops.parse = platina_mk1_parse;
 	xeth.ops.set_lladdr = platina_mk1_set_lladdr;
-	xeth.ops.rtnl.kind = "platina-mk1";
 	xeth.ops.init_ethtool_settings = platina_mk1_init_ethtool_settings;
 	xeth.ops.validate_speed = platina_mk1_validate_speed;
 	for (i = 0; inits[i]; i++) {
