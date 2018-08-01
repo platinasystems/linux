@@ -173,6 +173,7 @@ static void xeth_link_reset(void)
 int xeth_link_init(void)
 {
 	int err;
+	xeth.ops.rtnl.kind		= "xeth";
 	xeth.ops.rtnl.priv_size         = sizeof(struct xeth_priv);
 	xeth.ops.rtnl.setup             = xeth_link_setup;
 	xeth.ops.rtnl.newlink           = xeth_link_new;
