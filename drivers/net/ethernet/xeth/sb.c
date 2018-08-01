@@ -627,7 +627,7 @@ static int xeth_sb_main(void *data)
 	/* Note: This is an abstract namespace w/ addr.sun_path[0] == 0 */
 	n = sizeof(sa_family_t) + 1 +
 		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1,
-			  "%s/xeth", xeth.ops.rtnl.kind);
+			  "%s", xeth.ops.rtnl.kind);
 	no_xeth_pr("@%s: listen", addr.sun_path+1);
 	err = xeth_pr_err(kernel_bind(ln, paddr, n));
 	if (err)
