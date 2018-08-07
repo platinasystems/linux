@@ -23,6 +23,58 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
+struct	xeth_ndo_vid_entry {
+	struct	list_head __rcu
+		list;
+	u16	vid;
+};
+
+static struct list_head __rcu xeth_ndo_vids;
+
+static struct xeth_ndo_vid_entry *xeth_ndo_alloc_vid(void)
+{
+	struct xeth_ndo_vid_entry *entry =
+		list_first_or_null_rcu(&xeth_ndo_vids,
+				       struct xeth_ndo_vid_entry,
+				       list);
+	if (entry) {
+		list_del_rcu(&entry->list);
+	} else {
+		const size_t n = sizeof(struct xeth_ndo_vid_entry);
+		entry = kzalloc(n, GFP_KERNEL);
+	}
+	return entry;
+}
+
+static void xeth_ndo_free_vid(struct xeth_ndo_vid_entry *entry)
+{
+	list_add_tail_rcu(&entry->list, &xeth_ndo_vids);
+}
+
+void xeth_ndo_free_vids(struct net_device *nd)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+
+	while (true) {
+		struct xeth_ndo_vid_entry *entry =
+			list_first_or_null_rcu(&priv->vids,
+					       struct xeth_ndo_vid_entry,
+					       list);
+		if (!entry)
+			break;
+		list_del_rcu(&entry->list);
+		xeth_ndo_free_vid(entry);
+	}
+}
+
+void xeth_ndo_send_vids(struct net_device *nd)
+{
+	struct xeth_ndo_vid_entry *entry;
+	struct xeth_priv *priv = netdev_priv(nd);
+	list_for_each_entry_rcu(entry, &priv->vids, list)
+		xeth_sb_send_if_add_vid(nd, entry->vid);
+}
+
 static int xeth_ndo_open(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
@@ -78,6 +130,33 @@ static int xeth_ndo_get_iflink(const struct net_device *nd)
 	return iflink ? iflink->ifindex : 0;
 }
 
+static int xeth_ndo_vlan_rx_add_vid(struct net_device *nd,
+				    __be16 proto, u16 vid)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+	struct xeth_ndo_vid_entry *entry = xeth_ndo_alloc_vid();
+	if (!entry)
+		return -ENOMEM;
+	entry->vid = vid;
+	list_add_tail_rcu(&entry->list, &priv->vids);
+	return xeth_sb_send_if_add_vid(nd, vid);
+}
+
+static int xeth_ndo_vlan_rx_kill_vid(struct net_device *nd,
+				     __be16 proto, u16 vid)
+{
+	struct xeth_ndo_vid_entry *entry;
+	struct xeth_priv *priv = netdev_priv(nd);
+	list_for_each_entry_rcu(entry, &priv->vids, list) {
+		if (entry->vid == vid) {
+			list_del_rcu(&entry->list);
+			xeth_ndo_free_vid(entry);
+			break;
+		}
+	}
+	return xeth_sb_send_if_del_vid(nd, vid);
+}
+
 int xeth_ndo_init(void)
 {
 	xeth.ops.ndo.ndo_open           = xeth_ndo_open;
@@ -85,14 +164,29 @@ int xeth_ndo_init(void)
 	xeth.ops.ndo.ndo_change_carrier = xeth_ndo_change_carrier;
 	xeth.ops.ndo.ndo_get_stats64    = xeth_ndo_get_stats64;
 	xeth.ops.ndo.ndo_get_iflink     = xeth_ndo_get_iflink;
+	xeth.ops.ndo.ndo_vlan_rx_add_vid	= xeth_ndo_vlan_rx_add_vid;
+	xeth.ops.ndo.ndo_vlan_rx_kill_vid	= xeth_ndo_vlan_rx_kill_vid;
+	INIT_LIST_HEAD_RCU(&xeth_ndo_vids);
 	return 0;
 }
 
 void xeth_ndo_exit(void)
 {
+	while (true) {
+		struct xeth_ndo_vid_entry *entry =
+			list_first_or_null_rcu(&xeth_ndo_vids,
+					       struct xeth_ndo_vid_entry,
+					       list);
+		if (!entry)
+			break;
+		list_del_rcu(&entry->list);
+		kfree(entry);
+	}
 	xeth.ops.ndo.ndo_open           = NULL;
 	xeth.ops.ndo.ndo_stop           = NULL;
 	xeth.ops.ndo.ndo_change_carrier = NULL;
 	xeth.ops.ndo.ndo_get_stats64    = NULL;
 	xeth.ops.ndo.ndo_get_iflink     = NULL;
+	xeth.ops.ndo.ndo_vlan_rx_add_vid	= NULL;
+	xeth.ops.ndo.ndo_vlan_rx_kill_vid	= NULL;
 }
