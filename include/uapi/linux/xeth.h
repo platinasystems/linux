@@ -42,6 +42,7 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_FIBENTRY,
 	XETH_MSG_KIND_IFDEL,
 	XETH_MSG_KIND_NEIGH_UPDATE,
+	XETH_MSG_KIND_IFVID,
 };
 
 enum xeth_msg_carrier_flag {
@@ -196,6 +197,19 @@ xeth_ifmsg_def(neigh_update,
 	u8 	lladdr[ETH_ALEN];
 	u8	pad[2];
 );
+
+xeth_ifmsg_def(ifvid,
+	u64	net;
+	s32	ifindex;
+	u8	op;
+	u8	noop;
+	u16	vid;
+);
+
+enum {
+	XETH_IFVID_ADD,
+	XETH_IFVID_DEL,
+};
 
 static inline bool xeth_is_msg(struct xeth_msg *p)
 {

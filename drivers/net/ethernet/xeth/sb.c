@@ -66,6 +66,12 @@ struct xeth_sb_tx_entry {
 	unsigned char		data[];
 };
 
+static u64 xeth_sb_ns_inum(struct net_device *nd)
+{
+	struct net *ndnet = dev_net(nd);
+	return net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
+}
+
 static inline struct xeth_sb_tx_entry *xeth_sb_alloc(size_t data_len)
 {
 	size_t n = sizeof(struct xeth_sb_tx_entry) + data_len;
@@ -359,7 +365,6 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 	struct xeth_msg_ifinfo *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
 	struct net_device *iflink = xeth_iflink(priv->iflinki);
-	struct net *ndnet = dev_net(nd);
 	size_t n = sizeof(struct xeth_msg_ifinfo);
 
 	if (xeth_count(sb_connections) == 0)
@@ -369,7 +374,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 		return -ENOMEM;
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
 	msg = (struct xeth_msg_ifinfo *)&entry->data[0];
-	msg->net = net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
+	msg->net = xeth_sb_ns_inum(nd);
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = iflink->ifindex;
 	msg->flags = modiff ? modiff : nd->flags;
@@ -381,6 +386,36 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 	msg->devtype = priv->devtype;
 	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
 	return 0;
+}
+
+static int xeth_sb_send_ifvid(struct net_device *nd, u8 op, u16 vid)
+{
+	struct xeth_sb_tx_entry *entry;
+	struct xeth_msg_ifvid *msg;
+	size_t n = sizeof(struct xeth_msg_ifvid);
+
+	if (xeth_count(sb_connections) == 0)
+		return 0;
+	entry = xeth_sb_alloc(n);
+	if (!entry)
+		return -ENOMEM;
+	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFVID, nd->name);
+	msg = (struct xeth_msg_ifvid *)&entry->data[0];
+	msg->net = xeth_sb_ns_inum(nd);
+	msg->ifindex = nd->ifindex;
+	msg->vid = vid;
+	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	return 0;
+}
+
+int xeth_sb_send_if_add_vid(struct net_device *nd, u16 vid)
+{
+	return xeth_sb_send_ifvid(nd, XETH_IFVID_ADD, vid);
+}
+
+int xeth_sb_send_if_del_vid(struct net_device *nd, u16 vid)
+{
+	return xeth_sb_send_ifvid(nd, XETH_IFVID_DEL, vid);
 }
 
 int xeth_sb_send_fibentry(unsigned long event,
@@ -425,7 +460,6 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 {
 	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_neigh_update *msg;
-	struct net *ndnet = dev_net(neigh->dev);
 	size_t n = sizeof(struct xeth_msg_neigh_update);
 
 	if (xeth_count(sb_connections) == 0)
@@ -436,7 +470,7 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_NEIGH_UPDATE,
 		       neigh->dev->name);
 	msg = (struct xeth_msg_neigh_update *)&entry->data[0];
-	msg->net = net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
+	msg->net = xeth_sb_ns_inum(neigh->dev);
 	msg->ifindex = neigh->dev->ifindex;
 	msg->family = neigh->ops->family;
 	msg->len = neigh->tbl->key_len;
@@ -502,6 +536,7 @@ static inline int xeth_sb_dump_ifinfo(struct socket *sock,
 			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
 	}
 	xeth_sb_send_ifinfo(nd, 0);
+	xeth_ndo_send_vids(nd);
 	xeth_sb_send_ethtool_flags(nd);
 	xeth_sb_send_ethtool_settings(nd);
 	return xeth_sb_service_tx(sock);
