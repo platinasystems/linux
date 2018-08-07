@@ -117,12 +117,17 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
 int xeth_sb_send_ifdel(struct net_device *nd);
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff);
+int xeth_sb_send_if_add_vid(struct net_device *nd, u16 vid);
+int xeth_sb_send_if_del_vid(struct net_device *nd, u16 vid);
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
 int xeth_sb_send_neigh_update(struct neighbour *neigh);
 
 int xeth_sysfs_add(struct xeth_priv *priv);
 void xeth_sysfs_del(struct xeth_priv *priv);
+
+void xeth_ndo_free_vids(struct net_device *nd);
+void xeth_ndo_send_vids(struct net_device *nd);
 
 static inline struct net_device *xeth_iflink(int i)
 {

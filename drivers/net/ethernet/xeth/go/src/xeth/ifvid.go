@@ -21,50 +21,32 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#ifndef __XETH_PRIV_H
-#define __XETH_PRIV_H
+package xeth
 
-#include <linux/atomic.h>
-#include <linux/ethtool.h>
-#include <uapi/linux/if_link.h>
+import "fmt"
 
-struct	xeth_priv {
-	struct	list_head __rcu	list;
-	struct	net_device	*nd;
+const (
+	XETH_IFVID_ADD = iota
+	XETH_IFVID_DEL
+)
 
-	struct {
-		struct	mutex	mutex;
-		struct	rtnl_link_stats64
-			stats;
-	} link;
+type IfvidOp uint8
 
-	struct {
-		struct	mutex	mutex;
-		struct	ethtool_link_ksettings
-			settings;
-		u64	*stats;
-		u32	flags;
-	} ethtool;
-
-	struct	kobject	kobj;
-	atomic64_t	count[n_xeth_count_priv];
-
-	u16	id;
-	s16	portid;
-	s16	ndi, iflinki, porti;
-	s8	subporti;
-	u8	devtype;
-
-	struct	list_head __rcu	vids;
-};
-
-#define to_xeth_priv(x)	container_of((x), struct xeth_priv, kobj)
-
-static inline void xeth_priv_reset_counters(struct xeth_priv *priv)
-{
-	int i;
-	for (i = 0; i < n_xeth_count_priv; i++)
-		atomic64_set(&priv->count[i], 0);
+func (op IfvidOp) String() string {
+	var ops = []string{
+		"add",
+		"del",
+	}
+	i := int(op)
+	if i < len(ops) {
+		return ops[i]
+	}
+	return "invalid"
 }
 
-#endif /* __XETH_PRIV_H */
+func (ifvid *MsgIfvid) String() string {
+	return fmt.Sprintln(Kind(ifvid.Kind),
+		(*Ifname)(&ifvid.Ifname),
+		IfvidOp(ifvid.Op),
+		ifvid.Vid)
+}
