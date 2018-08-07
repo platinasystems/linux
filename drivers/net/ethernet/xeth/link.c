@@ -92,8 +92,8 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	nd->hw_features = NETIF_F_HW_CSUM | NETIF_F_SG | NETIF_F_FRAGLIST |
 		NETIF_F_GSO_SOFTWARE | NETIF_F_HIGHDMA | NETIF_F_SCTP_CRC |
 		NETIF_F_ALL_FCOE;
-	nd->features |= nd->hw_features | NETIF_F_LLTX;
-
+	nd->features |= nd->hw_features | NETIF_F_LLTX |
+		NETIF_F_HW_VLAN_CTAG_FILTER;
 	nd->vlan_features = iflink->vlan_features & ~NETIF_F_ALL_FCOE;
 	/* ipv6 shared card related stuff */
 	/* FIXME dev->dev_id = real_dev->dev_id; */
@@ -110,6 +110,7 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	priv->nd = nd;
 	list_add_tail_rcu(&priv->list, &xeth.list);
 	xeth_priv_reset_counters(priv);
+	INIT_LIST_HEAD_RCU(&priv->vids);
 	return xeth_sysfs_add(priv);
 }
 
@@ -117,6 +118,7 @@ static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 
+	xeth_ndo_free_vids(nd);
 	xeth_sb_send_ifdel(nd);
 	xeth_sysfs_del(priv);
 	priv->nd = NULL;

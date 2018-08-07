@@ -84,6 +84,4 @@ void xeth_exit(void)
 		kfree(xeth.nds);
 	if (xeth.ndi_by_id)
 		kfree(xeth.ndi_by_id);
-	rcu_assign_pointer(xeth.list.next, NULL);
-	rcu_assign_pointer(xeth.list.prev, NULL);
 }
