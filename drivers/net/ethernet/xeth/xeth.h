@@ -80,8 +80,6 @@ struct xeth {
 		**iflinks, **nds;
 
 	struct {
-		struct	list_head __rcu
-			tx;
 		struct	task_struct
 			*main;
 		char	*rxbuf;

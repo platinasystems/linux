@@ -66,6 +66,8 @@ struct xeth_sb_tx_entry {
 	unsigned char		data[];
 };
 
+static struct list_head __rcu xeth_sb_tx;
+
 static u64 xeth_sb_ns_inum(struct net_device *nd)
 {
 	struct net *ndnet = dev_net(nd);
@@ -94,13 +96,13 @@ static void xeth_sb_free(struct list_head *entries)
 
 static struct xeth_sb_tx_entry *xeth_sb_tx_pop(void)
 {
-	struct xeth_sb_tx_entry *entry = NULL;
+	struct xeth_sb_tx_entry *entry;
 	rcu_read_lock();
-	if (!list_empty(&xeth.sb.tx)) {
-		struct list_head *next = list_next_rcu(&xeth.sb.tx);
-		list_del_rcu(next);
-		entry = container_of(next, struct xeth_sb_tx_entry, list);
-	}
+	entry = list_first_or_null_rcu(&xeth_sb_tx,
+				       struct xeth_sb_tx_entry,
+				       list);
+	if (entry)
+		list_del_rcu(&entry->list);
 	rcu_read_unlock();
 	return entry;
 }
@@ -108,22 +110,32 @@ static struct xeth_sb_tx_entry *xeth_sb_tx_pop(void)
 static void xeth_sb_tx_push(struct xeth_sb_tx_entry *entry)
 {
 	rcu_read_lock();
-	list_add_rcu(&entry->list, &xeth.sb.tx);
+	list_add_rcu(&entry->list, &xeth_sb_tx);
 	rcu_read_unlock();
+}
+
+static void xeth_sb_tx_queue_rcu(struct xeth_sb_tx_entry *entry)
+{
+	list_add_tail_rcu(&entry->list, &xeth_sb_tx);
 }
 
 static void xeth_sb_tx_flush(void)
 {
-	LIST_HEAD(entries);
+	LIST_HEAD(free_list);
 	rcu_read_lock();
-	while (!list_empty(&xeth.sb.tx)) {
-		struct list_head *next = list_next_rcu(&xeth.sb.tx);
-		list_del_rcu(next);
-		list_add(next, &entries);
+	while (true) {
+		struct xeth_sb_tx_entry *entry =
+			list_first_or_null_rcu(&xeth_sb_tx,
+					       struct xeth_sb_tx_entry,
+					       list);
+		if (!entry)
+			break;
+		list_del_rcu(&entry->list);
+		list_add(&entry->list, &free_list);
 	}
 	rcu_read_unlock();
 	synchronize_rcu();
-	xeth_sb_free(&entries);
+	xeth_sb_free(&free_list);
 }
 
 static void xeth_sb_reset_nd_stats(struct net_device *nd)
@@ -255,7 +267,7 @@ int xeth_sb_send_break(void)
 	if (!entry)
 		return -ENOMEM;
 	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_BREAK);
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -274,7 +286,7 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_FLAGS, nd->name);
 	msg = (struct xeth_msg_ethtool_flags *)&entry->data[0];
 	msg->flags = priv->ethtool.flags;
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -314,7 +326,7 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	for (i = 0; i < msg->link_mode_masks_nwords; i++)
 		msg->link_modes_lp_advertising[i] =
 			priv->ethtool.settings.link_modes.lp_advertising[i];
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -335,7 +347,7 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	msg->event = event;
 	msg->address = ifa->ifa_address;
 	msg->mask = ifa->ifa_mask;
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -355,7 +367,7 @@ int xeth_sb_send_ifdel(struct net_device *nd)
 	msg = (struct xeth_msg_ifdel *)&entry->data[0];
 	msg->ifindex = nd->ifindex;
 	msg->devtype = priv->devtype;
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -384,7 +396,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 	msg->portindex = priv->porti;
 	msg->subportindex = priv->subporti;
 	msg->devtype = priv->devtype;
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -404,7 +416,7 @@ static int xeth_sb_send_ifvid(struct net_device *nd, u8 op, u16 vid)
 	msg->net = xeth_sb_ns_inum(nd);
 	msg->ifindex = nd->ifindex;
 	msg->vid = vid;
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -452,7 +464,7 @@ int xeth_sb_send_fibentry(unsigned long event,
 		nh[i].gw = info->fi->fib_nh[i].nh_gw;
 		nh[i].scope = info->fi->fib_nh[i].nh_scope;
 	}
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -482,7 +494,7 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 		memcpy(&msg->lladdr[0], ha, ETH_ALEN);
 	}
 	read_unlock_bh(&neigh->lock);
-	list_add_tail_rcu(&entry->list, &xeth.sb.tx);
+	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
 
@@ -495,7 +507,7 @@ static inline bool xeth_sb_service_continue(int err)
 static inline int xeth_sb_service_tx(struct socket *sock)
 {
 	int err = 0;
-	LIST_HEAD(entries);
+	LIST_HEAD(sent_list);
 	while (xeth_sb_service_continue(err)) {
 		struct msghdr msg = {
 			.msg_flags = MSG_DONTWAIT,
@@ -516,14 +528,14 @@ static inline int xeth_sb_service_tx(struct socket *sock)
 			xeth_sb_tx_push(entry);
 			break;
 		}
-		list_add(&entry->list, &entries);
+		list_add(&entry->list, &sent_list);
 		if (n < 0)
 			err = n;
 		else if (n == 0)
 			err = 1;
 	}
 	synchronize_rcu();
-	xeth_sb_free(&entries);
+	xeth_sb_free(&sent_list);
 	return err;
 }
 
@@ -700,7 +712,7 @@ xeth_sb_main_egress:
 
 int xeth_sb_init(void)
 {
-	INIT_LIST_HEAD_RCU(&xeth.sb.tx);
+	INIT_LIST_HEAD_RCU(&xeth_sb_tx);
 	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth.sb.rxbuf)
 		return -ENOMEM;
