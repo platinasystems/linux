@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <ctype.h>
 
-extern const char *const platina_mk1_flags[];
+#include "platina_mk1_flags.h"
+
+static const char *const flags[] = {
+	PLATINA_MK1_FLAGS
+};
 
 int main(int argc, char **argv)
 {
@@ -13,18 +17,16 @@ int main(int argc, char **argv)
 		"\n"
 		"const (\n"
 	);
-	printf("\t%c%sBit uint = iota\n", toupper(platina_mk1_flags[0][0]),
-	       platina_mk1_flags[0]+1);
-	for (i = 1; platina_mk1_flags[i]; i++)
-		printf("\t%c%sBit\n", toupper(platina_mk1_flags[i][0]),
-		       platina_mk1_flags[i]+1);
+	printf("\t%c%sBit uint = iota\n", toupper(flags[0][0]), flags[0]+1);
+	for (i = 1; flags[i]; i++)
+		printf("\t%c%sBit\n", toupper(flags[i][0]), flags[i]+1);
 	printf("%s",
 		")\n"
 		"\n"
 		"var flags = []string{\n"
 	);
-	for (i = 0; platina_mk1_flags[i]; i++)
-		printf("\t\"%s\",\n", platina_mk1_flags[i]);
+	for (i = 0; flags[i]; i++)
+		printf("\t\"%s\",\n", flags[i]);
 	printf("}\n");
 	return 0;
 }
