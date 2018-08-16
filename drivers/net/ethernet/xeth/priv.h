@@ -28,34 +28,34 @@
 #include <linux/ethtool.h>
 #include <uapi/linux/if_link.h>
 
-struct	xeth_priv {
-	struct	list_head __rcu	list;
-	struct	net_device	*nd;
-
-	struct {
-		struct	mutex	mutex;
-		struct	rtnl_link_stats64
-			stats;
-	} link;
-
-	struct {
-		struct	mutex	mutex;
-		struct	ethtool_link_ksettings
-			settings;
-		u64	*stats;
-		u32	flags;
-	} ethtool;
-
-	struct	kobject	kobj;
-	atomic64_t	count[n_xeth_count_priv];
-
+struct	xeth_priv_ref {
 	u16	id;
 	s16	portid;
 	s16	ndi, iflinki, porti;
 	s8	subporti;
 	u8	devtype;
+};
 
+struct	xeth_priv {
+	struct	list_head __rcu	list;
 	struct	list_head __rcu	vids;
+	struct	net_device	*nd;
+	struct	xeth_priv_ref	ref;
+
+	struct {
+		struct	mutex	mutex;
+		struct	rtnl_link_stats64 stats;
+	} link;
+
+	struct	kobject	kobj;
+	atomic64_t	count[n_xeth_count_priv];
+
+	struct {
+		struct	mutex	mutex;
+		struct	ethtool_link_ksettings settings;
+		u32	flags;
+	} ethtool;
+	u64	ethtool_stats[];
 };
 
 #define to_xeth_priv(x)	container_of((x), struct xeth_priv, kobj)

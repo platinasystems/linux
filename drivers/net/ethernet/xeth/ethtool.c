@@ -26,7 +26,7 @@
 static void xeth_ethtool_get_drvinfo(struct net_device *nd,
 				     struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, xeth.ops.rtnl.kind, sizeof(drvinfo->driver));
+	strlcpy(drvinfo->driver, xeth_link_ops.kind, sizeof(drvinfo->driver));
 	strlcpy(drvinfo->version, __stringify(XETH_VERSION),
 		sizeof(drvinfo->version));
 	strlcpy(drvinfo->fw_version, "n/a", sizeof(drvinfo->fw_version));
@@ -77,7 +77,7 @@ static void xeth_ethtool_get_ethtool_stats(struct net_device *nd,
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool.mutex);
-	memcpy(data, priv->ethtool.stats, xeth.n.ethtool.stats*sizeof(u64));
+	memcpy(data, priv->ethtool_stats, xeth.n.ethtool.stats*sizeof(u64));
 	mutex_unlock(&priv->ethtool.mutex);
 }
 
@@ -137,8 +137,8 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	int err = 0;
 	mutex_lock(&priv->ethtool.mutex);
 	if (req->base.autoneg == AUTONEG_DISABLE) {
-		if (xeth.ops.validate_speed)
-			err = xeth.ops.validate_speed(nd, req->base.speed);
+		if (xeth.ops.dev.validate_speed)
+			err = xeth.ops.dev.validate_speed(nd, req->base.speed);
 		if (!err)
 			err = xeth_ethtool_validate_duplex(nd, req);
 		if (!err) {
@@ -181,32 +181,23 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	return err;
 }
 
+struct ethtool_ops xeth_ethtool_ops = {
+	.get_drvinfo	    = xeth_ethtool_get_drvinfo,
+	.get_link	    = ethtool_op_get_link,
+	.get_sset_count	    = xeth_ethtool_get_sset_count,
+	.get_strings	    = xeth_ethtool_get_strings,
+	.get_ethtool_stats  = xeth_ethtool_get_ethtool_stats,
+	.get_priv_flags	    = xeth_ethtool_get_priv_flags,
+	.set_priv_flags     = xeth_ethtool_set_priv_flags,
+	.get_link_ksettings = xeth_ethtool_get_link_ksettings,
+	.set_link_ksettings = xeth_ethtool_set_link_ksettings,
+};
+
 int xeth_ethtool_init(void)
 {
-	xeth.ops.ethtool.get_drvinfo	= xeth_ethtool_get_drvinfo;
-	xeth.ops.ethtool.get_link	= ethtool_op_get_link;
-	xeth.ops.ethtool.get_sset_count	= xeth_ethtool_get_sset_count;
-	xeth.ops.ethtool.get_strings	= xeth_ethtool_get_strings;
-	xeth.ops.ethtool.get_ethtool_stats =
-		xeth_ethtool_get_ethtool_stats;
-	xeth.ops.ethtool.get_priv_flags	= xeth_ethtool_get_priv_flags;
-	xeth.ops.ethtool.set_priv_flags	= xeth_ethtool_set_priv_flags;
-	xeth.ops.ethtool.get_link_ksettings =
-		xeth_ethtool_get_link_ksettings;
-	xeth.ops.ethtool.set_link_ksettings =
-		xeth_ethtool_set_link_ksettings;
 	return 0;
 }
 
 void xeth_ethtool_exit(void)
 {
-	xeth.ops.ethtool.get_drvinfo	= NULL;
-	xeth.ops.ethtool.get_link	= NULL;
-	xeth.ops.ethtool.get_sset_count	= NULL;
-	xeth.ops.ethtool.get_strings	= NULL;
-	xeth.ops.ethtool.get_ethtool_stats = NULL;
-	xeth.ops.ethtool.get_priv_flags	= NULL;
-	xeth.ops.ethtool.set_priv_flags	= NULL;
-	xeth.ops.ethtool.get_link_ksettings	= NULL;
-	xeth.ops.ethtool.set_link_ksettings	= NULL;
 }

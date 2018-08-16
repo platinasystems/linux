@@ -69,9 +69,9 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 		break;
 	case NETDEV_UNREGISTER:
 		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
-			struct net_device *iflink = xeth_iflink(iflinki);
+			struct net_device *iflink = xeth_iflink_nd(iflinki);
 			if (nd == iflink) {
-				xeth_reset_iflink(iflinki);
+				xeth_iflink_reset(iflinki);
 				netdev_rx_handler_unregister(iflink);
 				dev_put(iflink);
 			}
@@ -79,14 +79,16 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 		break;
 	case NETDEV_CHANGEMTU:
 		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
-			struct net_device *iflink = xeth_iflink(iflinki);
+			struct net_device *iflink = xeth_iflink_nd(iflinki);
 			if (nd == iflink) {
 				for (ndi = 0; ndi < xeth.n.ids; ndi++) {
 					struct net_device *xnd = xeth_nd(ndi);
 					if (xnd != NULL) {
 						struct xeth_priv *priv =
 							netdev_priv(xnd);
-						if (priv->iflinki == iflinki) {
+						struct xeth_priv_ref *ref =
+							&priv->ref;
+						if (ref->iflinki == iflinki) {
 							dev_set_mtu(xnd,
 								    nd->mtu);
 						}

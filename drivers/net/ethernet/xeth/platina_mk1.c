@@ -26,221 +26,104 @@
 #include <linux/module.h>
 #include <uapi/linux/xeth.h>
 
-#define platina_mk1_n_ports	32
-#define platina_mk1_n_subports	4
-#define platina_mk1_n_iflinks	2
-#define platina_mk1_n_encap	VLAN_HLEN
-#define platina_mk1_xeth_base_port_id	\
-	4094 - (platina_mk1_n_ports * platina_mk1_n_subports)
+#include "platina_mk1_flags.h"
+#include "platina_mk1_stats.h"
 
-extern const char *const platina_mk1_stats[];
-extern const char *const platina_mk1_flags[];
+static const char *const platina_mk1_flags[] = {
+	PLATINA_MK1_FLAGS
+};
+
+static const char *const platina_mk1_stats[] = {
+	PLATINA_MK1_STATS
+};
+
+enum {
+	platina_mk1_n_ports = 32,
+	platina_mk1_n_subports = 4,
+	platina_mk1_n_portdevs = platina_mk1_n_ports * platina_mk1_n_subports,
+	platina_mk1_n_iflinks = 2,
+	platina_mk1_n_encap = VLAN_HLEN,
+	platina_mk1_n_rxqs = 1,
+	platina_mk1_n_txqs = 1,
+	platina_mk1_n_nds = 4096,
+	platina_mk1_n_ids = 4096,
+	platina_mk1_n_userids = platina_mk1_n_ids - platina_mk1_n_portdevs,
+	platina_mk1_n_flags = (sizeof(platina_mk1_flags) / sizeof(char*)) - 1,
+	platina_mk1_n_stats = (sizeof(platina_mk1_stats) / sizeof(char*)) - 1,
+};
 
 static bool alpha = false;
+static int provision[platina_mk1_n_ports];
+
+static struct net_device *platina_mk1_dev_nds[platina_mk1_n_nds];
+static u16 platina_mk1_dev_ndi_by_id[platina_mk1_n_ids];
+static const char * const platina_mk1_iflink_names[] = { "eth1", "eth2" };
+static struct net_device *platina_mk1_iflink_nds[platina_mk1_n_iflinks];
+static u64 platina_mk1_iflink_eas[platina_mk1_n_iflinks];
+static bool platina_mk1_iflink_registered[platina_mk1_n_iflinks];
+static int platina_mk1_set_lladdr(struct net_device *nd);
+static void platina_mk1_init_ethtool_settings(struct xeth_priv *priv);
+static int platina_mk1_validate_speed(struct net_device *nd, u32 speed);
+
+struct xeth xeth = {
+	.n.ports = platina_mk1_n_ports,
+	.n.subports = platina_mk1_n_subports,
+	.n.userids = platina_mk1_n_userids,
+	.n.iflinks = platina_mk1_n_iflinks,
+	.n.nds = platina_mk1_n_nds,
+	.n.ids = platina_mk1_n_ids,
+	.n.encap = platina_mk1_n_encap,
+	.n.rxqs = platina_mk1_n_rxqs,
+	.n.txqs = platina_mk1_n_txqs,
+	.n.ethtool.flags = platina_mk1_n_flags,
+	.n.ethtool.stats = platina_mk1_n_stats,
+	.n.priv_size = sizeof(struct xeth_priv) +
+		(platina_mk1_n_stats * sizeof(u64)),
+	.dev.nd = platina_mk1_dev_nds,
+	.dev.ndi_by_id = platina_mk1_dev_ndi_by_id,
+	.dev.provision = provision,
+	.iflink.name = platina_mk1_iflink_names,
+	.iflink.nd = platina_mk1_iflink_nds,
+	.iflink.ea = platina_mk1_iflink_eas,
+	.iflink.registered = platina_mk1_iflink_registered,
+	.ethtool.flags = platina_mk1_flags,
+	.ethtool.stats = platina_mk1_stats,
+	.ops.dev.set_lladdr = platina_mk1_set_lladdr,
+	.ops.dev.init_ethtool_settings = platina_mk1_init_ethtool_settings,
+	.ops.dev.validate_speed = platina_mk1_validate_speed,
+	.ops.encap.init = xeth_vlan_init,
+	.ops.encap.exit = xeth_vlan_exit,
+};
+
+static int __init platina_mk1_init(void)
+{
+	xeth.n.base = alpha ? 0 : 1;
+	return xeth_init();
+}
+
+static void __exit platina_mk1_exit(void)
+{
+	xeth_exit();
+}
+
+module_init(platina_mk1_init);
+module_exit(platina_mk1_exit);
 module_param(alpha, bool, false);
-MODULE_PARM_DESC(alpha, "a 0 based, pre-production system");
+module_param_array(provision, int, NULL, 0644);
 
-static u64 platina_mk1_eth0_ea;
-static unsigned char platina_mk1_eth0_ea_assign_type;
-
-static const char *platina_mk1_iflink_names[] = { "eth1", "eth2" };
-
-static inline int _platina_mk1_assert_iflinks(void)
-{
-	int i, err;
-	u64 ea_iflink[platina_mk1_n_iflinks] = { 0, 0 };
-	struct net_device *iflink[platina_mk1_n_iflinks] = { NULL, NULL };
-	bool registered_iflink[platina_mk1_n_iflinks] = { false, false };
-
-	for (i=0; i<platina_mk1_n_iflinks; i++) {
-		const char *ifname = platina_mk1_iflink_names[i];
-		iflink[i] = dev_get_by_name(&init_net, ifname);
-		if (!iflink[i]) {
-			err = -ENOENT;
-			goto egress;
-		}
-		err = netdev_rx_handler_register(iflink[i],
-						 xeth.ops.rx_handler,
-						 &xeth);
-		if (err)
-			goto egress;
-		else
-			registered_iflink[i] = true;
-		ea_iflink[i] = ether_addr_to_u64(iflink[i]->dev_addr);
-	}
-	if (ea_iflink[0] < ea_iflink[1]) {
-		xeth_set_iflink(0, iflink[0]);
-		xeth_set_iflink(1, iflink[1]);
-	} else {
-		xeth_set_iflink(1, iflink[0]);
-		xeth_set_iflink(0, iflink[1]);
-	}
-	return 0;
-egress:
-	for (i=0; i<platina_mk1_n_iflinks; i++) {
-		if (iflink[i]) {
-			if (registered_iflink[i])
-				netdev_rx_handler_unregister(iflink[i]);
-			dev_put(iflink[i]);
-		}
-	}
-	return err;
-}
-
-static int platina_mk1_assert_iflinks(void)
-{
-	static struct mutex platina_mk1_iflinks_mutex;
-	int err = 0;
-
-	if (xeth_iflink(0))
-		return err;
-	mutex_lock(&platina_mk1_iflinks_mutex);
-	if (!xeth_iflink(0))
-		err = _platina_mk1_assert_iflinks();
-	mutex_unlock(&platina_mk1_iflinks_mutex);
-	return err;
-}
-
-static int platina_mk1_parse_eth(const char *name, struct xeth_priv *priv)
-{
-	int base = alpha ? 0 : 1;
-	u16 port, subport;
-	const char *p = name + 4;
-
-	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
-		return -EINVAL;
-	if (xeth_pr_true_expr(sscanf(p, "%hu-%hu", &port, &subport) != 2,
-			      "[%s] invalid eth-PORT-SUBPORT", name))
-		return -EINVAL;
-	if (xeth_pr_true_expr((port >= (platina_mk1_n_ports + base)) ||
-			      (port < base),
-			      "[%s] out-of-range PORT %u", name, port))
-		return -EINVAL;
-	port -= base;
-	if (xeth_pr_true_expr((subport >= (platina_mk1_n_subports + base)) ||
-			      (subport < base),
-			      "[%s] out-of-range SUBPORT %u", name, subport))
-		return -EINVAL;
-	subport -= base;
-	priv->portid = 1 + ((port ^ 1) * platina_mk1_n_subports) + subport + 1;
-	priv->id = priv->portid;
-	priv->ndi = (port * platina_mk1_n_subports) + subport;
-	priv->iflinki = port >= (platina_mk1_n_ports / 2) ? 1 : 0;
-	priv->porti = port;
-	priv->subporti = subport;
-	priv->devtype = XETH_DEVTYPE_PORT;
-	return 0;
-}
-
-static int platina_mk1_parse_xethbr(const char *name, struct xeth_priv *priv)
-{
-	u16 u;
-	const char *p = name + 7;
-
-	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
-		return -EINVAL;
-	if (xeth_pr_true_expr(sscanf(p, "%hu", &u) != 1,
-			      "[%s] invalid BRIDGE", name))
-		return -EINVAL;
-	if (xeth_pr_true_expr(1 > u || u >= platina_mk1_xeth_base_port_id,
-			      "[%s] out-of-range ID %u", name, u))
-		return -EINVAL;
-	priv->porti = -1;
-	priv->subporti = -1;
-	priv->portid = -1;
-	priv->id = u;
-	priv->ndi = priv->id;
-	priv->iflinki = priv->id & 1;
-	priv->devtype = XETH_DEVTYPE_BRIDGE;
-	return 0;
-}
-
-static int platina_mk1_parse_xeth(const char *name, struct xeth_priv *priv)
-{
-	int n;
-	u16 u;
-	const char *p = name + 4;
-
-	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
-		return -EINVAL;
-	if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
-			      "[%s] invalid PORT [%s]", name, p))
-		return -EINVAL;
-	p += n;
-	if (!alpha)
-		u -= 1;
-	if (xeth_pr_true_expr(u >= platina_mk1_n_ports,
-			      "[%s] out-of-range PORT %u", name, u))
-		return -EINVAL;
-	priv->porti = u;
-	priv->subporti = -1;
-	priv->portid = 4094 - u;
-	priv->id = priv->portid;
-	priv->devtype = XETH_DEVTYPE_PORT;
-	if (*p == '-') {
-		p++;
-		if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
-				      "[%s] invalid SUBPORT [%s]", name, p))
-			return -EINVAL;
-		if (!alpha)
-			u -= 1;
-		if (xeth_pr_true_expr(u >= platina_mk1_n_subports,
-				      "[%s] out-of-range SUBPORT %u", name, u))
-			return -EINVAL;
-		p += n;
-		priv->subporti = u;
-		priv->portid -= (u * platina_mk1_n_ports);
-		priv->id = priv->portid;
-	}
-	if (*p == '.') {
-		p++;
-		if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
-				      "[%s] invalid ID [%s]", name, p))
-			return -EINVAL;
-		if (xeth_pr_true_expr(1 > u ||
-				      u >= platina_mk1_xeth_base_port_id,
-				      "[%s] out-of-range ID %u", name, u))
-			return -EINVAL;
-		p += n;
-		switch (*p) {
-		case 't':
-			priv->devtype = XETH_DEVTYPE_TAGGED_BRIDGE_PORT;
-			break;
-		case 'u':
-			priv->devtype = XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT;
-			break;
-		default:
-			xeth_pr("[%s] invalid suffix [%s]", name, p);
-			return -EINVAL;
-		}
-		p++;
-		priv->id = u;
-		priv->ndi = -1;
-	} else {
-		priv->ndi = priv->id;
-	}
-	if (xeth_pr_true_expr(*p, "[%s] invalid suffix [%s]", name, p))
-		return -EINVAL;
-	priv->iflinki = priv->id & 1;
-	return 0;
-}
-
-static int platina_mk1_parse(const char *name, struct xeth_priv *priv)
-{
-	if (memcmp(name, "eth-", 4) == 0)
-		return platina_mk1_parse_eth(name, priv);
-	else if (memcmp(name, "xethbr.", 7) == 0)
-		return platina_mk1_parse_xethbr(name, priv);
-	else if (memcmp(name, "xeth", 4) == 0)
-		return platina_mk1_parse_xeth(name, priv);
-	xeth_pr("'%s' invalid ifname", name);
-	return -EINVAL;
-}
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Platina Systems");
+MODULE_DESCRIPTION("XETH for Platina Systems MK1 TOR Ethernet Switch");
+MODULE_PARM_DESC(alpha, "zero based ports and subports");
+MODULE_PARM_DESC(provision, "1, 2, or 4 subports per port, default 1");
 
 static int platina_mk1_set_lladdr(struct net_device *nd)
 {
 	u64 ea;
 	struct xeth_priv *priv = netdev_priv(nd);
+	static u64 platina_mk1_eth0_ea;
+	static unsigned char platina_mk1_eth0_ea_assign_type;
+
 	if (!platina_mk1_eth0_ea) {
 		struct net_device *eth0 = dev_get_by_name(&init_net, "eth0");
 		if (eth0 == NULL)
@@ -250,11 +133,11 @@ static int platina_mk1_set_lladdr(struct net_device *nd)
 		dev_put(eth0);
 	}
 	if (memcmp(nd->name, "eth-", 4) == 0)
-		ea = (u64)(platina_mk1_eth0_ea + 3 + priv->ndi);
-	else if (priv->ndi < 0 || priv->id < platina_mk1_xeth_base_port_id)
-		ea = xeth.ea_iflinks[priv->iflinki];
-	else if (priv->id >= platina_mk1_xeth_base_port_id)
-		ea = (u64)(platina_mk1_eth0_ea + 3 + (4094 - priv->ndi));
+		ea = (u64)(platina_mk1_eth0_ea + 3 + priv->ref.ndi);
+	else if (priv->ref.ndi < 0 || priv->ref.id <= xeth.n.userids)
+		ea = xeth.iflink.ea[priv->ref.iflinki];
+	else if (priv->ref.id >= xeth.n.userids)
+		ea = (u64)(platina_mk1_eth0_ea + 3 + (4094 - priv->ref.ndi));
 	else
 		ea = platina_mk1_eth0_ea;
 	u64_to_ether_addr(ea, nd->dev_addr);
@@ -262,9 +145,8 @@ static int platina_mk1_set_lladdr(struct net_device *nd)
 	return 0;
 }
 
-static void platina_mk1_init_ethtool_settings(struct net_device *nd)
+static void platina_mk1_init_ethtool_settings(struct xeth_priv *priv)
 {
-	struct xeth_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *settings = &priv->ethtool.settings; 
 	settings->base.speed = 0;
 	settings->base.duplex = DUPLEX_FULL;
@@ -331,75 +213,3 @@ static int platina_mk1_validate_speed(struct net_device *nd, u32 speed)
 	}
 	return 0;
 }
-
-static void platina_mk1_egress(void)
-{
-	void (*const exits[])(void) = {
-		xeth_sb_exit,
-		xeth_ethtool_exit,
-		xeth_notifier_exit,
-		xeth_link_exit,
-		xeth_ndo_exit,
-		xeth_notifier_exit,
-		xeth_vlan_exit,
-		xeth_exit,
-		NULL,
-	};
-	int i;
-
-	for (i = 0; exits[i]; i++)
-		exits[i]();
-}
-
-static int __init platina_mk1_init(void)
-{
-	int (*const inits[])(void) = {
-		xeth_init,
-		xeth_vlan_init,
-		xeth_link_init,
-		xeth_ndo_init,
-		xeth_notifier_init,
-		xeth_ethtool_init,
-		xeth_sb_init,
-		NULL,
-	};
-	int i;
-
-	xeth.n.ids = 4096;
-	xeth.n.nds = 4096;
-	xeth.n.iflinks = platina_mk1_n_iflinks;
-	xeth.n.encap = platina_mk1_n_encap;
-	xeth.ethtool.stats = platina_mk1_stats;
-	for (xeth.n.ethtool.stats = 0;
-	     platina_mk1_stats[xeth.n.ethtool.stats];
-	     xeth.n.ethtool.stats++);
-	xeth.ethtool.flags = platina_mk1_flags;
-	for (xeth.n.ethtool.flags = 0;
-	     platina_mk1_flags[xeth.n.ethtool.flags];
-	     xeth.n.ethtool.flags++);
-	xeth.ops.assert_iflinks = platina_mk1_assert_iflinks;
-	xeth.ops.parse = platina_mk1_parse;
-	xeth.ops.set_lladdr = platina_mk1_set_lladdr;
-	xeth.ops.init_ethtool_settings = platina_mk1_init_ethtool_settings;
-	xeth.ops.validate_speed = platina_mk1_validate_speed;
-	for (i = 0; inits[i]; i++) {
-		int err = inits[i]();
-		if (err) {
-			platina_mk1_egress();
-			return err;
-		}
-	}
-	return 0;
-}
-
-static void __exit platina_mk1_exit(void)
-{
-	platina_mk1_egress();
-}
-
-module_init(platina_mk1_init);
-module_exit(platina_mk1_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Platina Systems");
-MODULE_DESCRIPTION("XETH for Platina Systems MK1 TOR Ethernet Switch");
