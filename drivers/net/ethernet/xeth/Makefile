@@ -1,8 +1,11 @@
 xeth-$(CONFIG_NET_XETH) := xeth.o
+xeth-$(CONFIG_NET_XETH) += dev.o
 xeth-$(CONFIG_NET_XETH) += ethtool.o
+xeth-$(CONFIG_NET_XETH) += iflink.o
 xeth-$(CONFIG_NET_XETH) += link.o
 xeth-$(CONFIG_NET_XETH) += ndo.o
 xeth-$(CONFIG_NET_XETH) += notifier.o
+xeth-$(CONFIG_NET_XETH) += parse.o
 xeth-$(CONFIG_NET_XETH) += sb.o
 xeth-$(CONFIG_NET_XETH) += sysfs.o
 
@@ -11,8 +14,6 @@ vlan-$(CONFIG_NET_XETH) := vlan.o
 obj-$(CONFIG_XETH_VENDOR_PLATINA_MK1) += platina-mk1.o
 
 platina-mk1-y := platina_mk1.o  
-platina-mk1-y += platina_mk1_stats.o
-platina-mk1-y += platina_mk1_flags.o
 platina-mk1-y += $(xeth-y)
 platina-mk1-y += $(vlan-y)
 
@@ -24,8 +25,8 @@ go-platina-mk1 := $(if $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(CONFIG_SAMPLE_XETH))
 extra-$(go-platina-mk1) += sample-platina-mk1
 hostprogs-$(go-platina-mk1) += gen-platina-mk1-stats
 hostprogs-$(go-platina-mk1) += gen-platina-mk1-flags
-gen-platina-mk1-stats-objs := gen_platina_mk1_stats.o platina_mk1_stats.o
-gen-platina-mk1-flags-objs := gen_platina_mk1_flags.o platina_mk1_flags.o
+gen-platina-mk1-stats-objs := gen_platina_mk1_stats.o
+gen-platina-mk1-flags-objs := gen_platina_mk1_flags.o
 
 GOPATH := $(realpath $(srctree)/$(src)/go)
 export GOPATH

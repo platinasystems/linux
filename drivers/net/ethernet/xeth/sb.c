@@ -149,7 +149,7 @@ static void xeth_sb_reset_nd_stats(struct net_device *nd)
 	for (i = 0; i < xeth_sb_n_link_stats; i++)
 		link_stat[i] = 0;
 	for (i = 0; i < xeth.n.ethtool.stats; i++)
-		priv->ethtool.stats[i] = 0;
+		priv->ethtool_stats[i] = 0;
 	mutex_unlock(&priv->link.mutex);
 	mutex_unlock(&priv->ethtool.mutex);
 }
@@ -159,20 +159,20 @@ static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
 	int err;
 	char ifname[IFNAMSIZ];
 	struct net_device *nd;
-	struct xeth_priv priv;
+	struct xeth_priv_ref ref;
 
 	strlcpy(ifname, msg_ifname, IFNAMSIZ);
-	err = xeth.ops.parse(ifname, &priv);
+	err = xeth_parse_name(ifname, &ref);
 	if (err) {
 		xeth_pr("\"%s\" invalid", ifname);
 		return NULL;
 	}
-	nd = to_xeth_nd(priv.id);
+	nd = to_xeth_nd(ref.id);
 	if (!nd) {
 		nd = dev_get_by_name(&init_net, msg_ifname);
 		if (!nd) {
 			xeth_pr("\"%s\" no such device", ifname);
-		 } else if (nd->netdev_ops != &xeth.ops.ndo) {
+		 } else if (nd->netdev_ops != &xeth_ndo_ops) {
 			xeth_pr("\"%s\" not an xeth device", ifname);
 			dev_put(nd);
 			nd = NULL;
@@ -184,7 +184,7 @@ static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
 static void xeth_sb_nd_put(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	if (priv->ndi < 0)
+	if (priv->ref.ndi < 0)
 		dev_put(nd);
 }
 
@@ -250,7 +250,7 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	}
 	priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool.mutex);
-	priv->ethtool.stats[msg->index] = msg->count;
+	priv->ethtool_stats[msg->index] = msg->count;
 	mutex_unlock(&priv->ethtool.mutex);
 	xeth_count_priv_inc(priv, sb_ethtool_stats);
 	xeth_sb_nd_put(nd);
@@ -366,7 +366,7 @@ int xeth_sb_send_ifdel(struct net_device *nd)
 	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
 	msg = (struct xeth_msg_ifdel *)&entry->data[0];
 	msg->ifindex = nd->ifindex;
-	msg->devtype = priv->devtype;
+	msg->devtype = priv->ref.devtype;
 	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
@@ -376,7 +376,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 	struct xeth_sb_tx_entry *entry;
 	struct xeth_msg_ifinfo *msg;
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_iflink(priv->iflinki);
+	struct net_device *iflink = xeth_iflink_nd(priv->ref.iflinki);
 	size_t n = sizeof(struct xeth_msg_ifinfo);
 
 	if (xeth_count(sb_connections) == 0)
@@ -390,12 +390,12 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff)
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = iflink->ifindex;
 	msg->flags = modiff ? modiff : nd->flags;
-	msg->portid = priv->portid;
-	msg->id = priv->id;
+	msg->portid = priv->ref.portid;
+	msg->id = priv->ref.id;
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
-	msg->portindex = priv->porti;
-	msg->subportindex = priv->subporti;
-	msg->devtype = priv->devtype;
+	msg->portindex = priv->ref.porti;
+	msg->subportindex = priv->ref.subporti;
+	msg->devtype = priv->ref.devtype;
 	xeth_sb_tx_queue_rcu(entry);
 	return 0;
 }
@@ -590,7 +590,7 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	if (ret < sizeof(struct xeth_msg))
 		return -EINVAL;
 	if (!xeth_is_msg(msg)) {
-		xeth.ops.side_band_rx(xeth.sb.rxbuf, ret);
+		xeth.ops.encap.sb(xeth.sb.rxbuf, ret);
 		return 0;
 	}
 	switch (msg->kind) {
@@ -606,7 +606,7 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	case XETH_MSG_KIND_DUMP_IFINFO: {
 		int err = 0;
 		struct xeth_priv *priv;
-		list_for_each_entry_rcu(priv, &xeth.list, list) {
+		list_for_each_entry_rcu(priv, &xeth.privs, list) {
 			if (!err)
 				err = xeth_sb_dump_ifinfo(sock, priv->nd);
 		}
@@ -673,8 +673,8 @@ static int xeth_sb_main(void *data)
 	addr.sun_family = AF_UNIX;
 	/* Note: This is an abstract namespace w/ addr.sun_path[0] == 0 */
 	n = sizeof(sa_family_t) + 1 +
-		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1,
-			  "%s", xeth.ops.rtnl.kind);
+		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1, "%s",
+			  xeth_link_ops.kind);
 	no_xeth_pr("@%s: listen", addr.sun_path+1);
 	err = xeth_pr_err(kernel_bind(ln, paddr, n));
 	if (err)
@@ -716,7 +716,7 @@ int xeth_sb_init(void)
 	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth.sb.rxbuf)
 		return -ENOMEM;
-	xeth.sb.main = kthread_run(xeth_sb_main, NULL, xeth.ops.rtnl.kind);
+	xeth.sb.main = kthread_run(xeth_sb_main, NULL, xeth_link_ops.kind);
 	return xeth_pr_is_err_val(xeth.sb.main);
 }
 
