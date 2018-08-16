@@ -39,67 +39,86 @@
 #endif
 
 struct xeth {
-	struct	list_head __rcu	list;
+	struct	list_head __rcu	privs;
 	struct {
-		int	(*assert_iflinks)(void);
-		int	(*parse)(const char *name, struct xeth_priv *priv);
-		int	(*set_lladdr)(struct net_device *nd);
-		rx_handler_result_t	(*rx_handler)(struct sk_buff **pskb);
-		void	(*side_band_rx)(const char *buf, size_t n);
-		void	(*destructor)(struct net_device *nd);
-		void	(*init_ethtool_settings)(struct net_device *nd);
-		int	(*validate_speed)(struct net_device *nd, u32 speed);
-		struct	rtnl_link_ops rtnl;
-		struct	net_device_ops ndo;
-		struct	ethtool_ops ethtool;
-	} ops;
-
-	struct {
-		const char * const *stats;
-		const char * const *flags;
-	} ethtool;
-
-	atomic64_t	count[n_xeth_count];
-
-	struct {
+		int	base;	/* 0 or 1 base port and subport*/
+		int	userids;
+		size_t	ports;
+		size_t	subports;
 		size_t	iflinks;
 		size_t	nds;
 		size_t	ids;
 		size_t	encap;	/* e.g. VLAN_HLEN */
+		size_t	rxqs;
+		size_t	txqs;
+		size_t	priv_size;
 		struct	xeth_sizes_ethtool {
-			size_t	stats;
 			size_t	flags;
+			size_t	stats;
 		} ethtool;
 	} n;
-
-	u16	*ndi_by_id;
-	u64	*ea_iflinks;
-
-	/* RCU protected pointers */
-	struct	net_device
-		**iflinks, **nds;
-
+	struct {
+		struct	net_device **nd;
+		u16	*ndi_by_id;
+		int	*provision;
+	} dev;
+	struct {
+		const char * const *name;
+		struct	net_device **nd;
+		u64	*ea;
+		bool	*registered;
+	} iflink;
+	struct {
+		const char * const *flags;
+		const char * const *stats;
+	} ethtool;
+	struct {
+		struct {
+			int	(*set_lladdr)(struct net_device *nd);
+			void	(*init_ethtool_settings)(struct xeth_priv *priv);
+			int	(*validate_speed)(struct net_device *, u32);
+		} dev;
+		struct {
+			int	(*init)(void);
+			void	(*exit)(void);
+			rx_handler_result_t
+				(*rx)(struct sk_buff **pskb);
+			void	(*sb)(const char *buf, size_t n);
+			netdev_tx_t (*tx)(struct sk_buff *skb,
+					  struct net_device *nd);
+		} encap;
+	} ops;
 	struct {
 		struct	task_struct
 			*main;
 		char	*rxbuf;
 	} sb;
+	atomic64_t	count[n_xeth_count];
 };
 
 #define to_xeth(x)	container_of((x), struct xeth, kobj)
 
 extern struct xeth xeth;
 
+extern struct rtnl_link_ops xeth_link_ops;
+extern struct net_device_ops xeth_ndo_ops;
+extern struct ethtool_ops xeth_ethtool_ops;
+
 int xeth_init(void);
+int xeth_dev_init(void);
 int xeth_ethtool_init(void);
+int xeth_iflink_init(void);
 int xeth_link_init(void);
 int xeth_ndo_init(void);
 int xeth_notifier_init(void);
 int xeth_sb_init(void);
 int xeth_vlan_init(void);
+int xeth_create_links(void);
 
 void xeth_exit(void);
+void xeth_dev_exit(void);
 void xeth_ethtool_exit(void);
+void xeth_iflink_exit(void);
 void xeth_link_exit(void);
 void xeth_ndo_exit(void);
 void xeth_notifier_exit(void);
@@ -127,30 +146,20 @@ void xeth_sysfs_del(struct xeth_priv *priv);
 void xeth_ndo_free_vids(struct net_device *nd);
 void xeth_ndo_send_vids(struct net_device *nd);
 
-static inline struct net_device *xeth_iflink(int i)
-{
-	return (i < xeth.n.iflinks) ? rtnl_dereference(xeth.iflinks[i]) : NULL;
-}
+int xeth_link_register(struct net_device *nd);
+int xeth_parse_name(const char *name, struct xeth_priv_ref *ref);
 
-static inline void xeth_reset_iflink(int i)
-{
-	if (i < xeth.n.iflinks) {
-		RCU_INIT_POINTER(xeth.iflinks[i], NULL);
-		xeth.ea_iflinks[i] = 0;
-	}
-}
+void xeth_iflink_reset(int i);
+void xeth_iflink_set(int i, struct net_device *iflink);
 
-static inline void xeth_set_iflink(int i, struct net_device *iflink)
+static inline struct net_device *xeth_iflink_nd(int i)
 {
-	if (i < xeth.n.iflinks) {
-		rcu_assign_pointer(xeth.iflinks[i], iflink);
-		xeth.ea_iflinks[i] = ether_addr_to_u64(iflink->dev_addr);
-	}
+	return i < xeth.n.iflinks ? rtnl_dereference(xeth.iflink.nd[i]) : NULL;
 }
 
 static inline struct net_device *xeth_nd(int i)
 {
-	return (i < xeth.n.nds) ? rtnl_dereference(xeth.nds[i]) : NULL;
+	return (i < xeth.n.nds) ? rtnl_dereference(xeth.dev.nd[i]) : NULL;
 }
 
 static inline void xeth_foreach_nd(void (*op)(struct net_device *nd))
@@ -166,19 +175,19 @@ static inline void xeth_foreach_nd(void (*op)(struct net_device *nd))
 
 static inline struct net_device *to_xeth_nd(u16 id)
 {
-	return (id < xeth.n.ids) ? xeth_nd(xeth.ndi_by_id[id]) : NULL;
+	return (id < xeth.n.ids) ? xeth_nd(xeth.dev.ndi_by_id[id]) : NULL;
 }
 
 static inline void xeth_reset_nd(int i)
 {
 	if (0 <= i && i < xeth.n.nds)
-		RCU_INIT_POINTER(xeth.nds[i], NULL);
+		RCU_INIT_POINTER(xeth.dev.nd[i], NULL);
 }
 
 static inline void xeth_set_nd(int i, struct net_device *nd)
 {
 	if (0 <= i && i < xeth.n.nds)
-		rcu_assign_pointer(xeth.nds[i], nd);
+		rcu_assign_pointer(xeth.dev.nd[i], nd);
 }
 
 static inline void xeth_reset_counters(void)
