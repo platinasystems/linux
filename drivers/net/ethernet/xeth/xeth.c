@@ -23,65 +23,54 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-struct xeth xeth;
-
 int xeth_init(void)
 {
-	int i;
-	
-	xeth.ndi_by_id = kcalloc(xeth.n.ids, sizeof(u16), GFP_KERNEL);
-	if (!xeth.ndi_by_id)
-		goto egress;
-	xeth.nds = kcalloc(xeth.n.nds, sizeof(struct net_device*), GFP_KERNEL);
-	if (!xeth.nds)
-		goto egress;
-	xeth.iflinks = kcalloc(xeth.n.iflinks, sizeof(struct net_device*),
-			       GFP_KERNEL);
-	if (!xeth.iflinks)
-		goto egress;
-	xeth.ea_iflinks = kcalloc(xeth.n.iflinks, sizeof(u64), GFP_KERNEL);
-	if (!xeth.ea_iflinks)
-		goto egress;
+	int i, err = 0;
+
+	INIT_LIST_HEAD_RCU(&xeth.privs);
+	for (i = 0; i < xeth.n.ports; i++) {
+		int provision = xeth.dev.provision[i];
+		if (xeth_pr_true_expr(provision != 0 &&
+				      provision != 1 &&
+				      provision != 2 &&
+				      provision != 4,
+				      "provision[%d] == %d",
+				      i, provision))
+			return -EINVAL;
+	}
 	for (i = 0; i < xeth.n.iflinks; i++)
-		xeth_reset_iflink(i);
+		xeth_iflink_reset(i);
 	for (i = 0; i < xeth.n.nds; i++)
 		xeth_reset_nd(i);
-	INIT_LIST_HEAD_RCU(&xeth.list);
 	xeth_reset_counters();
-	return 0;
-
-egress:
-	if (xeth.ea_iflinks)
-		kfree(xeth.ea_iflinks);
-	if (xeth.iflinks)
-		kfree(xeth.iflinks);
-	if (xeth.nds)
-		kfree(xeth.nds);
-	if (xeth.ndi_by_id)
-		kfree(xeth.ndi_by_id);
-	return -ENOMEM;
+	err = xeth.ops.encap.init();
+	if (!err)
+		err = xeth_link_init();
+	if (!err)
+		err = xeth_ndo_init();
+	if (!err)
+		err = xeth_notifier_init();
+	if (!err)
+		err = xeth_ethtool_init();
+	if (!err)
+		err = xeth_sb_init();
+	if (!err)
+		err = xeth_iflink_init();
+	if (!err)
+		err = xeth_dev_init();
+	if (err)
+		xeth_exit();
+	return err;
 }
 
 void xeth_exit(void)
 {
-	if (xeth.ea_iflinks)
-		kfree(xeth.ea_iflinks);
-	if (xeth.iflinks) {
-		int i;
-		for (i = 0; i < xeth.n.iflinks; i++) {
-			struct net_device *iflink = xeth_iflink(i);
-			if (iflink) {
-				xeth_reset_iflink(i);
-				rtnl_lock();
-				netdev_rx_handler_unregister(iflink);
-				rtnl_unlock();
-				dev_put(iflink);
-			}
-		}
-		kfree(xeth.iflinks);
-	}
-	if (xeth.nds)
-		kfree(xeth.nds);
-	if (xeth.ndi_by_id)
-		kfree(xeth.ndi_by_id);
+	xeth_sb_exit();
+	xeth_ethtool_exit();
+	xeth_notifier_exit();
+	xeth_ndo_exit();
+	xeth_link_exit();
+	xeth.ops.encap.exit();
+	xeth_iflink_exit();
+	xeth_dev_exit();
 }

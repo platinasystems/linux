@@ -78,7 +78,7 @@ void xeth_ndo_send_vids(struct net_device *nd)
 static int xeth_ndo_open(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_iflink(priv->iflinki);
+	struct net_device *iflink = xeth_iflink_nd(priv->ref.iflinki);
 	unsigned long iflink_flags;
 
 	if (!iflink)
@@ -126,7 +126,7 @@ static void xeth_ndo_get_stats64(struct net_device *nd,
 static int xeth_ndo_get_iflink(const struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_iflink(priv->iflinki);
+	struct net_device *iflink = xeth_iflink_nd(priv->ref.iflinki);
 	return iflink ? iflink->ifindex : 0;
 }
 
@@ -157,16 +157,20 @@ static int xeth_ndo_vlan_rx_kill_vid(struct net_device *nd,
 	return xeth_sb_send_if_del_vid(nd, vid);
 }
 
+struct net_device_ops xeth_ndo_ops = {
+	.ndo_open		= xeth_ndo_open,
+	.ndo_stop		= xeth_ndo_stop,
+	.ndo_change_carrier	= xeth_ndo_change_carrier,
+	.ndo_get_stats64	= xeth_ndo_get_stats64,
+	.ndo_get_iflink		= xeth_ndo_get_iflink,
+	.ndo_vlan_rx_add_vid	= xeth_ndo_vlan_rx_add_vid,
+	.ndo_vlan_rx_kill_vid	= xeth_ndo_vlan_rx_kill_vid,
+};
+
 int xeth_ndo_init(void)
 {
-	xeth.ops.ndo.ndo_open           = xeth_ndo_open;
-	xeth.ops.ndo.ndo_stop           = xeth_ndo_stop;
-	xeth.ops.ndo.ndo_change_carrier = xeth_ndo_change_carrier;
-	xeth.ops.ndo.ndo_get_stats64    = xeth_ndo_get_stats64;
-	xeth.ops.ndo.ndo_get_iflink     = xeth_ndo_get_iflink;
-	xeth.ops.ndo.ndo_vlan_rx_add_vid	= xeth_ndo_vlan_rx_add_vid;
-	xeth.ops.ndo.ndo_vlan_rx_kill_vid	= xeth_ndo_vlan_rx_kill_vid;
 	INIT_LIST_HEAD_RCU(&xeth_ndo_vids);
+	xeth_ndo_ops.ndo_start_xmit = xeth.ops.encap.tx;
 	return 0;
 }
 
@@ -182,11 +186,4 @@ void xeth_ndo_exit(void)
 		list_del_rcu(&entry->list);
 		kfree(entry);
 	}
-	xeth.ops.ndo.ndo_open           = NULL;
-	xeth.ops.ndo.ndo_stop           = NULL;
-	xeth.ops.ndo.ndo_change_carrier = NULL;
-	xeth.ops.ndo.ndo_get_stats64    = NULL;
-	xeth.ops.ndo.ndo_get_iflink     = NULL;
-	xeth.ops.ndo.ndo_vlan_rx_add_vid	= NULL;
-	xeth.ops.ndo.ndo_vlan_rx_kill_vid	= NULL;
 }

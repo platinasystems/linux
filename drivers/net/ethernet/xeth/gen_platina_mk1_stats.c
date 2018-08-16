@@ -1,6 +1,10 @@
 #include <stdio.h>
 
-extern const char *const platina_mk1_stats[];
+#include "platina_mk1_stats.h"
+
+static const char *const stats[] = {
+	PLATINA_MK1_STATS
+};
 
 int main(int argc, char **argv)
 {
@@ -10,8 +14,8 @@ int main(int argc, char **argv)
 	printf("package main\n");
 	printf("\n");
 	printf("var stats = []string{\n");
-	for (i = 0; platina_mk1_stats[i]; i++)
-		printf("\t\"%s\",\n", platina_mk1_stats[i]);
+	for (i = 0; stats[i]; i++)
+		printf("\t\"%s\",\n", stats[i]);
 	printf("}\n");
 	return 0;
 }

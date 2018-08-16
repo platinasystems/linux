@@ -1,4 +1,4 @@
-/* ethtool flags for Platina Systems top of rack ethernet switch.
+/* Platina Systems XETH driver for the MK1 top of rack ethernet switch
  * Copyright(c) 2018 Platina Systems, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -22,13 +22,8 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#ifndef NULL
-#define NULL ((void *)0)
-#endif
-
-const char *const platina_mk1_flags[] = {
-	"copper",
-	"fec74",
-	"fec91",
+#define PLATINA_MK1_FLAGS	\
+	"copper",		\
+	"fec74",		\
+	"fec91",		\
 	NULL,
-};

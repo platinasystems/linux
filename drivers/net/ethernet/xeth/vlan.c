@@ -58,8 +58,8 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 		return RX_HANDLER_CONSUMED;
 	}
 	priv = netdev_priv(nd);
-	iflink = xeth_iflink(priv->iflinki);
-	if (vid != priv->id || skb->dev != iflink) {
+	iflink = xeth_iflink_nd(priv->ref.iflinki);
+	if (vid != priv->ref.id || skb->dev != iflink) {
 		xeth_count_priv_inc(priv, rx_nd_mismatch);
 		kfree_skb(skb);
 		return RX_HANDLER_CONSUMED;
@@ -146,17 +146,17 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_iflink(priv->iflinki);
+	struct net_device *iflink = xeth_iflink_nd(priv->ref.iflinki);
 	u16 tpid = xeth_vlan_is_8021X(skb->protocol)
 		? cpu_to_be16(ETH_P_8021AD)
 		: cpu_to_be16(ETH_P_8021Q);
 	u16 pcp = (u16)(skb->priority) << VLAN_PRIO_SHIFT;
-	u16 tci = pcp | priv->id;
+	u16 tci = pcp | priv->ref.id;
 
 	skb = vlan_insert_tag_set_proto(skb, tpid, tci);
 	if (!skb) {
 		xeth_count_priv_inc(priv, tx_nomem);
-	} else if (priv->ndi < 0) {
+	} else if (priv->ref.ndi < 0) {
 		xeth_count_priv_inc(priv, tx_noway);
 	} else if (!iflink) {
 		xeth_count_priv_inc(priv, tx_no_iflink);
@@ -176,15 +176,12 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 
 int xeth_vlan_init(void)
 {
-	xeth.ops.rx_handler         = xeth_vlan_rx;
-	xeth.ops.side_band_rx       = xeth_vlan_sb;
-	xeth.ops.ndo.ndo_start_xmit = xeth_vlan_tx;
+	xeth.ops.encap.rx = xeth_vlan_rx;
+	xeth.ops.encap.sb = xeth_vlan_sb;
+	xeth.ops.encap.tx = xeth_vlan_tx;
 	return 0;
 }
 
 void xeth_vlan_exit(void)
 {
-	xeth.ops.rx_handler         = NULL;
-	xeth.ops.side_band_rx       = NULL;
-	xeth.ops.ndo.ndo_start_xmit = NULL;
 }
