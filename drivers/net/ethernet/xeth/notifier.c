@@ -214,8 +214,10 @@ int xeth_notifier_register_fib(void)
 		return 0;
 	err = register_fib_notifier(&xeth_notifier_block_fib,
 				    xeth_notifier_fib_cb);
-	if (!err)
+	if (!err) {
 		xeth_notifier_registered_fib = true;
+		err = xeth_notifier_register_netevent();
+	}
 	return err;
 }
 
@@ -224,6 +226,7 @@ void xeth_notifier_unregister_fib(void)
 	if (xeth_notifier_registered_fib)
 		unregister_fib_notifier(&xeth_notifier_block_fib);
 	xeth_notifier_registered_fib = false;
+	xeth_notifier_unregister_netevent();
 }
 
 int xeth_notifier_init(void)
@@ -231,8 +234,10 @@ int xeth_notifier_init(void)
 	int (*const registers[])(void) = {
 		xeth_notifier_register_netdevice,
 		xeth_notifier_register_inetaddr,
-		xeth_notifier_register_netevent,
-		/* xeth_notifier_register_fib w/ sb command instead of init */
+		/* xeth_notifier_register_fib then
+		 * xeth_notifier_register_netevent
+		 * w/ rx of sb dump_fibinfo req instead of init
+		 */
 		NULL,
 	};
 	int i;
