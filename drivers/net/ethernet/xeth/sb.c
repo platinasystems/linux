@@ -30,6 +30,17 @@
 #include <uapi/linux/un.h>
 #include <uapi/linux/xeth.h>
 
+static struct {
+	struct {
+		struct	task_struct *main;
+		struct	task_struct *rx;
+		struct	{
+			char	rx[IFNAMSIZ];
+		} name;
+	} task;
+	char	*rxbuf;
+} xeth_sb;
+
 static const char *const xeth_sb_link_stats[] = {
 	"rx-packets",
 	"tx-packets",
@@ -68,6 +79,19 @@ struct xeth_sb_tx_entry {
 
 static struct list_head __rcu xeth_sb_tx;
 
+static inline void xeth_sb_dump_ifinfo(struct net_device *nd)
+{
+	if (nd->ip_ptr) {
+		struct in_ifaddr *ifa;
+		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
+			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
+	}
+	xeth_sb_send_ifinfo(nd, 0);
+	xeth_ndo_send_vids(nd);
+	xeth_sb_send_ethtool_flags(nd);
+	xeth_sb_send_ethtool_settings(nd);
+}
+
 static u64 xeth_sb_ns_inum(struct net_device *nd)
 {
 	struct net *ndnet = dev_net(nd);
@@ -83,7 +107,7 @@ static inline struct xeth_sb_tx_entry *xeth_sb_alloc(size_t data_len)
 	return entry;
 }
 
-static void xeth_sb_free(struct list_head *entries)
+static void xeth_sb_tx_free(struct list_head *entries)
 {
 	while (!list_empty(entries)) {
 		struct list_head *next = entries->next;
@@ -135,7 +159,7 @@ static void xeth_sb_tx_flush(void)
 	}
 	rcu_read_unlock();
 	synchronize_rcu();
-	xeth_sb_free(&free_list);
+	xeth_sb_tx_free(&free_list);
 }
 
 static void xeth_sb_reset_nd_stats(struct net_device *nd)
@@ -498,62 +522,6 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 	return 0;
 }
 
-static inline bool xeth_sb_service_continue(int err)
-{
-	return !err && !kthread_should_stop() && !signal_pending(xeth.sb.main);
-}
-
-// return < 0 if error; 1 if closed, and 0 othewise
-static inline int xeth_sb_service_tx(struct socket *sock)
-{
-	int err = 0;
-	LIST_HEAD(sent_list);
-	while (xeth_sb_service_continue(err)) {
-		struct msghdr msg = {
-			.msg_flags = MSG_DONTWAIT,
-		};
-		struct kvec iov;
-		struct xeth_sb_tx_entry *entry = xeth_sb_tx_pop();
-		int n;
-
-		if (!entry)
-			break;
-		iov.iov_base = entry->data,
-		iov.iov_len  = entry->data_len,
-#if 0
-		iov_iter_kvec(&msg.msg_iter, WRITE | ITER_KVEC, &iov, 1, n);
-#endif
-		n = kernel_sendmsg(sock, &msg, &iov, 1, entry->data_len);
-		if (n == -EAGAIN) {
-			xeth_sb_tx_push(entry);
-			break;
-		}
-		list_add(&entry->list, &sent_list);
-		if (n < 0)
-			err = n;
-		else if (n == 0)
-			err = 1;
-	}
-	synchronize_rcu();
-	xeth_sb_free(&sent_list);
-	return err;
-}
-
-static inline int xeth_sb_dump_ifinfo(struct socket *sock,
-				      struct net_device *nd)
-{
-	if (nd->ip_ptr) {
-		struct in_ifaddr *ifa;
-		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
-			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
-	}
-	xeth_sb_send_ifinfo(nd, 0);
-	xeth_ndo_send_vids(nd);
-	xeth_sb_send_ethtool_flags(nd);
-	xeth_sb_send_ethtool_settings(nd);
-	return xeth_sb_service_tx(sock);
-}
-
 static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 {
 	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
@@ -571,18 +539,72 @@ static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 }
 
 
-// return < 0 if error, 1 if sock closed, and 0 othewise
-static inline int xeth_sb_service_rx(struct socket *sock)
+static inline bool xeth_sb_service_continue(int err, struct task_struct *task)
 {
-	struct xeth_msg *msg = (struct xeth_msg *)(xeth.sb.rxbuf);
+	return !err && !kthread_should_stop() && !signal_pending(task);
+}
+
+static inline void xeth_sb_service_tx(struct socket *sock)
+{
+	int err = 0;
+	const unsigned int maxms = 320;
+	const unsigned int minms = 10;
+	unsigned int ms = minms;
+	LIST_HEAD(sent);
+	while(xeth_sb_service_continue(err, xeth_sb.task.main)) {
+		int n;
+		struct kvec iov;
+		struct msghdr msg = {
+			.msg_flags = MSG_DONTWAIT,
+		};
+		struct xeth_sb_tx_entry *entry = xeth_sb_tx_pop();
+
+		if (!entry) {
+			synchronize_rcu();
+			if (!list_empty(&sent)) {
+				xeth_sb_tx_free(&sent);
+				ms = minms;
+			} else if (ms < maxms) {
+				ms *= 2;
+			}
+			msleep(ms);
+			continue;
+		}
+		iov.iov_base = entry->data,
+		iov.iov_len  = entry->data_len,
+#if 0
+		iov_iter_kvec(&msg.msg_iter, WRITE | ITER_KVEC, &iov, 1, n);
+#endif
+		n = kernel_sendmsg(sock, &msg, &iov, 1, iov.iov_len);
+		if (n == -EAGAIN) {
+			xeth_sb_tx_push(entry);
+			msleep(1);
+			continue;
+		}
+		list_add(&entry->list, &sent);
+		if (n < 0)
+			err = n;
+		else if (n == 0)
+			err = 1;
+	}
+	synchronize_rcu();
+	xeth_sb_tx_free(&sent);
+}
+
+// return < 0 if error, 1 if sock closed, and 0 othewise
+static inline int xeth_sb_service_rx_one(struct socket *sock)
+{
+	struct xeth_msg *msg = (struct xeth_msg *)(xeth_sb.rxbuf);
 	struct msghdr oob = {};
 	struct kvec iov = {
-		.iov_base = xeth.sb.rxbuf,
+		.iov_base = xeth_sb.rxbuf,
 		.iov_len = XETH_SIZEOF_JUMBO_FRAME,
 	};
 	int ret = kernel_recvmsg(sock, &oob, &iov, 1, iov.iov_len, 0);
-	if (ret == -EAGAIN)
+	if (ret == -EAGAIN) {
+		schedule();
 		return 0;
+	}
 	if (ret == 0)
 		return 1;
 	if (ret < 0)
@@ -590,32 +612,31 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	if (ret < sizeof(struct xeth_msg))
 		return -EINVAL;
 	if (!xeth_is_msg(msg)) {
-		xeth.ops.encap.sb(xeth.sb.rxbuf, ret);
+		xeth.ops.encap.sb(xeth_sb.rxbuf, ret);
 		return 0;
 	}
 	switch (msg->kind) {
 	case XETH_MSG_KIND_CARRIER:
-		xeth_sb_carrier((struct xeth_msg_carrier *)xeth.sb.rxbuf);
+		xeth_sb_carrier((struct xeth_msg_carrier *)xeth_sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_LINK_STAT:
-		xeth_sb_link_stat((struct xeth_msg_stat *)xeth.sb.rxbuf);
+		xeth_sb_link_stat((struct xeth_msg_stat *)xeth_sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_ETHTOOL_STAT:
-		xeth_sb_ethtool_stat((struct xeth_msg_stat *)xeth.sb.rxbuf);
+		xeth_sb_ethtool_stat((struct xeth_msg_stat *)xeth_sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_DUMP_IFINFO: {
 		int err = 0;
 		struct xeth_priv *priv;
 		list_for_each_entry_rcu(priv, &xeth.privs, list) {
-			if (!err)
-				err = xeth_sb_dump_ifinfo(sock, priv->nd);
+			xeth_sb_dump_ifinfo(priv->nd);
 		}
 		xeth_sb_send_break();
 		if (err)
 			return err;
 	}	break;
 	case XETH_MSG_KIND_SPEED:
-		xeth_sb_speed((struct xeth_msg_speed *)xeth.sb.rxbuf);
+		xeth_sb_speed((struct xeth_msg_speed *)xeth_sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_DUMP_FIBINFO: {
 		int err = xeth_pr_err(xeth_notifier_register_fib());
@@ -630,23 +651,35 @@ static inline int xeth_sb_service_rx(struct socket *sock)
 	return 0;
 }
 
+static inline int xeth_sb_task_rx(void *data)
+{
+	struct socket *sock = (struct socket *)data;
+	struct timeval tv = {
+		.tv_sec = 0,
+		.tv_usec = 10000,
+	};
+	int err = xeth_pr_err(kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+						(char *)&tv,
+						sizeof(struct timeval)));
+	while(xeth_sb_service_continue(err, xeth_sb.task.rx))
+		err = xeth_sb_service_rx_one((struct socket *)data);
+	xeth_sb.task.rx = NULL;
+	return err;
+}
+
 static inline void xeth_sb_service(struct socket *sock)
 {
 	int err;
-	struct timeval tv = {
-		.tv_sec = 0,
-		.tv_usec = 100000,
-	};
 
-	err = xeth_pr_err(kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
-					    (char *)&tv,
-					    sizeof(struct timeval)));
-	if (err < 0)
+	xeth_sb.task.rx = kthread_run(xeth_sb_task_rx, sock, xeth_sb.task.name.rx);
+	err = xeth_pr_is_err_val(xeth_sb.task.rx);
+	if (err)
 		return;
 	xeth_count_inc(sb_connections);
-	while (xeth_sb_service_continue(err)) {
-		err = xeth_sb_service_tx(sock);
-		err = err ? err : xeth_sb_service_rx(sock);
+	xeth_sb_service_tx(sock);
+	if (xeth_sb.task.rx) {
+		kthread_stop(xeth_sb.task.rx);
+		while (xeth_sb.task.rx) ;
 	}
 	xeth_count_dec(sb_connections);
 	sock_release(sock);
@@ -654,7 +687,7 @@ static inline void xeth_sb_service(struct socket *sock)
 	xeth_foreach_nd(netif_carrier_off);
 }
 
-static int xeth_sb_main(void *data)
+static int xeth_sb_task_main(void *data)
 {
 	const int backlog = 3;
 	struct sockaddr_un addr;
@@ -667,7 +700,7 @@ static int xeth_sb_main(void *data)
 	err = xeth_pr_err(sock_create_kern(current->nsproxy->net_ns, AF_UNIX,
 					   SOCK_SEQPACKET, 0, &ln));
 	if (err)
-		goto xeth_sb_main_egress;
+		goto xeth_sb_task_main_egress;
 	SOCK_INODE(ln)->i_mode &= ~(S_IRWXG | S_IRWXO);
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
@@ -678,12 +711,12 @@ static int xeth_sb_main(void *data)
 	no_xeth_pr("@%s: listen", addr.sun_path+1);
 	err = xeth_pr_err(kernel_bind(ln, paddr, n));
 	if (err)
-		goto xeth_sb_main_egress;
+		goto xeth_sb_task_main_egress;
 	err = xeth_pr_err(kernel_listen(ln, backlog));
 	if (err)
-		goto xeth_sb_main_egress;
+		goto xeth_sb_task_main_egress;
 	allow_signal(SIGKILL);
-	while (xeth_sb_service_continue(err)) {
+	while (xeth_sb_service_continue(err, xeth_sb.task.main)) {
 		struct socket *conn;
 		xeth_sb_tx_flush();
 		err = kernel_accept(ln, &conn, O_NONBLOCK);
@@ -700,34 +733,37 @@ static int xeth_sb_main(void *data)
 			no_xeth_pr("@%s: disconnected", addr.sun_path+1);
 		}
 	}
-xeth_sb_main_egress:
+xeth_sb_task_main_egress:
 	if (err)
 		xeth_pr("@%s: err %d", addr.sun_path+1, err);
 	if (ln)
 		sock_release(ln);
 	no_xeth_pr("finished");
-	xeth.sb.main = NULL;
+	xeth_sb.task.main = NULL;
 	return err;
 }
 
 int xeth_sb_init(void)
 {
 	INIT_LIST_HEAD_RCU(&xeth_sb_tx);
-	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
-	if (!xeth.sb.rxbuf)
+	xeth_sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
+	if (!xeth_sb.rxbuf)
 		return -ENOMEM;
-	xeth.sb.main = kthread_run(xeth_sb_main, NULL, xeth_link_ops.kind);
-	return xeth_pr_is_err_val(xeth.sb.main);
+	scnprintf(xeth_sb.task.name.rx, IFNAMSIZ, "%s-rx",
+		  xeth_link_ops.kind);
+	xeth_sb.task.main = kthread_run(xeth_sb_task_main, NULL,
+					xeth_link_ops.kind);
+	return xeth_pr_is_err_val(xeth_sb.task.main);
 }
 
 void xeth_sb_exit(void)
 {
-	if (xeth.sb.main) {
-		kthread_stop(xeth.sb.main);
-		while (xeth.sb.main) ;
+	if (xeth_sb.task.main) {
+		kthread_stop(xeth_sb.task.main);
+		while (xeth_sb.task.main) ;
 	}
-	if (xeth.sb.rxbuf) {
-		kfree(xeth.sb.rxbuf);
-		xeth.sb.rxbuf = NULL;
+	if (xeth_sb.rxbuf) {
+		kfree(xeth_sb.rxbuf);
+		xeth_sb.rxbuf = NULL;
 	}
 }
