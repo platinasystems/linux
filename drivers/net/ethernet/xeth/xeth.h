@@ -88,11 +88,6 @@ struct xeth {
 					  struct net_device *nd);
 		} encap;
 	} ops;
-	struct {
-		struct	task_struct
-			*main;
-		char	*rxbuf;
-	} sb;
 	atomic64_t	count[n_xeth_count];
 };
 
