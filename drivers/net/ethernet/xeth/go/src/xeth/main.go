@@ -49,7 +49,7 @@ DB	{ ifinfo | fdb }
 DEVICE	an interface name or its ifindex
 STAT	an 'ip link' or 'ethtool' statistic
 FILE,-	receive an exception frame from FILE or STDIN`)
-	xeth, err := New(strings.TrimPrefix(name, "sample-"), DialOpt(false))
+	xeth, err := New(strings.TrimPrefix(name, "sample-"))
 	defer func() {
 		r := recover()
 		if err := xeth.Close(); r == nil {
@@ -138,18 +138,14 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 			if err != nil {
 				panic(err)
 			}
-			if err = xeth.ExceptionFrame(buf); err != nil {
-				panic(err)
-			}
+			xeth.Tx(buf)
 			args = args[1:]
 		default:
 			buf, err := ioutil.ReadFile(args[0])
 			if err != nil {
 				panic(err)
 			}
-			if err = xeth.ExceptionFrame(buf); err != nil {
-				panic(err)
-			}
+			xeth.Tx(buf)
 			args = args[1:]
 		}
 	}

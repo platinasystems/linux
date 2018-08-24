@@ -26,20 +26,18 @@ package xeth
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
 const DefaultSizeofCh = 4
 const netname = "unixpacket"
 
-type SizeofRxchOpt int
-type SizeofTxchOpt int
-type DialOpt bool
-
-// This provides a buffered interface to an XETH driver side-band socket.
+// This provides an interface to the XETH driver's side-band socket.
 type Xeth struct {
 	name string
 	addr *net.UnixAddr
@@ -48,9 +46,6 @@ type Xeth struct {
 	RxCh <-chan []byte
 	rxch chan<- []byte
 	txch chan []byte
-
-	rxgone chan struct{}
-	txgone chan struct{}
 }
 
 var expMsgSz = map[Kind]int{
@@ -63,15 +58,31 @@ var expMsgSz = map[Kind]int{
 	XETH_MSG_KIND_NEIGH_UPDATE:     SizeofMsgNeighUpdate,
 }
 
-// New(driver[, options...]]])
+func IsEAGAIN(err error) bool {
+	if err != nil {
+		if operr, ok := err.(*net.OpError); ok {
+			if oserr, ok := operr.Err.(*os.SyscallError); ok {
+				if oserr.Err == syscall.EAGAIN {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func IsTimeout(err error) bool {
+	if err != nil {
+		if op, ok := err.(*net.OpError); ok {
+			return op.Timeout()
+		}
+	}
+	return false
+}
+
+// New(driver)
 // driver :: XETH driver name (e.g. "platina-mk1")
-// Options:
-//	SizeofRxchOpt	override DefaultSizeofCh for rxch
-//			could be minimal if xeth.Rx() from another go-routine
-//	SizeofTxchOpt	override DefaultSizeofCh for txch
-//			for maximum buffering, should be
-//				number of devices * number of stats
-func New(driver string, opts ...interface{}) (*Xeth, error) {
+func New(driver string) (*Xeth, error) {
 	var sock *net.UnixConn
 	addr, err := net.ResolveUnixAddr(netname, "@xeth")
 	if err != nil {
@@ -86,76 +97,127 @@ func New(driver string, opts ...interface{}) (*Xeth, error) {
 			return nil, err
 		}
 	}
-	sizeofTxch := DefaultSizeofCh
-	sizeofRxch := DefaultSizeofCh
-	for _, opt := range opts {
-		switch t := opt.(type) {
-		case SizeofRxchOpt:
-			sizeofRxch = int(t)
-		case SizeofTxchOpt:
-			sizeofTxch = int(t)
+	rxch := make(chan []byte, 4)
+	xeth := &Xeth{
+		name: driver,
+		addr: addr,
+		sock: sock,
+		RxCh: rxch,
+		rxch: rxch,
+		txch: make(chan []byte, 4),
+	}
+	go xeth.gorx()
+	go xeth.gotx()
+	return xeth, err
+}
+
+func (xeth *Xeth) gorx() {
+	const minrxto = 10 * time.Millisecond
+	const maxrxto = 320 * time.Millisecond
+	rxto := minrxto
+	rxbuf := Pool.Get(PageSize)
+	defer Pool.Put(rxbuf)
+	rxoob := Pool.Get(PageSize)
+	defer Pool.Put(rxoob)
+	defer close(xeth.rxch)
+	for xeth.sock != nil {
+		err := xeth.sock.SetReadDeadline(time.Now().Add(rxto))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "xeth set rx deadline", err)
+			break
+		}
+		n, noob, flags, addr, err :=
+			xeth.sock.ReadMsgUnix(rxbuf, rxoob)
+		_ = noob
+		_ = flags
+		_ = addr
+		if n == 0 || IsTimeout(err) {
+			if rxto < maxrxto {
+				rxto *= 2
+			}
+		} else if err == nil {
+			rxto = minrxto
+			msg := Pool.Get(n)
+			copy(msg, rxbuf[:n])
+			xeth.rxch <- msg
+		} else {
+			e, ok := err.(*os.SyscallError)
+			if !ok || e.Err.Error() != "EOF" {
+				fmt.Fprintln(os.Stderr, "xeth rx", err)
+			}
+			break
 		}
 	}
-	rxch := make(chan []byte, sizeofRxch)
-	xeth := &Xeth{
-		name:   driver,
-		addr:   addr,
-		sock:   sock,
-		RxCh:   rxch,
-		rxch:   rxch,
-		txch:   make(chan []byte, sizeofTxch),
-		rxgone: make(chan struct{}),
-		txgone: make(chan struct{}),
+}
+
+func (xeth *Xeth) gotx() {
+	for msg := range xeth.txch {
+		xeth.tx(msg, 10*time.Millisecond)
+		Pool.Put(msg)
 	}
-	go xeth.rxgo()
-	go xeth.txgo()
-	return xeth, err
+}
+
+func (xeth *Xeth) tx(buf []byte, timeout time.Duration) error {
+	var oob []byte
+	var dl time.Time
+	if xeth.sock == nil {
+		return io.EOF
+	}
+	if timeout != time.Duration(0) {
+		dl = time.Now().Add(timeout)
+	}
+	err := xeth.sock.SetWriteDeadline(dl)
+	if err != nil {
+		return err
+	}
+	_, _, err = xeth.sock.WriteMsgUnix(buf, oob, nil)
+	return err
 }
 
 func (xeth *Xeth) String() string { return xeth.name }
 
 func (xeth *Xeth) Close() error {
+	const (
+		SHUT_RD = iota
+		SHUT_WR
+		SHUT_RDWR
+	)
 	if xeth.sock == nil {
 		return nil
 	}
+	if f, err := xeth.sock.File(); err == nil {
+		syscall.Shutdown(int(f.Fd()), SHUT_RDWR)
+	}
+	xeth.sock.Close()
 	close(xeth.txch)
-	<-xeth.rxgone
-	<-xeth.txgone
+	xeth.sock = nil
 	return nil
 }
 
-func (xeth *Xeth) Carrier(ifname string, flag CarrierFlag) {
+func (xeth *Xeth) Carrier(ifname string, flag CarrierFlag) error {
 	buf := Pool.Get(SizeofMsgStat)
+	defer Pool.Put(buf)
 	msg := (*MsgCarrier)(unsafe.Pointer(&buf[0]))
 	msg.Kind = uint8(XETH_MSG_KIND_CARRIER)
 	copy(msg.Ifname[:], ifname)
 	msg.Flag = uint8(flag)
-	xeth.txch <- buf
+	return xeth.tx(buf, 0)
 }
 
-func (xeth *Xeth) DumpFib() {
+func (xeth *Xeth) DumpFib() error {
 	buf := Pool.Get(SizeofMsgBreak)
+	defer Pool.Put(buf)
 	msg := (*MsgBreak)(unsafe.Pointer(&buf[0]))
 	msg.Kind = uint8(XETH_MSG_KIND_DUMP_FIBINFO)
-	xeth.txch <- buf
+	return xeth.tx(buf, 0)
 }
 
-func (xeth *Xeth) DumpIfinfo() {
+func (xeth *Xeth) DumpIfinfo() error {
 	buf := Pool.Get(SizeofMsgBreak)
+	defer Pool.Put(buf)
 	msg := (*MsgBreak)(unsafe.Pointer(&buf[0]))
 	msg.Kind = uint8(XETH_MSG_KIND_DUMP_IFINFO)
-	xeth.txch <- buf
-}
-
-func (xeth *Xeth) ExceptionFrame(buf []byte) error {
-	b := Pool.Get(len(buf))
-	copy(b, buf)
-	select {
-	case xeth.txch <- b:
-	default:
-		Pool.Put(b)
-	}
-	return nil
+	return xeth.tx(buf, 0)
 }
 
 func (xeth *Xeth) SetStat(ifname, stat string, count uint64) error {
@@ -171,113 +233,57 @@ func (xeth *Xeth) SetStat(ifname, stat string, count uint64) error {
 		return fmt.Errorf("%q unknown", stat)
 	}
 	buf := Pool.Get(SizeofMsgStat)
+	defer Pool.Put(buf)
 	msg := (*MsgStat)(unsafe.Pointer(&buf[0]))
 	msg.Kind = kind
 	copy(msg.Ifname[:], ifname)
 	msg.Index = statindex
 	msg.Count = count
-	xeth.txch <- buf
-	return nil
+	return xeth.tx(buf, 10*time.Millisecond)
 }
 
 func (xeth *Xeth) Speed(ifname string, count uint64) error {
 	buf := Pool.Get(SizeofMsgSpeed)
+	defer Pool.Put(buf)
 	msg := (*MsgSpeed)(unsafe.Pointer(&buf[0]))
 	msg.Kind = uint8(XETH_MSG_KIND_SPEED)
 	copy(msg.Ifname[:], ifname)
 	msg.Mbps = uint32(count)
-	xeth.txch <- buf
-	return nil
+	return xeth.tx(buf, 0)
 }
 
-func (xeth *Xeth) UntilBreak(f func([]byte) error) (err error) {
-	for buf := range xeth.RxCh {
-		kind := KindOf(buf)
+// leaky bucket
+func (xeth *Xeth) Tx(buf []byte) {
+	msg := Pool.Get(len(buf))
+	copy(msg, buf)
+	select {
+	case xeth.txch <- msg:
+	default:
+		Pool.Put(msg)
+	}
+}
+
+func (xeth *Xeth) UntilBreak(f func([]byte) error) error {
+	var err error
+	for msg := range xeth.RxCh {
+		kind := KindOf(msg)
 		if kind == XETH_MSG_KIND_BREAK {
-			Pool.Put(buf)
-			break
+			err = io.EOF
 		} else if kind != XETH_MSG_KIND_NOT_MSG {
 			exp, found := expMsgSz[kind]
-			if found && exp != len(buf) {
+			if found && exp != len(msg) {
 				err = fmt.Errorf("mismatched %s", kind)
 			} else {
-				err = f(buf)
+				err = f(msg)
 			}
 		}
-		Pool.Put(buf)
+		Pool.Put(msg)
 		if err != nil {
 			break
 		}
 	}
-	return
-}
-
-func IsEAGAIN(err error) bool {
-	if operr, ok := err.(*net.OpError); ok {
-		if oserr, ok := operr.Err.(*os.SyscallError); ok {
-			if oserr.Err == syscall.EAGAIN {
-				return true
-			}
-		}
+	if err == io.EOF {
+		err = nil
 	}
-	return false
-}
-
-func (xeth *Xeth) rxgo() {
-	buf := Pool.Get(PageSize)
-	oob := Pool.Get(PageSize)
-	defer Pool.Put(buf)
-	defer Pool.Put(oob)
-	defer close(xeth.rxch)
-	defer close(xeth.rxgone)
-	for {
-		if xeth.sock == nil {
-			break
-		}
-		n, noob, flags, addr, err := xeth.sock.ReadMsgUnix(buf, oob)
-		_ = noob
-		_ = flags
-		_ = addr
-		if n == 0 {
-			break
-		}
-		if err != nil {
-			if xeth.sock != nil {
-				fmt.Fprint(os.Stderr, xeth.name, ": ",
-					err, "\n")
-			}
-			break
-		}
-		msg := Pool.Get(n)
-		copy(msg, buf[:n])
-		xeth.rxch <- msg
-	}
-}
-
-func (xeth *Xeth) shutdown() {
-	const (
-		SHUT_RD = iota
-		SHUT_WR
-		SHUT_RDWR
-	)
-	if xeth.sock != nil {
-		if f, err := xeth.sock.File(); err == nil {
-			syscall.Shutdown(int(f.Fd()), SHUT_RDWR)
-		}
-		xeth.sock = nil
-	}
-}
-
-func (xeth *Xeth) txgo() {
-	defer close(xeth.txgone)
-	defer xeth.shutdown()
-	for buf := range xeth.txch {
-		var err error
-		var oob []byte
-		_, _, err = xeth.sock.WriteMsgUnix(buf, oob, nil)
-		Pool.Put(buf)
-		if err != nil {
-			break
-		}
-	}
+	return err
 }
