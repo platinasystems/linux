@@ -57,10 +57,13 @@ static int xeth_link_new(struct net *src_net, struct net_device *nd,
 	err = xeth_parse_name(nd->name, &priv->ref);
 	if (err)
 		return err;
-	if (xeth_pr_true_expr(priv->ref.devtype == XETH_DEVTYPE_PORT,
+	if (xeth_pr_true_expr(priv->ref.devtype == XETH_DEVTYPE_XETH_PORT,
 			      "can't make post provision port"))
 		return -EPERM;
-	return xeth_link_register(nd);
+	err = xeth_link_register(nd);
+	if (!err)
+		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_NEW);
+	return err;
 }
 
 int xeth_link_register(struct net_device *nd)
@@ -116,10 +119,13 @@ int xeth_link_register(struct net_device *nd)
 
 static void xeth_link_del(struct net_device *nd, struct list_head *head)
 {
+	struct xeth_vid *vid;
 	struct xeth_priv *priv = netdev_priv(nd);
 
-	xeth_ndo_free_vids(nd);
-	xeth_sb_send_ifdel(nd);
+	while (vid = xeth_vid_pop(&priv->vids), vid != NULL)
+		list_add_tail_rcu(&vid->list, &xeth.vids);
+
+	xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_DEL);
 	xeth_sysfs_del(priv);
 	priv->nd = NULL;
 	list_del_rcu(&priv->list);

@@ -45,11 +45,6 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_IFVID,
 };
 
-enum xeth_msg_carrier_flag {
-	XETH_CARRIER_OFF,
-	XETH_CARRIER_ON,
-};
-
 #define xeth_msg_named(name)	xeth_msg_##name
 
 #define xeth_msg_def(name, ...)						\
@@ -92,10 +87,17 @@ struct xeth_ifmsg {
 
 xeth_msg_def(break);
 
-xeth_ifmsg_def(stat,
-	u64 index;
-	u64 count;
+enum xeth_msg_carrier_flag {
+	XETH_CARRIER_OFF,
+	XETH_CARRIER_ON,
+};
+
+xeth_ifmsg_def(carrier,
+	u8	flag;
+	u8	pad[7];
 );
+
+xeth_msg_def(dump_ifinfo);
 
 xeth_ifmsg_def(ethtool_flags,
 	u32	flags;
@@ -118,23 +120,21 @@ xeth_ifmsg_def(ethtool_settings,
 	u8	pad[4];
 );
 
-xeth_msg_def(dump_ifinfo);
-
-xeth_ifmsg_def(carrier,
-	u8	flag;
-	u8	pad[7];
-);
-
-xeth_ifmsg_def(speed,
-	u32	mbps;
-	u8	pad[4];
-);
-
 enum xeth_msg_ifinfo_devtype {
-	XETH_DEVTYPE_PORT,
-	XETH_DEVTYPE_BRIDGE,
-	XETH_DEVTYPE_TAGGED_BRIDGE_PORT,
-	XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT,
+	XETH_DEVTYPE_XETH_PORT = 0,
+	XETH_DEVTYPE_XETH_BRIDGE,
+	XETH_DEVTYPE_LINUX_UNKNOWN = 128,
+	XETH_DEVTYPE_LINUX_VLAN,
+};
+
+enum xeth_msg_ifinfo_reason {
+	XETH_IFINFO_REASON_NEW,
+	XETH_IFINFO_REASON_DEL,
+	XETH_IFINFO_REASON_UP,
+	XETH_IFINFO_REASON_DOWN,
+	XETH_IFINFO_REASON_DUMP,
+	XETH_IFINFO_REASON_REG,
+	XETH_IFINFO_REASON_UNREG,
 };
 
 xeth_ifmsg_def(ifinfo,
@@ -148,14 +148,16 @@ xeth_ifmsg_def(ifinfo,
 	s8	subportindex;
 	u8	devtype;
 	s16	portid;
-	u8	pad[6];
+	u8	reason;
+	u8	pad[5];
 );
 
 xeth_ifmsg_def(ifa,
 	u32	event;
 	__be32	address;
 	__be32	mask;
-	u8	pad[4];
+	s32	ifindex;
+	u8	pad[2];
 );
 
 xeth_msg_def(dump_fibinfo);
@@ -181,12 +183,6 @@ xeth_msg_def(fibentry,
 	struct xeth_next_hop nh[];
 );
 
-xeth_ifmsg_def(ifdel,
-	s32	ifindex;
-	u8	devtype;
-	u8	pad[3];
-);
-
 xeth_ifmsg_def(neigh_update,
 	u64	net;
 	s32	ifindex;
@@ -198,18 +194,15 @@ xeth_ifmsg_def(neigh_update,
 	u8	pad[2];
 );
 
-xeth_ifmsg_def(ifvid,
-	u64	net;
-	s32	ifindex;
-	u8	op;
-	u8	noop;
-	u16	vid;
+xeth_ifmsg_def(speed,
+	u32	mbps;
+	u8	pad[4];
 );
 
-enum {
-	XETH_IFVID_ADD,
-	XETH_IFVID_DEL,
-};
+xeth_ifmsg_def(stat,
+	u64 index;
+	u64 count;
+);
 
 static inline bool xeth_is_msg(struct xeth_msg *p)
 {
