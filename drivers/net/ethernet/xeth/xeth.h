@@ -40,6 +40,8 @@
 
 struct xeth {
 	struct	list_head __rcu	privs;
+	struct	list_head __rcu vids;
+
 	struct {
 		int	base;	/* 0 or 1 base port and subport*/
 		int	userids;
@@ -127,10 +129,7 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
-int xeth_sb_send_ifdel(struct net_device *nd);
-int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int modiff);
-int xeth_sb_send_if_add_vid(struct net_device *nd, u16 vid);
-int xeth_sb_send_if_del_vid(struct net_device *nd, u16 vid);
+int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason);
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
 int xeth_sb_send_neigh_update(struct neighbour *neigh);
@@ -138,7 +137,6 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh);
 int xeth_sysfs_add(struct xeth_priv *priv);
 void xeth_sysfs_del(struct xeth_priv *priv);
 
-void xeth_ndo_free_vids(struct net_device *nd);
 void xeth_ndo_send_vids(struct net_device *nd);
 
 int xeth_link_register(struct net_device *nd);
@@ -192,4 +190,24 @@ static inline void xeth_reset_counters(void)
 		atomic64_set(&xeth.count[i], 0);
 }
 
-#endif /* __XETH_H */
+static inline bool nd_is_xeth(struct net_device *nd)
+{
+	return (nd->netdev_ops == &xeth_ndo_ops);
+}
+
+struct	xeth_vid {
+	struct	list_head __rcu list;
+	__be16	proto;
+	u16	id;
+};
+
+static inline struct xeth_vid *xeth_vid_pop(struct list_head __rcu *head)
+{
+	struct xeth_vid *vid =
+		list_first_or_null_rcu(head, struct xeth_vid, list);
+	if (vid)
+		list_del_rcu(&vid->list);
+	return vid;
+}
+
+#endif  /* __XETH_H */

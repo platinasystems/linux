@@ -27,7 +27,7 @@
 static int xeth_parse_xethbr(const char *name, struct xeth_priv_ref *ref)
 {
 	u16 u;
-	const char *p = name + 7;
+	const char *p = name;
 
 	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
 		return -EINVAL;
@@ -43,7 +43,7 @@ static int xeth_parse_xethbr(const char *name, struct xeth_priv_ref *ref)
 	ref->id = u;
 	ref->ndi = ref->id;
 	ref->iflinki = ref->id & 1;
-	ref->devtype = XETH_DEVTYPE_BRIDGE;
+	ref->devtype = XETH_DEVTYPE_XETH_BRIDGE;
 	return 0;
 }
 
@@ -51,7 +51,7 @@ static int xeth_parse_xeth(const char *name, struct xeth_priv_ref *ref)
 {
 	int n;
 	u16 u;
-	const char *p = name + 4;
+	const char *p = name;
 
 	if (xeth_pr_true_expr(!*p, "[%s] incomplete", name))
 		return -EINVAL;
@@ -67,7 +67,7 @@ static int xeth_parse_xeth(const char *name, struct xeth_priv_ref *ref)
 	ref->subporti = -1;
 	ref->portid = 4094 - u;
 	ref->id = ref->portid;
-	ref->devtype = XETH_DEVTYPE_PORT;
+	ref->devtype = XETH_DEVTYPE_XETH_PORT;
 	if (*p == '-') {
 		p++;
 		if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
@@ -82,37 +82,9 @@ static int xeth_parse_xeth(const char *name, struct xeth_priv_ref *ref)
 		ref->portid -= (u * xeth.n.ports);
 		ref->id = ref->portid;
 	}
-	if (*p == '.') {
-		p++;
-		if (xeth_pr_true_expr(sscanf(p, "%hu%n", &u, &n) != 1,
-				      "[%s] invalid ID [%s]", name, p))
-			return -EINVAL;
-		if (xeth_pr_true_expr(1 > u || u >= xeth.n.userids,
-				      "[%s] out-of-range ID %u", name, u))
-			return -EINVAL;
-		p += n;
-		switch (*p) {
-		case 't':
-			ref->devtype = XETH_DEVTYPE_TAGGED_BRIDGE_PORT;
-			break;
-		case 'u':
-			ref->devtype = XETH_DEVTYPE_UNTAGGED_BRIDGE_PORT;
-			break;
-		case '\0':
-			xeth_pr("<%s> requires 't' or 'u' suffix", name);
-			return -EINVAL;
-		default:
-			xeth_pr("<%s> invalid suffix <%s>", name, p);
-			return -EINVAL;
-		}
-		p++;
-		ref->id = u;
-		ref->ndi = -1;
-	} else {
-		ref->ndi = ref->id;
-	}
 	if (xeth_pr_true_expr(*p, "<%s> invalid suffix <%s>", name, p))
 		return -EINVAL;
+	ref->ndi = ref->id;
 	ref->iflinki = ref->id & 1;
 	return 0;
 }
@@ -120,9 +92,9 @@ static int xeth_parse_xeth(const char *name, struct xeth_priv_ref *ref)
 int xeth_parse_name(const char *name, struct xeth_priv_ref *ref)
 {
 	if (memcmp(name, "xethbr.", 7) == 0)
-		return xeth_parse_xethbr(name, ref);
+		return xeth_parse_xethbr(name+7, ref);
 	else if (memcmp(name, "xeth", 4) == 0)
-		return xeth_parse_xeth(name, ref);
+		return xeth_parse_xeth(name+4, ref);
 	xeth_pr("'%s' invalid ifname", name);
 	return -EINVAL;
 }
