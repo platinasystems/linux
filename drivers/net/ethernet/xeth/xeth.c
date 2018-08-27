@@ -28,6 +28,7 @@ int xeth_init(void)
 	int i, err = 0;
 
 	INIT_LIST_HEAD_RCU(&xeth.privs);
+	INIT_LIST_HEAD_RCU(&xeth.vids);
 	for (i = 0; i < xeth.n.ports; i++) {
 		int provision = xeth.dev.provision[i];
 		if (xeth_pr_true_expr(provision != 0 &&
@@ -65,6 +66,8 @@ int xeth_init(void)
 
 void xeth_exit(void)
 {
+	struct xeth_vid *vid;
+
 	xeth_sb_exit();
 	xeth_ethtool_exit();
 	xeth_notifier_exit();
@@ -73,4 +76,6 @@ void xeth_exit(void)
 	xeth.ops.encap.exit();
 	xeth_iflink_exit();
 	xeth_dev_exit();
+	while (vid = xeth_vid_pop(&xeth.vids), vid != NULL)
+		kfree(vid);
 }

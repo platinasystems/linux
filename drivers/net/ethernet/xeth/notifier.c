@@ -23,6 +23,8 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
+#include <uapi/linux/xeth.h>
+
 static int xeth_notifier_netdevice(struct notifier_block *nb,
 				   unsigned long event, void *ptr);
 static int xeth_notifier_inetaddr(struct notifier_block *nb,
@@ -63,11 +65,10 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 	switch (event) {
 	case NETDEV_REGISTER:
 		/* called from dev_change_net_namespace */
-		for (ndi = 0; ndi < xeth.n.ids; ndi++)
-			if (nd == xeth_nd(ndi))
-				xeth_sb_send_ifinfo(nd, 0);
+		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_REG);
 		break;
 	case NETDEV_UNREGISTER:
+		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UNREG);
 		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
 			struct net_device *iflink = xeth_iflink_nd(iflinki);
 			if (nd == iflink) {
@@ -121,21 +122,14 @@ static int xeth_notifier_inetaddr(struct notifier_block *nb,
 {
 	struct in_ifaddr *ifa = (struct in_ifaddr *)ptr;
 	struct net_device *nd;
-	int i;
 
 	if (nb != &xeth_notifier_block_inetaddr)
 		return NOTIFY_DONE;
 	if (ifa->ifa_dev == NULL)
 		return NOTIFY_DONE;
 	nd = ifa->ifa_dev->dev;
-	if (nd == NULL)
-		return NOTIFY_DONE;
-	for (i = 0; i < xeth.n.ids; i++) {
-		if (nd == xeth_nd(i)) {
-			xeth_sb_send_ifa(nd, event, ifa);
-			break;
-		}
-	}
+	if (nd != NULL)
+		xeth_sb_send_ifa(nd, event, ifa);
 	return NOTIFY_DONE;
 }
 
