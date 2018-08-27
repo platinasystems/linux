@@ -23,57 +23,8 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-struct	xeth_ndo_vid_entry {
-	struct	list_head __rcu
-		list;
-	u16	vid;
-};
-
-static struct list_head __rcu xeth_ndo_vids;
-
-static struct xeth_ndo_vid_entry *xeth_ndo_alloc_vid(void)
-{
-	struct xeth_ndo_vid_entry *entry =
-		list_first_or_null_rcu(&xeth_ndo_vids,
-				       struct xeth_ndo_vid_entry,
-				       list);
-	if (entry) {
-		list_del_rcu(&entry->list);
-	} else {
-		const size_t n = sizeof(struct xeth_ndo_vid_entry);
-		entry = kzalloc(n, GFP_KERNEL);
-	}
-	return entry;
-}
-
-static void xeth_ndo_free_vid(struct xeth_ndo_vid_entry *entry)
-{
-	list_add_tail_rcu(&entry->list, &xeth_ndo_vids);
-}
-
-void xeth_ndo_free_vids(struct net_device *nd)
-{
-	struct xeth_priv *priv = netdev_priv(nd);
-
-	while (true) {
-		struct xeth_ndo_vid_entry *entry =
-			list_first_or_null_rcu(&priv->vids,
-					       struct xeth_ndo_vid_entry,
-					       list);
-		if (!entry)
-			break;
-		list_del_rcu(&entry->list);
-		xeth_ndo_free_vid(entry);
-	}
-}
-
-void xeth_ndo_send_vids(struct net_device *nd)
-{
-	struct xeth_ndo_vid_entry *entry;
-	struct xeth_priv *priv = netdev_priv(nd);
-	list_for_each_entry_rcu(entry, &priv->vids, list)
-		xeth_sb_send_if_add_vid(nd, entry->vid);
-}
+#include <linux/if_vlan.h>
+#include <uapi/linux/xeth.h>
 
 static int xeth_ndo_open(struct net_device *nd)
 {
@@ -94,14 +45,14 @@ static int xeth_ndo_open(struct net_device *nd)
 		if (err)
 			return err;
 	}
-	xeth_pr_err(xeth_sb_send_ifinfo(nd, nd->flags | IFF_UP));
+	xeth_sb_send_ifinfo(nd, nd->flags | IFF_UP, XETH_IFINFO_REASON_UP);
 	return 0;
 }
 
 static int xeth_ndo_stop(struct net_device *nd)
 {
 	netif_carrier_off(nd);
-	xeth_pr_err(xeth_sb_send_ifinfo(nd, nd->flags & ~IFF_UP));
+	xeth_sb_send_ifinfo(nd, nd->flags & ~IFF_UP, XETH_IFINFO_REASON_DOWN);
 	return 0;
 }
 
@@ -130,31 +81,49 @@ static int xeth_ndo_get_iflink(const struct net_device *nd)
 	return iflink ? iflink->ifindex : 0;
 }
 
-static int xeth_ndo_vlan_rx_add_vid(struct net_device *nd,
-				    __be16 proto, u16 vid)
+static int xeth_ndo_vlan_rx_add_vid(struct net_device *nd, __be16 proto, u16 id)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct xeth_ndo_vid_entry *entry = xeth_ndo_alloc_vid();
-	if (!entry)
-		return -ENOMEM;
-	entry->vid = vid;
-	list_add_tail_rcu(&entry->list, &priv->vids);
-	return xeth_sb_send_if_add_vid(nd, vid);
+	struct xeth_vid *vid = xeth_vid_pop(&xeth.vids);
+	if (!vid) {
+		vid = kzalloc(sizeof(struct xeth_vid), GFP_KERNEL);
+		if (!vid)
+			return -ENOMEM;
+	}
+	vid->proto = proto;
+	vid->id = id;
+	list_add_tail_rcu(&vid->list, &priv->vids);
+	return 0;
 }
 
-static int xeth_ndo_vlan_rx_kill_vid(struct net_device *nd,
-				     __be16 proto, u16 vid)
+static int xeth_ndo_vlan_rx_del_vid(struct net_device *nd, __be16 proto, u16 id)
 {
-	struct xeth_ndo_vid_entry *entry;
+	struct xeth_vid *vid;
 	struct xeth_priv *priv = netdev_priv(nd);
-	list_for_each_entry_rcu(entry, &priv->vids, list) {
-		if (entry->vid == vid) {
-			list_del_rcu(&entry->list);
-			xeth_ndo_free_vid(entry);
+	list_for_each_entry_rcu(vid, &priv->vids, list) {
+		if (vid->proto == proto && vid->id == id) {
+			list_del_rcu(&vid->list);
+			list_add_tail_rcu(&vid->list, &xeth.vids);
 			break;
 		}
 	}
-	return xeth_sb_send_if_del_vid(nd, vid);
+	return 0;
+}
+
+void xeth_ndo_send_vids(struct net_device *nd)
+{
+	struct xeth_vid *vid;
+	struct xeth_priv *priv = netdev_priv(nd);
+	list_for_each_entry(vid, &priv->vids, list) {
+		struct net_device *vnd = __vlan_find_dev_deep_rcu(nd,
+								  vid->proto,
+								  vid->id);
+		if (vnd)
+			xeth_sb_send_ifinfo(vnd, 0, XETH_IFINFO_REASON_DUMP);
+		else
+			xeth_pr_nd(nd, "can't find vlan (%u, %u)",
+				   be16_to_cpu(vid->proto), vid->id);
+	}
 }
 
 struct net_device_ops xeth_ndo_ops = {
@@ -164,26 +133,13 @@ struct net_device_ops xeth_ndo_ops = {
 	.ndo_get_stats64	= xeth_ndo_get_stats64,
 	.ndo_get_iflink		= xeth_ndo_get_iflink,
 	.ndo_vlan_rx_add_vid	= xeth_ndo_vlan_rx_add_vid,
-	.ndo_vlan_rx_kill_vid	= xeth_ndo_vlan_rx_kill_vid,
+	.ndo_vlan_rx_kill_vid	= xeth_ndo_vlan_rx_del_vid,
 };
 
 int xeth_ndo_init(void)
 {
-	INIT_LIST_HEAD_RCU(&xeth_ndo_vids);
 	xeth_ndo_ops.ndo_start_xmit = xeth.ops.encap.tx;
 	return 0;
 }
 
-void xeth_ndo_exit(void)
-{
-	while (true) {
-		struct xeth_ndo_vid_entry *entry =
-			list_first_or_null_rcu(&xeth_ndo_vids,
-					       struct xeth_ndo_vid_entry,
-					       list);
-		if (!entry)
-			break;
-		list_del_rcu(&entry->list);
-		kfree(entry);
-	}
-}
+void xeth_ndo_exit(void) {}
