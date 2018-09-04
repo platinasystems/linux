@@ -477,10 +477,11 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 	msg->len = neigh->tbl->key_len;
 	memcpy(msg->dst, neigh->primary_key, neigh->tbl->key_len);
 	read_lock_bh(&neigh->lock);
-	if (neigh->nud_state & NUD_VALID) {
+	if ((neigh->nud_state & NUD_VALID) && !neigh->dead) {
 		char ha[MAX_ADDR_LEN];
 		neigh_ha_snapshot(ha, neigh, neigh->dev);
-		memcpy(&msg->lladdr[0], ha, ETH_ALEN);
+		if ((neigh->nud_state & NUD_VALID) && !neigh->dead)
+			memcpy(&msg->lladdr[0], ha, ETH_ALEN);
 	}
 	read_unlock_bh(&neigh->lock);
 	xeth_sb_tx_queue_rcu(entry);
