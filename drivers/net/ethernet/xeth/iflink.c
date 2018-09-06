@@ -22,20 +22,60 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-void xeth_iflink_reset(int i)
+enum {
+	xeth_max_iflinks = 16,
+};
+
+#define for_each_iflink(index)	\
+	for ((index) = 0; \
+	     (index) < xeth_max_iflinks && xeth.iflinks[(index)]; \
+	     (index)++)
+
+static struct net_device *xeth_iflinks[xeth_max_iflinks];
+static bool xeth_iflink_registered[xeth_max_iflinks];
+static const int const xeth_iflink_index_masks[xeth_max_iflinks] = {
+	[000] = 001,
+	[001] = 001,
+	[002] = 001,
+	[003] = 003,
+	[004] = 003,
+	[005] = 003,
+	[006] = 003,
+	[007] = 007,
+	[010] = 007,
+	[011] = 007,
+	[012] = 007,
+	[013] = 007,
+	[014] = 007,
+	[015] = 007,
+	[016] = 007,
+	[017] = 017,
+};
+static int xeth_iflink_index_mask;
+
+struct net_device *xeth_iflink(int i)
 {
-	if (i < xeth.n.iflinks) {
-		RCU_INIT_POINTER(xeth.iflink.nd[i], NULL);
-		xeth.iflink.ea[i] = 0;
-	}
+	return i < xeth_max_iflinks ? rtnl_dereference(xeth_iflinks[i]) : NULL;
 }
 
-void xeth_iflink_set(int i, struct net_device *iflink)
+int xeth_iflink_index(u16 id)
 {
-	if (i < xeth.n.iflinks) {
-		rcu_assign_pointer(xeth.iflink.nd[i], iflink);
-		xeth.iflink.ea[i] = ether_addr_to_u64(iflink->dev_addr);
+	return id & xeth_iflink_index_mask;
+}
+
+void xeth_iflink_reset(int i)
+{
+	if (i >= xeth_max_iflinks)
+		return;
+	if (xeth_iflink_registered[i]) {
+		struct net_device *iflink = xeth_iflink(i);
+		if (iflink) {
+			netdev_rx_handler_unregister(iflink);
+			dev_put(iflink);
+		}
+		xeth_iflink_registered[i] = false;
 	}
+	RCU_INIT_POINTER(xeth_iflinks[i], NULL);
 }
 
 int xeth_iflink_init(void)
@@ -43,20 +83,19 @@ int xeth_iflink_init(void)
 	int i, err;
 
 	rtnl_lock();
-	for (i = 0; i < xeth.n.iflinks; i++) {
-		const char *ifname = xeth.iflink.name[i];
+	for_each_iflink(i) {
+		const char *ifname = xeth.iflinks[i];
 		struct net_device *iflink = dev_get_by_name(&init_net, ifname);
 		if (xeth_pr_true_expr(!iflink, "%s not found", ifname))
 			return -ENOENT;
-		err = netdev_rx_handler_register(iflink,
-						 xeth.ops.encap.rx,
-						 &xeth);
+		err = netdev_rx_handler_register(iflink, xeth.encap.rx, &xeth);
 		if (err) {
 			dev_put(iflink);
 			break;
 		}
-		xeth_iflink_set(i, iflink);
-		xeth.iflink.registered[i] = true;
+		rcu_assign_pointer(xeth_iflinks[i], iflink);
+		xeth_iflink_registered[i] = true;
+		xeth_iflink_index_mask = xeth_iflink_index_masks[i];
 	}
 	rtnl_unlock();
 	return err;
@@ -65,17 +104,8 @@ int xeth_iflink_init(void)
 void xeth_iflink_exit(void)
 {
 	int i;
-
-	for (i = 0; i < xeth.n.iflinks; i++) {
-		struct net_device *iflink = xeth_iflink_nd(i);
-		if (iflink) {
-			xeth_iflink_reset(i);
-			if (xeth.iflink.registered[i]) {
-				rtnl_lock();
-				netdev_rx_handler_unregister(iflink);
-				rtnl_unlock();
-			}
-			dev_put(iflink);
-		}
-	}
+	rtnl_lock();
+	for_each_iflink(i)
+		xeth_iflink_reset(i);
+	rtnl_unlock();
 }
