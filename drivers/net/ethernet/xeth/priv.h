@@ -28,19 +28,19 @@
 #include <linux/ethtool.h>
 #include <uapi/linux/if_link.h>
 
-struct	xeth_priv_ref {
+struct	xeth_priv {
+	struct	hlist_node __rcu
+		node;
+	struct	list_head __rcu
+		vids;
+	struct	net_device
+		*nd;
+
 	u16	id;
 	s16	portid;
 	s16	ndi, iflinki, porti;
 	s8	subporti;
 	u8	devtype;
-};
-
-struct	xeth_priv {
-	struct	list_head __rcu	list;
-	struct	list_head __rcu	vids;
-	struct	net_device	*nd;
-	struct	xeth_priv_ref	ref;
 
 	struct {
 		struct	mutex	mutex;

@@ -57,46 +57,31 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 				   unsigned long event, void *ptr)
 {
 	struct net_device *nd;
-	int iflinki, ndi;
+	int i;
 
 	if (nb != &xeth_notifier_block_netdevice)
 		return NOTIFY_DONE;
 	nd = netdev_notifier_info_to_dev(ptr);
 	switch (event) {
 	case NETDEV_REGISTER:
-		/* called from dev_change_net_namespace */
+		if (netif_is_bridge_master(nd))
+			if (xeth.encap.id(nd) < 0)
+				xeth.encap.associate_dev(nd);
+		/* also notifies dev_change_net_namespace */
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_REG);
 		break;
 	case NETDEV_UNREGISTER:
-		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UNREG);
-		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
-			struct net_device *iflink = xeth_iflink_nd(iflinki);
-			if (nd == iflink) {
-				xeth_iflink_reset(iflinki);
-				netdev_rx_handler_unregister(iflink);
-				dev_put(iflink);
-			}
+		xeth_for_each_iflink(i) {
+			struct net_device *iflink = xeth_iflink(i);
+			if (nd == iflink)
+				xeth_iflink_reset(i);
 		}
+		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UNREG);
 		break;
 	case NETDEV_CHANGEMTU:
-		for (iflinki = 0; iflinki < xeth.n.iflinks; iflinki++) {
-			struct net_device *iflink = xeth_iflink_nd(iflinki);
-			if (nd == iflink) {
-				for (ndi = 0; ndi < xeth.n.ids; ndi++) {
-					struct net_device *xnd = xeth_nd(ndi);
-					if (xnd != NULL) {
-						struct xeth_priv *priv =
-							netdev_priv(xnd);
-						struct xeth_priv_ref *ref =
-							&priv->ref;
-						if (ref->iflinki == iflinki) {
-							dev_set_mtu(xnd,
-								    nd->mtu);
-						}
-					}
-				}
-			}
-		}
+		xeth_for_each_iflink(i)
+			if (nd == xeth_iflink(i))
+				xeth.encap.changemtu(nd);
 		break;
 	}
 	return NOTIFY_DONE;
