@@ -24,6 +24,8 @@
 #ifndef __XETH_H
 #define __XETH_H
 
+#define XETH_KIND "xeth"
+
 #include <count.h>
 #include <pr.h>
 #include <priv.h>
@@ -38,66 +40,53 @@
 #define XETH_VERSION unknown
 #endif
 
-struct xeth {
-	struct	list_head __rcu	privs;
-	struct	list_head __rcu vids;
+enum {
+	xeth_ht_bits = 4,
+};
 
+struct xeth {
+	struct hlist_head __rcu	ht[1<<xeth_ht_bits];
+	struct list_head  __rcu	free_vids;
+	int	base;		/*  0 or 1 based port and subport */
+	int	*provision;	/* list of 1, 2, or 4 subports per port */
+	const char * const *iflinks;	/* a NULL terminated ifname list */
+	const size_t	ports, rxqs, txqs;
+	const size_t	priv_size;
 	struct {
-		int	base;	/* 0 or 1 base port and subport*/
-		int	userids;
-		size_t	ports;
-		size_t	subports;
-		size_t	iflinks;
-		size_t	nds;
-		size_t	ids;
-		size_t	encap;	/* e.g. VLAN_HLEN */
-		size_t	rxqs;
-		size_t	txqs;
-		size_t	priv_size;
-		struct	xeth_sizes_ethtool {
-			size_t	flags;
-			size_t	stats;
-		} ethtool;
-	} n;
+		size_t	size;	/* e.g. VLAN_HLEN */
+		int	(*init)(void);
+		void	(*exit)(void);
+		int	(*id)(struct net_device *nd);
+		int	(*new_dev)(struct net_device *nd);
+		int	(*associate_dev)(struct net_device *nd);
+		void	(*disassociate_dev)(struct net_device *nd);
+		void	(*changemtu)(struct net_device *iflink);
+		rx_handler_result_t
+			(*rx)(struct sk_buff **pskb);
+		void	(*sb)(const char *buf, size_t n);
+		netdev_tx_t
+			(*tx)(struct sk_buff *skb, struct net_device *nd);
+	} encap;
 	struct {
-		struct	net_device **nd;
-		u16	*ndi_by_id;
-		int	*provision;
-	} dev;
+		u64	base;
+		u8	assign_type;
+	} ea;
 	struct {
-		const char * const *name;
-		struct	net_device **nd;
-		u64	*ea;
-		bool	*registered;
-	} iflink;
-	struct {
+		struct {
+			const size_t flags, stats;
+		} n;
 		const char * const *flags;
 		const char * const *stats;
 	} ethtool;
-	struct {
-		struct {
-			int	(*set_lladdr)(struct net_device *nd);
-			void	(*init_ethtool_settings)(struct xeth_priv *priv);
-			int	(*validate_speed)(struct net_device *, u32);
-		} dev;
-		struct {
-			int	(*init)(void);
-			void	(*exit)(void);
-			rx_handler_result_t
-				(*rx)(struct sk_buff **pskb);
-			void	(*sb)(const char *buf, size_t n);
-			netdev_tx_t (*tx)(struct sk_buff *skb,
-					  struct net_device *nd);
-		} encap;
-	} ops;
+	void	(*init_ethtool_settings)(struct xeth_priv *priv);
+	int	(*validate_speed)(struct net_device *, u32);
 	atomic64_t	count[n_xeth_count];
 };
 
-#define to_xeth(x)	container_of((x), struct xeth, kobj)
+#define xeth_for_each_iflink(index)	\
+	for ((index) = 0; xeth.iflinks[(index)]; (index)++)
 
 extern struct xeth xeth;
-
-extern struct rtnl_link_ops xeth_link_ops;
 extern struct net_device_ops xeth_ndo_ops;
 extern struct ethtool_ops xeth_ethtool_ops;
 
@@ -122,6 +111,14 @@ void xeth_notifier_exit(void);
 void xeth_sb_exit(void);
 void xeth_vlan_exit(void);
 
+struct net_device *xeth_iflink(int i);
+int xeth_iflink_index(u16 id);
+void xeth_iflink_reset(int i);
+
+void xeth_link_setup(struct net_device *nd);
+
+void xeth_ndo_send_vids(struct net_device *nd);
+
 int xeth_notifier_register_fib(void);
 void xeth_notifier_unregister_fib(void);
 
@@ -137,50 +134,26 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh);
 int xeth_sysfs_add(struct xeth_priv *priv);
 void xeth_sysfs_del(struct xeth_priv *priv);
 
-void xeth_ndo_send_vids(struct net_device *nd);
-
-int xeth_link_register(struct net_device *nd);
-int xeth_parse_name(const char *name, struct xeth_priv_ref *ref);
-
-void xeth_iflink_reset(int i);
-void xeth_iflink_set(int i, struct net_device *iflink);
-
-static inline struct net_device *xeth_iflink_nd(int i)
-{
-	return i < xeth.n.iflinks ? rtnl_dereference(xeth.iflink.nd[i]) : NULL;
-}
-
-static inline struct net_device *xeth_nd(int i)
-{
-	return (i < xeth.n.nds) ? rtnl_dereference(xeth.dev.nd[i]) : NULL;
-}
-
-static inline void xeth_foreach_nd(void (*op)(struct net_device *nd))
+static inline void xeth_ht_init(void)
 {
 	int i;
-
-	for (i = 0; i < xeth.n.ids; i++) {
-		struct net_device *nd = xeth_nd(i);
-		if (nd != NULL)
-			op(nd);
-	}
+	for (i = 0; i < (1<<xeth_ht_bits); i++)
+		WRITE_ONCE(xeth.ht[i].first, NULL);
 }
 
-static inline struct net_device *to_xeth_nd(u16 id)
+static inline int xeth_ht_key(const char *ifname)
 {
-	return (id < xeth.n.ids) ? xeth_nd(xeth.dev.ndi_by_id[id]) : NULL;
+	return full_name_hash(&xeth, ifname, strnlen(ifname, IFNAMSIZ));
 }
 
-static inline void xeth_reset_nd(int i)
+static inline struct net_device *xeth_nd_of(const char *ifname)
 {
-	if (0 <= i && i < xeth.n.nds)
-		RCU_INIT_POINTER(xeth.dev.nd[i], NULL);
-}
-
-static inline void xeth_set_nd(int i, struct net_device *nd)
-{
-	if (0 <= i && i < xeth.n.nds)
-		rcu_assign_pointer(xeth.dev.nd[i], nd);
+	struct xeth_priv *priv;
+	int i = hash_min(xeth_ht_key(ifname), xeth_ht_bits);
+	hlist_for_each_entry_rcu(priv, &xeth.ht[i], node)
+		if (!strncmp(priv->nd->name, ifname, IFNAMSIZ))
+			return priv->nd;
+	return NULL;
 }
 
 static inline void xeth_reset_counters(void)
@@ -190,9 +163,10 @@ static inline void xeth_reset_counters(void)
 		atomic64_set(&xeth.count[i], 0);
 }
 
-static inline bool nd_is_xeth(struct net_device *nd)
+static inline bool netif_is_xeth(struct net_device *nd)
 {
-	return (nd->netdev_ops == &xeth_ndo_ops);
+	return	(nd->netdev_ops == &xeth_ndo_ops) &&
+		(nd->ethtool_ops == &xeth_ethtool_ops);
 }
 
 struct	xeth_vid {

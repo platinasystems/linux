@@ -26,12 +26,12 @@
 static void xeth_ethtool_get_drvinfo(struct net_device *nd,
 				     struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, xeth_link_ops.kind, sizeof(drvinfo->driver));
+	strlcpy(drvinfo->driver, XETH_KIND, sizeof(drvinfo->driver));
 	strlcpy(drvinfo->version, __stringify(XETH_VERSION),
 		sizeof(drvinfo->version));
 	strlcpy(drvinfo->fw_version, "n/a", sizeof(drvinfo->fw_version));
 	strlcpy(drvinfo->bus_info, "n/a", sizeof(drvinfo->bus_info));
-	drvinfo->n_priv_flags = xeth.n.ethtool.flags;
+	drvinfo->n_priv_flags = xeth.ethtool.n.flags;
 }
 
 static int xeth_ethtool_get_sset_count(struct net_device *nd, int sset)
@@ -40,9 +40,9 @@ static int xeth_ethtool_get_sset_count(struct net_device *nd, int sset)
 	case ETH_SS_TEST:
 		return 0;
 	case ETH_SS_STATS:
-		return xeth.n.ethtool.stats;
+		return xeth.ethtool.n.stats;
 	case ETH_SS_PRIV_FLAGS:
-		return xeth.n.ethtool.flags;
+		return xeth.ethtool.n.flags;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -57,13 +57,13 @@ static void xeth_ethtool_get_strings(struct net_device *nd, u32 sset, u8 *data)
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		for (i = 0; i < xeth.n.ethtool.stats; i++) {
+		for (i = 0; i < xeth.ethtool.n.stats; i++) {
 			strlcpy(p, xeth.ethtool.stats[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < xeth.n.ethtool.flags; i++) {
+		for (i = 0; i < xeth.ethtool.n.flags; i++) {
 			strlcpy(p, xeth.ethtool.flags[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
@@ -77,7 +77,7 @@ static void xeth_ethtool_get_ethtool_stats(struct net_device *nd,
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 	mutex_lock(&priv->ethtool.mutex);
-	memcpy(data, priv->ethtool_stats, xeth.n.ethtool.stats*sizeof(u64));
+	memcpy(data, priv->ethtool_stats, xeth.ethtool.n.stats*sizeof(u64));
 	mutex_unlock(&priv->ethtool.mutex);
 }
 
@@ -94,7 +94,7 @@ static u32 xeth_ethtool_get_priv_flags(struct net_device *nd)
 static int xeth_ethtool_set_priv_flags(struct net_device *nd, u32 flags)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	if (flags >= (1 << xeth.n.ethtool.flags))
+	if (flags >= (1 << xeth.ethtool.n.flags))
 		return -EINVAL;
 	mutex_lock(&priv->ethtool.mutex);
 	priv->ethtool.flags = flags;
@@ -137,8 +137,8 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	int err = 0;
 	mutex_lock(&priv->ethtool.mutex);
 	if (req->base.autoneg == AUTONEG_DISABLE) {
-		if (xeth.ops.dev.validate_speed)
-			err = xeth.ops.dev.validate_speed(nd, req->base.speed);
+		if (xeth.validate_speed)
+			err = xeth.validate_speed(nd, req->base.speed);
 		if (!err)
 			err = xeth_ethtool_validate_duplex(nd, req);
 		if (!err) {
