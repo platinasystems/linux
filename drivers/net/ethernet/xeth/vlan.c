@@ -25,10 +25,114 @@
 
 #include <linux/if_vlan.h>
 
+enum {
+	xeth_vlan_first_dev = 4094,
+	xeth_vlan_first_associate_dev = 1,
+	xeth_vlan_n_nd = xeth_vlan_first_dev + 1,
+};
+
+/* The vlan_nd table contains two types of devices: from the top (4094) down
+ * are the xeth ports and subports, from the bottom (1) up are the user devices
+ * (e.g. bridge and tunnels) that master or associate with xeth devices.
+ */
+static struct net_device *xeth_vlan_nd[xeth_vlan_n_nd];
+
+static int xeth_vlan_next_dev = xeth_vlan_first_dev;
+
+#define xeth_vlan_for_each_dev(index) \
+	for ((index) = xeth_vlan_first_dev; \
+	     (index) > xeth_vlan_next_dev; \
+	     (index)--)
+
+static int xeth_vlan_next_associate_dev = xeth_vlan_first_associate_dev;
+
+#define xeth_vlan_for_each_associate_dev(index) \
+	for ((index) = xeth_vlan_first_associate_dev; \
+	     (index) < xeth_vlan_next_associate_dev; \
+	     (index)++)
+
 static inline bool xeth_vlan_is_8021X(__be16 proto)
 {
 	return  proto == cpu_to_be16(ETH_P_8021Q) ||
 		proto == cpu_to_be16(ETH_P_8021AD);
+}
+
+static inline struct net_device *xeth_vlan_get_nd(int i)
+{
+	return rtnl_dereference(xeth_vlan_nd[i]);
+}
+
+static inline int xeth_vlan_set_nd(int i, struct net_device *nd)
+{
+	rcu_assign_pointer(xeth_vlan_nd[i], nd);
+	return i;
+}
+
+static inline void xeth_vlan_reset_nd(int i)
+{
+	RCU_INIT_POINTER(xeth_vlan_nd[i], NULL);
+}
+
+static int xeth_vlan_id(struct net_device *nd)
+{
+	int i;
+
+	if (netif_is_xeth(nd)) {
+		struct xeth_priv *priv = netdev_priv(nd);
+		return priv->id;
+	}
+	xeth_vlan_for_each_associate_dev(i)
+		if (xeth_vlan_get_nd(i) == nd)
+			return i;
+	return -ENODEV;
+}
+
+static int xeth_vlan_new_dev(struct net_device *nd)
+{
+	int i;
+	struct xeth_priv *priv = netdev_priv(nd);
+	if (xeth_vlan_next_dev == xeth_vlan_next_associate_dev)
+		return -ENOSPC;
+	i = xeth_vlan_set_nd(xeth_vlan_next_dev--, nd);
+	priv->id = i;
+	return i;
+}
+
+static int xeth_vlan_hold_dev(struct net_device *nd, int i)
+{
+	dev_hold(nd);
+	return xeth_vlan_set_nd(i, nd);
+}
+
+static int xeth_vlan_associate_dev(struct net_device *nd)
+{
+	int i;
+	if (xeth_vlan_next_associate_dev < xeth_vlan_next_dev)
+		return xeth_vlan_hold_dev(nd, xeth_vlan_next_associate_dev++);
+	/* search list for disassociated entries */
+	xeth_vlan_for_each_associate_dev(i)
+		if (xeth_vlan_get_nd(i) == NULL)
+			return xeth_vlan_hold_dev(nd, i);
+	return -ENOSPC;
+}
+
+static void xeth_vlan_disassociate_dev(struct net_device *nd)
+{
+	int i = xeth_vlan_id(nd);
+	if (i >= xeth_vlan_first_associate_dev) {
+		dev_put(nd);
+		xeth_vlan_reset_nd(i);
+	}
+}
+
+static void xeth_vlan_changemtu(struct net_device *iflink)
+{
+	int i;
+	xeth_vlan_for_each_dev(i) {
+		struct net_device *nd = xeth_vlan_get_nd(i);
+		if (dev_get_iflink(nd) == iflink->ifindex)
+			dev_set_mtu(nd, iflink->mtu);
+	}
 }
 
 /* If tagged, pop dev index  and skb priority from outer VLAN;
@@ -37,10 +141,8 @@ static inline bool xeth_vlan_is_8021X(__be16 proto)
 static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 {
 	u16 vid;
-	int bytes;
+	int r, bytes;
 	struct net_device *nd;
-	struct xeth_priv *priv;
-	struct net_device *iflink;
 	struct sk_buff *skb = *pskb;
 	
 	if (!xeth_vlan_is_8021X(skb->vlan_proto)) {
@@ -51,18 +153,20 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	skb->priority =
 		(typeof(skb->priority))(skb->vlan_tci >> VLAN_PRIO_SHIFT);
 	vid = skb->vlan_tci & VLAN_VID_MASK;
-	nd = to_xeth_nd(vid);
+	nd = xeth_vlan_get_nd(vid);
 	if (!nd) {
 		xeth_count_inc(rx_no_dev);
 		kfree_skb(skb);
 		return RX_HANDLER_CONSUMED;
 	}
-	priv = netdev_priv(nd);
-	iflink = xeth_iflink_nd(priv->ref.iflinki);
-	if (vid != priv->ref.id || skb->dev != iflink) {
-		xeth_count_priv_inc(priv, rx_nd_mismatch);
-		kfree_skb(skb);
-		return RX_HANDLER_CONSUMED;
+	if (netif_is_xeth(nd)) {
+		struct xeth_priv *priv = netdev_priv(nd);
+		struct net_device *iflink = xeth_iflink(priv->iflinki);
+		if (vid != priv->id || skb->dev != iflink) {
+			xeth_count_priv_inc(priv, rx_nd_mismatch);
+			kfree_skb(skb);
+			return RX_HANDLER_CONSUMED;
+		}
 	}
 	if (skb->protocol == cpu_to_be16(ETH_P_8021Q)) {
 		struct vlan_hdr *iv = (struct vlan_hdr *)skb->data;
@@ -81,11 +185,15 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 	skb->dev = nd;
 	no_xeth_pr_skb_hex_dump(skb);
 	bytes = skb->len;
-	if (dev_forward_skb(nd, skb) != NET_RX_SUCCESS) {
-		xeth_count_priv_inc(priv, rx_dropped);
-	} else {
-		xeth_count_priv_inc(priv, rx_packets);
-		xeth_count_priv_add(priv, bytes, rx_bytes);
+	r = dev_forward_skb(nd, skb);
+	if (netif_is_xeth(nd)) {
+		struct xeth_priv *priv = netdev_priv(nd);
+		if (r == NET_RX_SUCCESS) {
+			xeth_count_priv_inc(priv, rx_packets);
+			xeth_count_priv_add(priv, bytes, rx_bytes);
+		} else {
+			xeth_count_priv_inc(priv, rx_dropped);
+		}
 	}
 	return RX_HANDLER_CONSUMED;
 }
@@ -106,7 +214,7 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 		return;
 	}
 	vid = be16_to_cpu(ve->h_vlan_TCI) & VLAN_VID_MASK;
-	nd = to_xeth_nd(vid);
+	nd = xeth_vlan_get_nd(vid);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;
@@ -146,17 +254,17 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	struct net_device *iflink = xeth_iflink_nd(priv->ref.iflinki);
+	struct net_device *iflink = xeth_iflink(priv->iflinki);
 	u16 tpid = xeth_vlan_is_8021X(skb->protocol)
 		? cpu_to_be16(ETH_P_8021AD)
 		: cpu_to_be16(ETH_P_8021Q);
 	u16 pcp = (u16)(skb->priority) << VLAN_PRIO_SHIFT;
-	u16 tci = pcp | priv->ref.id;
+	u16 tci = pcp | priv->id;
 
 	skb = vlan_insert_tag_set_proto(skb, tpid, tci);
 	if (!skb) {
 		xeth_count_priv_inc(priv, tx_nomem);
-	} else if (priv->ref.ndi < 0) {
+	} else if (priv->ndi < 0) {
 		xeth_count_priv_inc(priv, tx_noway);
 	} else if (!iflink) {
 		xeth_count_priv_inc(priv, tx_no_iflink);
@@ -176,12 +284,32 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 
 int xeth_vlan_init(void)
 {
-	xeth.ops.encap.rx = xeth_vlan_rx;
-	xeth.ops.encap.sb = xeth_vlan_sb;
-	xeth.ops.encap.tx = xeth_vlan_tx;
+	xeth.encap.size = VLAN_HLEN;
+	xeth.encap.id = xeth_vlan_id;
+	xeth.encap.new_dev = xeth_vlan_new_dev;
+	xeth.encap.associate_dev = xeth_vlan_associate_dev;
+	xeth.encap.disassociate_dev = xeth_vlan_disassociate_dev;
+	xeth.encap.changemtu = xeth_vlan_changemtu;
+	xeth.encap.rx = xeth_vlan_rx;
+	xeth.encap.sb = xeth_vlan_sb;
+	xeth.encap.tx = xeth_vlan_tx;
 	return 0;
 }
 
 void xeth_vlan_exit(void)
 {
+	int i;
+	xeth_vlan_for_each_associate_dev(i) {
+		struct net_device *nd = xeth_vlan_get_nd(i);
+		if (nd) {
+			dev_put(nd);
+			xeth_vlan_reset_nd(i);
+		}
+	}
+	xeth_vlan_for_each_dev(i) {
+		struct net_device *nd = xeth_vlan_get_nd(i);
+		if (nd) {
+			xeth_vlan_reset_nd(i);
+		}
+	}
 }

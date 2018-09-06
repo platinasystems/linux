@@ -22,43 +22,83 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-static int xeth_dev_new(char *ifname)
+#include <uapi/linux/xeth.h>
+
+static int xeth_dev_n = 0;
+
+static int xeth_dev_new(const char *ifname, int port, int sub)
 {
 	int err;
+	struct net_device *nd, *iflink;
 	struct xeth_priv *priv;
-	struct net_device *nd =
-		alloc_netdev_mqs(xeth.n.priv_size,
-				 ifname, NET_NAME_USER,
-				 ether_setup,
-				 xeth.n.txqs, xeth.n.rxqs);
+
+	nd = alloc_netdev_mqs(xeth.priv_size, ifname, NET_NAME_USER,
+			      ether_setup, xeth.txqs, xeth.rxqs);
 	if (IS_ERR(nd))
 		return PTR_ERR(nd);
-	xeth_link_ops.setup(nd);
+	xeth_link_setup(nd);
 	priv = netdev_priv(nd);
-	err = xeth_parse_name(ifname, &priv->ref);
-	if (!err)
-		err = xeth_link_register(nd);
+	priv->devtype = XETH_DEVTYPE_XETH_PORT;
+	priv->porti = port;
+	priv->subporti = sub;
+	err = xeth.encap.new_dev(nd);
+	if (err < 0)
+		return err;
+	priv->iflinki = xeth_iflink_index(priv->id);
+	INIT_LIST_HEAD_RCU(&priv->vids);
+	priv->nd = nd;
+	xeth_priv_reset_counters(priv);
+	if (xeth.init_ethtool_settings)
+		xeth.init_ethtool_settings(priv);
+	u64_to_ether_addr(xeth.ea.base + xeth_dev_n++, nd->dev_addr);
+	nd->addr_assign_type = xeth.ea.assign_type;
+	iflink = xeth_iflink(priv->iflinki);
+	if (is_zero_ether_addr(nd->broadcast))
+		memcpy(nd->broadcast, iflink->broadcast, nd->addr_len);
+	nd->mtu = iflink->mtu;
+	nd->max_mtu = iflink->max_mtu - xeth.encap.size;
+	nd->flags  = iflink->flags & ~(IFF_UP | IFF_PROMISC | IFF_ALLMULTI |
+				       IFF_MASTER | IFF_SLAVE);
+	nd->state  = (iflink->state & ((1<<__LINK_STATE_NOCARRIER) |
+				       (1<<__LINK_STATE_DORMANT))) |
+		(1<<__LINK_STATE_PRESENT);
+
+	nd->hw_features = NETIF_F_HW_CSUM | NETIF_F_SG | NETIF_F_FRAGLIST |
+		NETIF_F_GSO_SOFTWARE | NETIF_F_HIGHDMA | NETIF_F_SCTP_CRC |
+		NETIF_F_ALL_FCOE;
+	nd->features |= nd->hw_features | NETIF_F_LLTX |
+		NETIF_F_HW_VLAN_CTAG_FILTER;
+	nd->vlan_features = iflink->vlan_features & ~NETIF_F_ALL_FCOE;
+
+	/* ipv6 shared card related stuff */
+	/* FIXME dev->dev_id = real_dev->dev_id; */
+	/* FIXME SET_NETDEV_DEVTYPE(nd, &vlan_type); */
+
+	err = xeth_pr_nd_err(nd, register_netdevice(nd));
+	if (!err) {
+		hash_add_rcu(xeth.ht, &priv->node, xeth_ht_key(nd->name));
+		err = xeth_sysfs_add(priv);
+	}
 	return err;
 }
 
 int xeth_dev_init(void)
 {
-	char ifname[IFNAMSIZ];
-	int port, sub;
-	int err = 0;
-
+	int port, err = 0;
 	rtnl_lock();
-	for (port = 0; !err && port < xeth.n.ports; port++) {
-		int provision = xeth.dev.provision[port];
+	for (port = 0; !err && port < xeth.ports; port++) {
+		char ifname[IFNAMSIZ];
+		int provision = xeth.provision[port];
 		if (provision > 1) {
+			int sub;
 			for (sub = 0; !err && sub < provision; sub++) {
 				sprintf(ifname, "xeth%d-%d",
-					port+xeth.n.base, sub+xeth.n.base);
-				err = xeth_dev_new(ifname);
+					port+xeth.base, sub+xeth.base);
+				err = xeth_dev_new(ifname, port, sub);
 			}
 		} else {
-			sprintf(ifname, "xeth%d", port+xeth.n.base);
-			err = xeth_dev_new(ifname);
+			sprintf(ifname, "xeth%d", port+xeth.base);
+			err = xeth_dev_new(ifname, port, -1);
 		}
 	}
 	rtnl_unlock();
@@ -67,18 +107,23 @@ int xeth_dev_init(void)
 
 void xeth_dev_exit(void)
 {
+	int i;
+	struct xeth_priv *priv;
+
 	rtnl_lock();
-	while (true) {
-		struct xeth_priv *priv =
-			list_first_or_null_rcu(&xeth.privs,
-					       struct xeth_priv,
-					       list);
-		if (!priv)
-			break;
-		if (priv->nd->reg_state == NETREG_REGISTERED)
-			xeth_link_ops.dellink(priv->nd, NULL);
-		else
-			list_del_rcu(&priv->list);
-	}
+	hash_for_each_rcu(xeth.ht, i, priv, node)
+		if (priv->nd->reg_state == NETREG_REGISTERED) {
+			struct net_device *nd = priv->nd;
+			struct xeth_vid *vid;
+			while (vid = xeth_vid_pop(&priv->vids), vid != NULL)
+				list_add_tail_rcu(&vid->list, &xeth.free_vids);
+			xeth_sysfs_del(priv);
+			priv->nd = NULL;
+			hash_del_rcu(&priv->node);
+			unregister_netdevice_queue(nd, NULL);
+		} else {
+			priv->nd = NULL;
+			hash_del_rcu(&priv->node);
+		}
 	rtnl_unlock();
 }

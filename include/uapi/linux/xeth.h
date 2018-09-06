@@ -122,9 +122,11 @@ xeth_ifmsg_def(ethtool_settings,
 
 enum xeth_msg_ifinfo_devtype {
 	XETH_DEVTYPE_XETH_PORT = 0,
-	XETH_DEVTYPE_XETH_BRIDGE,
+	XETH_DEVTYPE_XETH_BRIDGE_PORT,
 	XETH_DEVTYPE_LINUX_UNKNOWN = 128,
 	XETH_DEVTYPE_LINUX_VLAN,
+	XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT,
+	XETH_DEVTYPE_LINUX_BRIDGE,
 };
 
 enum xeth_msg_ifinfo_reason {

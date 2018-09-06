@@ -88,7 +88,7 @@ static inline void xeth_sb_dump_ifinfo(struct net_device *nd)
 		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
 	}
-	if (nd->netdev_ops == &xeth_ndo_ops) {
+	if (netif_is_xeth(nd)) {
 		xeth_ndo_send_vids(nd);
 		xeth_sb_send_ethtool_flags(nd);
 		xeth_sb_send_ethtool_settings(nd);
@@ -175,49 +175,22 @@ static void xeth_sb_reset_nd_stats(struct net_device *nd)
 	mutex_lock(&priv->ethtool.mutex);
 	for (i = 0; i < xeth_sb_n_link_stats; i++)
 		link_stat[i] = 0;
-	for (i = 0; i < xeth.n.ethtool.stats; i++)
+	for (i = 0; i < xeth.ethtool.n.stats; i++)
 		priv->ethtool_stats[i] = 0;
 	mutex_unlock(&priv->link.mutex);
 	mutex_unlock(&priv->ethtool.mutex);
 }
 
-static struct net_device *xeth_sb_nd_of(const char *msg_ifname)
-{
-	int err;
-	char ifname[IFNAMSIZ];
-	struct net_device *nd;
-	struct xeth_priv_ref ref;
-
-	strlcpy(ifname, msg_ifname, IFNAMSIZ);
-	err = xeth_parse_name(ifname, &ref);
-	if (err) {
-		xeth_pr("\"%s\" invalid", ifname);
-		return NULL;
-	}
-	nd = to_xeth_nd(ref.id);
-	if (!nd) {
-		nd = dev_get_by_name(&init_net, msg_ifname);
-		if (!nd) {
-			xeth_pr("\"%s\" no such device", ifname);
-		 } else if (nd->netdev_ops != &xeth_ndo_ops) {
-			xeth_pr("\"%s\" not an xeth device", ifname);
-			dev_put(nd);
-			nd = NULL;
-		 }
-	}
-	return nd;
-}
-
 static void xeth_sb_nd_put(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	if (priv->ref.ndi < 0)
+	if (priv->ndi < 0)
 		dev_put(nd);
 }
 
 static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 {
-	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
+	struct net_device *nd = xeth_nd_of(msg->ifname);
 	struct xeth_priv *priv;
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
@@ -247,7 +220,7 @@ static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 		xeth_count_inc(sb_invalid);
 		return;
 	}
-	nd = xeth_sb_nd_of(msg->ifname);
+	nd = xeth_nd_of(msg->ifname);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;
@@ -266,11 +239,11 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	struct net_device *nd;
 	struct xeth_priv *priv;
 
-	if (msg->index >= xeth.n.ethtool.stats) {
+	if (msg->index >= xeth.ethtool.n.stats) {
 		xeth_count_inc(sb_invalid);
 		return;
 	}
-	nd = xeth_sb_nd_of(msg->ifname);
+	nd = xeth_nd_of(msg->ifname);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;
@@ -399,16 +372,25 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 	msg->flags = iff ? iff : nd->flags;
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
 	if (is_vlan_dev(nd)) {
-		msg->devtype = XETH_DEVTYPE_LINUX_VLAN;
+		msg->devtype = netif_is_bridge_port(nd) ?
+			XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT :
+			XETH_DEVTYPE_LINUX_VLAN;
 		msg->id = vlan_dev_vlan_id(nd);
 		msg->portindex = -1;
 		msg->subportindex = -1;
-	} else if (nd_is_xeth(nd)) {
-		msg->devtype = priv->ref.devtype;
-		msg->portid = priv->ref.portid;
-		msg->id = priv->ref.id;
-		msg->portindex = priv->ref.porti;
-		msg->subportindex = priv->ref.subporti;
+	} else if (netif_is_bridge_master(nd)) {
+		msg->devtype = XETH_DEVTYPE_LINUX_BRIDGE;
+		msg->id = xeth.encap.id(nd);
+		msg->portindex = -1;
+		msg->subportindex = -1;
+	} else if (netif_is_xeth(nd)) {
+		msg->devtype = netif_is_bridge_port(nd) ?
+			XETH_DEVTYPE_XETH_BRIDGE_PORT :
+			priv->devtype;
+		msg->portid = priv->portid;
+		msg->id = priv->id;
+		msg->portindex = priv->porti;
+		msg->subportindex = priv->subporti;
 	} else {
 		msg->devtype = XETH_DEVTYPE_LINUX_UNKNOWN;
 		msg->portindex = -1;
@@ -490,9 +472,10 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 
 static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 {
-	struct net_device *nd = xeth_sb_nd_of(msg->ifname);
+	struct net_device *nd;
 	struct xeth_priv *priv;
 
+	nd = xeth_nd_of(msg->ifname);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;
@@ -574,7 +557,7 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 	if (ret < sizeof(struct xeth_msg))
 		return -EINVAL;
 	if (!xeth_is_msg(msg)) {
-		xeth.ops.encap.sb(xeth_sb.rxbuf, ret);
+		xeth.encap.sb(xeth_sb.rxbuf, ret);
 		return 0;
 	}
 	switch (msg->kind) {
@@ -588,14 +571,11 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 		xeth_sb_ethtool_stat((struct xeth_msg_stat *)xeth_sb.rxbuf);
 		break;
 	case XETH_MSG_KIND_DUMP_IFINFO: {
-		int err = 0;
+		int i;
 		struct xeth_priv *priv;
-		list_for_each_entry_rcu(priv, &xeth.privs, list) {
+		hash_for_each_rcu(xeth.ht, i, priv, node)
 			xeth_sb_dump_ifinfo(priv->nd);
-		}
 		xeth_sb_send_break();
-		if (err)
-			return err;
 	}	break;
 	case XETH_MSG_KIND_SPEED:
 		xeth_sb_speed((struct xeth_msg_speed *)xeth_sb.rxbuf);
@@ -634,7 +614,8 @@ static inline int xeth_sb_task_rx(void *data)
 
 static inline void xeth_sb_service(struct socket *sock)
 {
-	int err;
+	int i, err;
+	struct xeth_priv *priv;
 
 	xeth_sb.task.rx = kthread_run(xeth_sb_task_rx, sock, xeth_sb.task.name.rx);
 	err = xeth_pr_is_err_val(xeth_sb.task.rx);
@@ -649,7 +630,8 @@ static inline void xeth_sb_service(struct socket *sock)
 	xeth_count_dec(sb_connections);
 	sock_release(sock);
 	xeth_notifier_unregister_fib();
-	xeth_foreach_nd(netif_carrier_off);
+	hash_for_each_rcu(xeth.ht, i, priv, node)
+		netif_carrier_off(priv->nd);
 }
 
 static int xeth_sb_task_main(void *data)
@@ -671,8 +653,7 @@ static int xeth_sb_task_main(void *data)
 	addr.sun_family = AF_UNIX;
 	/* Note: This is an abstract namespace w/ addr.sun_path[0] == 0 */
 	n = sizeof(sa_family_t) + 1 +
-		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1, "%s",
-			  xeth_link_ops.kind);
+		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1, "%s", XETH_KIND);
 	no_xeth_pr("@%s: listen", addr.sun_path+1);
 	err = xeth_pr_err(kernel_bind(ln, paddr, n));
 	if (err)
@@ -693,7 +674,10 @@ static int xeth_sb_task_main(void *data)
 			continue;
 		}
 		if (!err) {
-			xeth_foreach_nd(xeth_sb_reset_nd_stats);
+			int i;
+			struct xeth_priv *priv;
+			hash_for_each_rcu(xeth.ht, i, priv, node)
+				xeth_sb_reset_nd_stats(priv->nd);
 			xeth_pr("@%s: connected", addr.sun_path+1);
 			xeth_sb_service(conn);
 			xeth_pr("@%s: disconnected", addr.sun_path+1);
@@ -715,10 +699,8 @@ int xeth_sb_init(void)
 	xeth_sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth_sb.rxbuf)
 		return -ENOMEM;
-	scnprintf(xeth_sb.task.name.rx, IFNAMSIZ, "%s-rx",
-		  xeth_link_ops.kind);
-	xeth_sb.task.main = kthread_run(xeth_sb_task_main, NULL,
-					xeth_link_ops.kind);
+	scnprintf(xeth_sb.task.name.rx, IFNAMSIZ, "%s-rx", XETH_KIND);
+	xeth_sb.task.main = kthread_run(xeth_sb_task_main, NULL, XETH_KIND);
 	return xeth_pr_is_err_val(xeth_sb.task.main);
 }
 
