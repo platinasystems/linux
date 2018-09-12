@@ -49,10 +49,10 @@ const XETH_MSG_KIND_NOT_MSG = 0xff
 
 type Kind int
 
-func KindOf(b []byte) Kind {
+func KindOf(buf []byte) Kind {
 	var kind Kind = XETH_MSG_KIND_NOT_MSG
-	msg := (*Msg)(unsafe.Pointer(&b[0]))
-	if len(b) >= SizeofMsg &&
+	msg := (*Msg)(unsafe.Pointer(&buf[0]))
+	if len(buf) >= SizeofMsg &&
 		msg.Z64 == 0 &&
 		msg.Z32 == 0 &&
 		msg.Z16 == 0 &&
@@ -87,4 +87,30 @@ func (kind Kind) String() string {
 		return kinds[i]
 	}
 	return fmt.Sprint("@", i)
+}
+
+func (kind Kind) cache(buf []byte) {
+	switch kind {
+	case XETH_MSG_KIND_IFA:
+		(*MsgIfa)(unsafe.Pointer(&buf[0])).cache()
+	case XETH_MSG_KIND_IFINFO:
+		(*MsgIfinfo)(unsafe.Pointer(&buf[0])).cache()
+	}
+}
+
+func (kind Kind) validate(buf []byte) error {
+	if kind == XETH_MSG_KIND_NOT_MSG {
+		return fmt.Errorf("corrupt message")
+	}
+	n, found := map[Kind]int{
+		XETH_MSG_KIND_ETHTOOL_FLAGS:    SizeofMsgEthtoolFlags,
+		XETH_MSG_KIND_ETHTOOL_SETTINGS: SizeofMsgEthtoolSettings,
+		XETH_MSG_KIND_IFA:              SizeofMsgIfa,
+		XETH_MSG_KIND_IFINFO:           SizeofMsgIfinfo,
+		XETH_MSG_KIND_NEIGH_UPDATE:     SizeofMsgNeighUpdate,
+	}[kind]
+	if found && n != len(buf) {
+		return fmt.Errorf("mismatched %s", kind)
+	}
+	return nil
 }

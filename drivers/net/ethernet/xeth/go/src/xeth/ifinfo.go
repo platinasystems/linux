@@ -74,26 +74,61 @@ func (info *MsgIfinfo) String() string {
 	fmt.Fprint(buf, " ", IfinfoReason(info.Reason))
 	fmt.Fprint(buf, " ", DevType(info.Devtype))
 	fmt.Fprint(buf, " ", (*Ifname)(&info.Ifname))
-	fmt.Fprint(buf, "[", info.Ifindex, "]")
 	if info.Iflinkindex != 0 {
-		fmt.Fprint(buf, "@", InterfaceByIndex(info.Iflinkindex).Name)
+		fmt.Fprint(buf, "@", Interface.Indexed(info.Iflinkindex).Name)
 	}
+	fmt.Fprint(buf, " ifindex ", info.Ifindex)
 	if info.Flags != 0 {
 		fmt.Fprint(buf, " <", Iff(info.Flags), ">")
 	}
 	fmt.Fprint(buf, " ", info.HardwareAddr())
 	if info.Id != 0 {
-		fmt.Fprint(buf, " id[", info.Id, "]")
+		fmt.Fprint(buf, " id ", info.Id)
 	}
 	if info.Portindex >= 0 {
-		fmt.Fprint(buf, " port[", info.Portindex, "]")
+		fmt.Fprint(buf, " port ", info.Portindex)
 	}
 	if info.Subportindex >= 0 {
-		fmt.Fprint(buf, " subport[", info.Subportindex, "]")
+		fmt.Fprint(buf, " subport ", info.Subportindex)
 	}
 	if info.Net > 1 {
 		fmt.Fprint(buf, " netns ", Netns(info.Net))
 	}
 	fmt.Fprint(buf, "\n")
 	return buf.String()
+}
+
+func (info *MsgIfinfo) cache() {
+	switch info.Reason {
+	case XETH_IFINFO_REASON_NEW:
+		Interface.clone(info)
+	case XETH_IFINFO_REASON_DEL:
+		Interface.del(info.Ifindex)
+	case XETH_IFINFO_REASON_UP:
+		if p := Interface.Indexed(info.Ifindex); p != nil {
+			p.Flags = net.Flags(info.Flags)
+		} else {
+			Interface.clone(info)
+		}
+	case XETH_IFINFO_REASON_DOWN:
+		if p := Interface.Indexed(info.Ifindex); p != nil {
+			p.Flags = net.Flags(info.Flags)
+		} else {
+			Interface.clone(info)
+		}
+	case XETH_IFINFO_REASON_DUMP:
+		if p := Interface.Indexed(info.Ifindex); p != nil {
+			// FIXME Should we Interface.Update(p, info) ?
+		} else {
+			Interface.clone(info)
+		}
+	case XETH_IFINFO_REASON_REG:
+		if p := Interface.Indexed(info.Ifindex); p != nil {
+			p.Netns = Netns(info.Net)
+		} else {
+			Interface.clone(info)
+		}
+	case XETH_IFINFO_REASON_UNREG:
+		Interface.unreg(info.Ifindex)
+	}
 }

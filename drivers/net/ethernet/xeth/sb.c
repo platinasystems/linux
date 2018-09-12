@@ -80,21 +80,6 @@ struct xeth_sb_tx_entry {
 
 static struct list_head __rcu xeth_sb_tx;
 
-static inline void xeth_sb_dump_ifinfo(struct net_device *nd)
-{
-	xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_DUMP);
-	if (nd->ip_ptr) {
-		struct in_ifaddr *ifa;
-		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
-			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
-	}
-	if (netif_is_xeth(nd)) {
-		xeth_ndo_send_vids(nd);
-		xeth_sb_send_ethtool_flags(nd);
-		xeth_sb_send_ethtool_settings(nd);
-	}
-}
-
 static u64 xeth_sb_ns_inum(struct net_device *nd)
 {
 	struct net *ndnet = dev_net(nd);
@@ -190,7 +175,7 @@ static void xeth_sb_nd_put(struct net_device *nd)
 
 static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 {
-	struct net_device *nd = xeth_nd_of(msg->ifname);
+	struct net_device *nd = xeth_nd_of(msg->ifindex);
 	struct xeth_priv *priv;
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
@@ -220,7 +205,7 @@ static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 		xeth_count_inc(sb_invalid);
 		return;
 	}
-	nd = xeth_nd_of(msg->ifname);
+	nd = xeth_nd_of(msg->ifindex);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;
@@ -243,7 +228,7 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 		xeth_count_inc(sb_invalid);
 		return;
 	}
-	nd = xeth_nd_of(msg->ifname);
+	nd = xeth_nd_of(msg->ifindex);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;
@@ -283,8 +268,9 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 	entry =  xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
-	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_FLAGS, nd->name);
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_FLAGS);
 	msg = (struct xeth_msg_ethtool_flags *)&entry->data[0];
+	msg->ifindex = nd->ifindex;
 	msg->flags = priv->ethtool.flags;
 	xeth_sb_tx_queue_rcu(entry);
 	return 0;
@@ -303,9 +289,9 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
-	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS,
-		       nd->name);
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS);
 	msg = (struct xeth_msg_ethtool_settings *)&entry->data[0];
+	msg->ifindex = nd->ifindex;
 	msg->speed = priv->ethtool.settings.base.speed;
 	msg->duplex = priv->ethtool.settings.base.duplex;
 	msg->port = priv->ethtool.settings.base.port;
@@ -342,8 +328,9 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
-	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFA, nd->name);
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_IFA);
 	msg = (struct xeth_msg_ifa *)&entry->data[0];
+	msg->ifindex = nd->ifindex;
 	msg->event = event;
 	msg->address = ifa->ifa_address;
 	msg->mask = ifa->ifa_mask;
@@ -364,8 +351,9 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
-	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_IFINFO, nd->name);
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_IFINFO);
 	msg = (struct xeth_msg_ifinfo *)&entry->data[0];
+	strlcpy(msg->ifname, nd->name, IFNAMSIZ);
 	msg->net = xeth_sb_ns_inum(nd);
 	msg->ifindex = nd->ifindex;
 	msg->iflinkindex = dev_get_iflink(nd);
@@ -399,6 +387,21 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 	msg->reason = reason;
 	xeth_sb_tx_queue_rcu(entry);
 	return 0;
+}
+
+void xeth_sb_dump_ifinfo(struct net_device *nd)
+{
+	xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_DUMP);
+	if (nd->ip_ptr) {
+		struct in_ifaddr *ifa;
+		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
+			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
+	}
+	if (netif_is_xeth(nd)) {
+		xeth_ndo_send_vids(nd);
+		xeth_sb_send_ethtool_flags(nd);
+		xeth_sb_send_ethtool_settings(nd);
+	}
 }
 
 int xeth_sb_send_fibentry(unsigned long event,
@@ -450,9 +453,9 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
-	xeth_ifmsg_set(&entry->data[0], XETH_MSG_KIND_NEIGH_UPDATE,
-		       neigh->dev->name);
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_NEIGH_UPDATE);
 	msg = (struct xeth_msg_neigh_update *)&entry->data[0];
+	msg->ifindex = neigh->dev->ifindex;
 	msg->net = xeth_sb_ns_inum(neigh->dev);
 	msg->ifindex = neigh->dev->ifindex;
 	msg->family = neigh->ops->family;
@@ -475,7 +478,7 @@ static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 	struct net_device *nd;
 	struct xeth_priv *priv;
 
-	nd = xeth_nd_of(msg->ifname);
+	nd = xeth_nd_of(msg->ifindex);
 	if (!nd) {
 		xeth_count_inc(sb_no_dev);
 		return;

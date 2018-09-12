@@ -64,9 +64,29 @@ func (ifa *MsgIfa) Prefix() *net.IPNet {
 }
 
 func (ifa *MsgIfa) String() string {
-	kind := Kind(ifa.Kind)
-	ifname := fmt.Sprint((*Ifname)(&ifa.Ifname), "[", ifa.Ifindex, "]")
-	event := IfaEvent(ifa.Event)
-	prefix := ifa.Prefix()
-	return fmt.Sprintln(kind, ifname, event, prefix)
+	return fmt.Sprintln(Kind(ifa.Kind),
+		Interface.Indexed(ifa.Ifindex).Name,
+		IfaEvent(ifa.Event), ifa.Prefix())
+}
+
+func (ifa *MsgIfa) cache() {
+	entry := Interface.Indexed(ifa.Ifindex)
+	if entry == nil {
+		return
+	}
+	switch ifa.Event {
+	case IFA_ADD:
+		entry.IPNets = append(entry.IPNets, ifa.Prefix())
+	case IFA_DEL:
+		prefix := ifa.Prefix()
+		n := len(entry.IPNets)
+		for i, x := range entry.IPNets {
+			if x.IP.Equal(prefix.IP) {
+				copy(entry.IPNets[i:], entry.IPNets[i+1:])
+				entry.IPNets[n-1] = nil
+				entry.IPNets = entry.IPNets[:n-1]
+				break
+			}
+		}
+	}
 }

@@ -57,32 +57,12 @@ struct xeth_msg_named(name) {						\
 	__VA_ARGS__;							\
 }
 
-#define xeth_ifmsg_def(name, ...)					\
-struct xeth_msg_named(name) {						\
-	u64	z64;							\
-	u32	z32;							\
-	u16	z16;							\
-	u8	z8;							\
-	u8	kind;							\
-	u8	ifname[IFNAMSIZ];					\
-	__VA_ARGS__;							\
-}
-
 struct xeth_msg {
 	u64	z64;
 	u32	z32;
 	u16	z16;
 	u8	z8;
 	u8	kind;
-};
-
-struct xeth_ifmsg {
-	u64	z64;
-	u32	z32;
-	u16	z16;
-	u8	z8;
-	u8	kind;
-	u8	ifname[IFNAMSIZ];
 };
 
 xeth_msg_def(break);
@@ -92,19 +72,22 @@ enum xeth_msg_carrier_flag {
 	XETH_CARRIER_ON,
 };
 
-xeth_ifmsg_def(carrier,
+xeth_msg_def(carrier,
+	s32	ifindex;
 	u8	flag;
-	u8	pad[7];
+	u8	pad[3];
 );
 
+xeth_msg_def(dump_fibinfo);
 xeth_msg_def(dump_ifinfo);
 
-xeth_ifmsg_def(ethtool_flags,
+xeth_msg_def(ethtool_flags,
+	s32	ifindex;
 	u32	flags;
-	u8	pad[4];
 );
 
-xeth_ifmsg_def(ethtool_settings,
+xeth_msg_def(ethtool_settings,
+	s32	ifindex;
 	u32	speed;
 	u8	duplex;
 	u8	port;
@@ -117,52 +100,7 @@ xeth_ifmsg_def(ethtool_settings,
 	u32	link_modes_supported[2];
 	u32	link_modes_advertising[2];
 	u32	link_modes_lp_advertising[2];
-	u8	pad[4];
 );
-
-enum xeth_msg_ifinfo_devtype {
-	XETH_DEVTYPE_XETH_PORT = 0,
-	XETH_DEVTYPE_XETH_BRIDGE_PORT,
-	XETH_DEVTYPE_LINUX_UNKNOWN = 128,
-	XETH_DEVTYPE_LINUX_VLAN,
-	XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT,
-	XETH_DEVTYPE_LINUX_BRIDGE,
-};
-
-enum xeth_msg_ifinfo_reason {
-	XETH_IFINFO_REASON_NEW,
-	XETH_IFINFO_REASON_DEL,
-	XETH_IFINFO_REASON_UP,
-	XETH_IFINFO_REASON_DOWN,
-	XETH_IFINFO_REASON_DUMP,
-	XETH_IFINFO_REASON_REG,
-	XETH_IFINFO_REASON_UNREG,
-};
-
-xeth_ifmsg_def(ifinfo,
-	u64	net;
-	s32	ifindex;
-	s32	iflinkindex;
-	u32	flags;
-	u16	id;
-	u8 	addr[ETH_ALEN];
-	s16	portindex;
-	s8	subportindex;
-	u8	devtype;
-	s16	portid;
-	u8	reason;
-	u8	pad[5];
-);
-
-xeth_ifmsg_def(ifa,
-	u32	event;
-	__be32	address;
-	__be32	mask;
-	s32	ifindex;
-	u8	pad[2];
-);
-
-xeth_msg_def(dump_fibinfo);
 
 struct xeth_next_hop {
 	s32	ifindex;
@@ -185,7 +123,49 @@ xeth_msg_def(fibentry,
 	struct xeth_next_hop nh[];
 );
 
-xeth_ifmsg_def(neigh_update,
+xeth_msg_def(ifa,
+	s32	ifindex;
+	u32	event;
+	__be32	address;
+	__be32	mask;
+);
+
+enum xeth_msg_ifinfo_devtype {
+	XETH_DEVTYPE_XETH_PORT = 0,
+	XETH_DEVTYPE_XETH_BRIDGE_PORT,
+	XETH_DEVTYPE_LINUX_UNKNOWN = 128,
+	XETH_DEVTYPE_LINUX_VLAN,
+	XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT,
+	XETH_DEVTYPE_LINUX_BRIDGE,
+};
+
+enum xeth_msg_ifinfo_reason {
+	XETH_IFINFO_REASON_NEW,
+	XETH_IFINFO_REASON_DEL,
+	XETH_IFINFO_REASON_UP,
+	XETH_IFINFO_REASON_DOWN,
+	XETH_IFINFO_REASON_DUMP,
+	XETH_IFINFO_REASON_REG,
+	XETH_IFINFO_REASON_UNREG,
+};
+
+xeth_msg_def(ifinfo,
+	u8	ifname[IFNAMSIZ];
+	u64	net;
+	s32	ifindex;
+	s32	iflinkindex;
+	u32	flags;
+	u16	id;
+	u8 	addr[ETH_ALEN];
+	s16	portindex;
+	s8	subportindex;
+	u8	devtype;
+	s16	portid;
+	u8	reason;
+	u8	pad[5];
+);
+
+xeth_msg_def(neigh_update,
 	u64	net;
 	s32	ifindex;
 	u8	family;
@@ -193,17 +173,19 @@ xeth_ifmsg_def(neigh_update,
 	u8	pad0[2];
 	u8	dst[16];
 	u8 	lladdr[ETH_ALEN];
-	u8	pad[2];
+	u8	pad[8-ETH_ALEN];
 );
 
-xeth_ifmsg_def(speed,
+xeth_msg_def(speed,
+	s32	ifindex;
 	u32	mbps;
-	u8	pad[4];
 );
 
-xeth_ifmsg_def(stat,
-	u64 index;
-	u64 count;
+xeth_msg_def(stat,
+	s32	ifindex;
+	u8	pad[4];
+	u64	index;
+	u64	count;
 );
 
 static inline bool xeth_is_msg(struct xeth_msg *p)
@@ -221,15 +203,4 @@ static inline void xeth_msg_set(void *data, u8 kind)
 	msg->kind = kind;
 }
 
-static inline void xeth_ifmsg_set_ifname(void *data, char *ifname)
-{
-	struct xeth_ifmsg *ifmsg = data;
-	strlcpy(ifmsg->ifname, ifname, IFNAMSIZ);
-}
-
-static inline void xeth_ifmsg_set(void *data, u8 kind, char *ifname)
-{
-	xeth_msg_set(data, kind);
-	xeth_ifmsg_set_ifname(data, ifname);
-}
 #endif /* __XETH_UAPI_H */

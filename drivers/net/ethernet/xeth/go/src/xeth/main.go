@@ -28,17 +28,21 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"unsafe"
 )
 
 func Main() {
+	var once sync.Once
 	name := filepath.Base(os.Args[0])
 	args := os.Args[1:]
 	usage := fmt.Sprint("usage:",
 		"\t", name, " carrier DEVICE CARRIER ...\n",
-		"\t", name, " dump DB ...\n",
+		"\t", name, " dump [forever] DB ...\n",
 		"\t", name, " set DEVICE speed COUNT\n",
 		"\t", name, " set DEVICE STAT COUNT\n",
 		"\t", name, " FILE | - ...\n",
@@ -49,10 +53,10 @@ DB	{ ifinfo | fdb }
 DEVICE	an interface name or its ifindex
 STAT	an 'ip link' or 'ethtool' statistic
 FILE,-	receive an exception frame from FILE or STDIN`)
-	xeth, err := New(strings.TrimPrefix(name, "sample-"))
+	err := Start(strings.TrimPrefix(name, "sample-"))
 	defer func() {
 		r := recover()
-		if err := xeth.Close(); r == nil {
+		if err := Stop(); r == nil {
 			r = err
 		}
 		if r != nil {
@@ -89,25 +93,50 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 				panic(fmt.Errorf("CARRIER %q unknown\n%s",
 					args[2], usage))
 			}
-			xeth.Carrier(args[1], flag)
+			once.Do(CacheIfinfo)
+			Carrier(Interface.Named(args[1]).Index, flag)
 			args = args[3:]
 		case "dump", "-dump", "--dump":
-			if len(args) < 2 {
-				panic(fmt.Errorf("missing DB\n%s", usage))
+			var sig chan os.Signal
+			for {
+				args = args[1:]
+				if len(args) == 0 {
+					panic(fmt.Errorf("missing DB\n%s",
+						usage))
+				}
+				if args[0] == "forever" {
+					sig = make(chan os.Signal)
+					signal.Notify(sig, syscall.SIGINT,
+						syscall.SIGTERM)
+				} else {
+					break
+				}
 			}
-			switch args[1] {
+			switch args[0] {
 			case "ifinfo":
-				xeth.DumpIfinfo()
+				DumpIfinfo()
+				if err = UntilBreak(show); err != nil {
+					panic(err)
+				}
 			case "fib":
-				xeth.DumpFib()
+				DumpIfinfo()
+				if err = UntilBreak(show); err != nil {
+					panic(err)
+				}
+				DumpFib()
+				if err = UntilBreak(show); err != nil {
+					panic(err)
+				}
 			default:
 				panic(fmt.Errorf("DB %q unknown\n%s",
-					args[1], usage))
+					args[0], usage))
 			}
-			if err := xeth.UntilBreak(dump); err != nil {
-				panic(err)
+			args = args[1:]
+			if sig != nil {
+				if err = UntilSig(sig, show); err != nil {
+					panic(err)
+				}
 			}
-			args = args[2:]
 		case "set", "-set", "--set":
 			var count uint64
 			switch len(args) {
@@ -124,10 +153,12 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 				panic(fmt.Errorf("COUNT %q %v",
 					args[3], err))
 			}
+			once.Do(CacheIfinfo)
+			ifindex := Interface.Named(args[1]).Index
 			if args[2] == "speed" {
-				err = xeth.Speed(args[1], count)
+				err = Speed(ifindex, count)
 			} else {
-				err = xeth.SetStat(args[1], args[2], count)
+				err = SetStat(ifindex, args[2], count)
 			}
 			if err != nil {
 				panic(err)
@@ -138,20 +169,20 @@ FILE,-	receive an exception frame from FILE or STDIN`)
 			if err != nil {
 				panic(err)
 			}
-			xeth.Tx(buf)
+			Tx(buf)
 			args = args[1:]
 		default:
 			buf, err := ioutil.ReadFile(args[0])
 			if err != nil {
 				panic(err)
 			}
-			xeth.Tx(buf)
+			Tx(buf)
 			args = args[1:]
 		}
 	}
 }
 
-func dump(buf []byte) error {
+func show(buf []byte) error {
 	ptr := unsafe.Pointer(&buf[0])
 	switch kind := KindOf(buf); kind {
 	case XETH_MSG_KIND_LINK_STAT:

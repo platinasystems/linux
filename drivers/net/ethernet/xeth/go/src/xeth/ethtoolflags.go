@@ -57,7 +57,7 @@ func (bits EthtoolFlagBits) Test(bit uint) bool {
 }
 
 func (msg *MsgEthtoolFlags) String() string {
-	kind := Kind(msg.Kind)
-	ifname := (*Ifname)(&msg.Ifname)
-	return fmt.Sprintln(kind, ifname, EthtoolFlagBits(msg.Flags))
+	return fmt.Sprintln(Kind(msg.Kind),
+		Interface.Indexed(msg.Ifindex).Name,
+		EthtoolFlagBits(msg.Flags))
 }
