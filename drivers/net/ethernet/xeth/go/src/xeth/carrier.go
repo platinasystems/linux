@@ -45,7 +45,7 @@ func (flag CarrierFlag) String() string {
 }
 
 func (msg *MsgCarrier) String() string {
-	kind := Kind(msg.Kind)
-	ifname := (*Ifname)(&msg.Ifname)
-	return fmt.Sprintln(kind, ifname, CarrierFlag(msg.Flag))
+	return fmt.Sprintln(Kind(msg.Kind),
+		Interface.Indexed(msg.Ifindex).Name,
+		CarrierFlag(msg.Flag))
 }

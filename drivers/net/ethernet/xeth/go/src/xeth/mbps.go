@@ -35,7 +35,7 @@ func (mbps Mbps) String() string {
 }
 
 func (msg *MsgSpeed) String() string {
-	kind := Kind(msg.Kind)
-	ifname := (*Ifname)(&msg.Ifname)
-	return fmt.Sprintln(kind, ifname, Mbps(msg.Mbps))
+	return fmt.Sprintln(Kind(msg.Kind),
+		Interface.Indexed(msg.Ifindex).Name,
+		Mbps(msg.Mbps))
 }

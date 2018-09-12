@@ -136,5 +136,5 @@ func (nh *NextHop) IP() net.IP {
 }
 
 func (nh NextHop) String() string {
-	return fmt.Sprint(nh.IP(), "@", InterfaceByIndex(nh.Ifindex).Name)
+	return fmt.Sprint(nh.IP(), "@", Interface.Indexed(nh.Ifindex).Name)
 }

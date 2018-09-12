@@ -36,6 +36,7 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 			      ether_setup, xeth.txqs, xeth.rxqs);
 	if (IS_ERR(nd))
 		return PTR_ERR(nd);
+	nd->rtnl_link_ops = &xeth_link_ops;
 	xeth_link_setup(nd);
 	priv = netdev_priv(nd);
 	priv->devtype = XETH_DEVTYPE_XETH_PORT;

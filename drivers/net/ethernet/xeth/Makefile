@@ -5,7 +5,6 @@ xeth-$(CONFIG_NET_XETH) += iflink.o
 xeth-$(CONFIG_NET_XETH) += link.o
 xeth-$(CONFIG_NET_XETH) += ndo.o
 xeth-$(CONFIG_NET_XETH) += notifier.o
-xeth-$(CONFIG_NET_XETH) += parse.o
 xeth-$(CONFIG_NET_XETH) += sb.o
 xeth-$(CONFIG_NET_XETH) += sysfs.o
 
