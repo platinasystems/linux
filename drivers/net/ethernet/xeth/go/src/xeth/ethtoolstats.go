@@ -54,8 +54,7 @@ func (stat EthtoolStat) String() string {
 }
 
 func (msg *MsgEthtoolStat) String() string {
-	kind := Kind(msg.Kind)
-	ifname := (*Ifname)(&msg.Ifname)
-	stat := EthtoolStat(msg.Index)
-	return fmt.Sprintln(kind, ifname, stat, msg.Count)
+	return fmt.Sprintln(Kind(msg.Kind),
+		Interface.Indexed(msg.Ifindex).Name,
+		EthtoolStat(msg.Index), msg.Count)
 }

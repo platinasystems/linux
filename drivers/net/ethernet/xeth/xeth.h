@@ -87,6 +87,7 @@ struct xeth {
 	for ((index) = 0; xeth.iflinks[(index)]; (index)++)
 
 extern struct xeth xeth;
+extern struct rtnl_link_ops xeth_link_ops;
 extern struct net_device_ops xeth_ndo_ops;
 extern struct ethtool_ops xeth_ethtool_ops;
 
@@ -126,12 +127,14 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
+void xeth_sb_dump_ifinfo(struct net_device *nd);
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason);
 int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
 int xeth_sb_send_neigh_update(struct neighbour *neigh);
 
 int xeth_sysfs_add(struct xeth_priv *priv);
+
 void xeth_sysfs_del(struct xeth_priv *priv);
 
 static inline void xeth_ht_init(void)
@@ -146,12 +149,12 @@ static inline int xeth_ht_key(const char *ifname)
 	return full_name_hash(&xeth, ifname, strnlen(ifname, IFNAMSIZ));
 }
 
-static inline struct net_device *xeth_nd_of(const char *ifname)
+static inline struct net_device *xeth_nd_of(s32 ifindex)
 {
 	struct xeth_priv *priv;
-	int i = hash_min(xeth_ht_key(ifname), xeth_ht_bits);
+	int i = hash_min(ifindex, xeth_ht_bits);
 	hlist_for_each_entry_rcu(priv, &xeth.ht[i], node)
-		if (!strncmp(priv->nd->name, ifname, IFNAMSIZ))
+		if (priv->nd->ifindex == ifindex)
 			return priv->nd;
 	return NULL;
 }
@@ -165,7 +168,8 @@ static inline void xeth_reset_counters(void)
 
 static inline bool netif_is_xeth(struct net_device *nd)
 {
-	return	(nd->netdev_ops == &xeth_ndo_ops) &&
+	return	(nd->rtnl_link_ops == &xeth_link_ops) &&
+		(nd->netdev_ops == &xeth_ndo_ops) &&
 		(nd->ethtool_ops == &xeth_ethtool_ops);
 }
 

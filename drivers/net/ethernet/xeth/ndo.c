@@ -119,7 +119,7 @@ void xeth_ndo_send_vids(struct net_device *nd)
 								  vid->proto,
 								  vid->id);
 		if (vnd)
-			xeth_sb_send_ifinfo(vnd, 0, XETH_IFINFO_REASON_DUMP);
+			xeth_sb_dump_ifinfo(vnd);
 		else
 			xeth_pr_nd(nd, "can't find vlan (%u, %u)",
 				   be16_to_cpu(vid->proto), vid->id);

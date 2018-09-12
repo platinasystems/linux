@@ -78,8 +78,7 @@ func (stat LinkStat) String() string {
 }
 
 func (msg *MsgLinkStat) String() string {
-	kind := Kind(msg.Kind)
-	ifname := (*Ifname)(&msg.Ifname)
-	stat := LinkStat(msg.Index)
-	return fmt.Sprintln(kind, ifname, stat, msg.Count)
+	return fmt.Sprintln(Kind(msg.Kind),
+		Interface.Indexed(msg.Ifindex).Name,
+		LinkStat(msg.Index), msg.Count)
 }

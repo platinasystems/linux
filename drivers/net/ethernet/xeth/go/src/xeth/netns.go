@@ -31,6 +31,8 @@ import (
 
 type Netns uint64
 
+const DefaultNetns Netns = 1
+
 var nameByInode = map[Netns]string{
 	1: "default",
 }
