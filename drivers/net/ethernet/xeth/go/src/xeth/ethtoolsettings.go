@@ -26,9 +26,8 @@ package xeth
 import "fmt"
 
 func (msg *MsgEthtoolSettings) String() string {
-	kind := Kind(msg.Kind)
-	ifname := (*Ifname)(&msg.Ifname)
-	return fmt.Sprintln(kind, " ", ifname) +
+	return fmt.Sprintln(Kind(msg.Kind),
+		Interface.Indexed(msg.Ifindex).Name) +
 		fmt.Sprintln("\tspeed:", Mbps(msg.Speed)) +
 		fmt.Sprintln("\tduplex:", Duplex(msg.Duplex)) +
 		fmt.Sprintln("\tport:", Port(msg.Port)) +
