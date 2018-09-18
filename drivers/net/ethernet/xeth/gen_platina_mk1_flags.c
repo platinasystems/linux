@@ -13,7 +13,7 @@ int main(int argc, char **argv)
 	printf("%s",
 	       "// Created by gen-platina-mk1-flags -- DO NOT EDIT\n"
 	       "\n"
-	       "package main\n"
+	       "package mk1\n"
 		"\n"
 		"const (\n"
 	);
@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 	printf("%s",
 		")\n"
 		"\n"
-		"var flags = []string{\n"
+		"var EthtoolFlags = []string{\n"
 	);
 	for (i = 0; flags[i]; i++)
 		printf("\t\"%s\",\n", flags[i]);
