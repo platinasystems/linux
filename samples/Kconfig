@@ -169,11 +169,4 @@ config SAMPLE_VFS
 	  as mount API and statx().  Note that this is restricted to the x86
 	  arch whilst it accesses system calls that aren't yet in all arches.
 
-config SAMPLE_XETH
-	bool "Build example an XETH controller"
-	depends on NET_XETH
-	help
-	  Build example userspace program to demonstrate and exercise
-	  sideband control of an XETH driver.
-
 endif # SAMPLES

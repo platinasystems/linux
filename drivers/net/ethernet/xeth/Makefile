@@ -20,46 +20,41 @@ xeth_ver = $(shell cat $(objtree)/include/config/kernel.release 2> /dev/null)
 ccflags-y += -DXETH_VERSION="$(if $(xeth_ver),$(xeth_ver),unknown)"
 ccflags-y += -I$(src) --include=xeth.h
 
-go-platina-mk1 := $(if $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(CONFIG_SAMPLE_XETH))
-extra-$(go-platina-mk1) += sample-platina-mk1
-hostprogs-$(go-platina-mk1) += gen-platina-mk1-stats
-hostprogs-$(go-platina-mk1) += gen-platina-mk1-flags
-gen-platina-mk1-stats-objs := gen_platina_mk1_stats.o
-gen-platina-mk1-flags-objs := gen_platina_mk1_flags.o
+gopath := $(if $(GO),$(shell $(GO) env GOPATH))
+gopath-xeth = $(gopath)/src/github.com/platinasystems/xeth
 
-GOPATH := $(realpath $(srctree)/$(src)/go)
-export GOPATH
+xeth-go = $(if $(gopath),y)
+platina-mk1-go = $(and $(CONFIG_XETH_VENDOR_PLATINA_MK1),$(gopath),y)
 
-go-list-go = $(foreach pkg,$(1),$(addprefix $(GOPATH)/src/$(pkg)/,\
-	$(shell env GOPATH=$(GOPATH)\
-		go list -f '{{ join .GoFiles " "}}' $(pkg))))
+extra-$(xeth-go) += godefed.go
+extra-$(platina-mk1-go) += platina_mk1_flags.go
+extra-$(platina-mk1-go) += platina_mk1_stats.go
 
-quiet_cmd_gobuild = GOBUILD $@
-      cmd_gobuild = go build -o $@
+hostprogs-$(CONFIG_XETH_VENDOR_PLATINA_MK1) += gen-platina-mk1-flags
+hostprogs-$(CONFIG_XETH_VENDOR_PLATINA_MK1) += gen-platina-mk1-stats
 
-sample-platina-mk1-deps := $(call go-list-go,sample-platina-mk1 xeth)
-sample-platina-mk1-deps += $(GOPATH)/src/xeth/godefed.go
+gen-platina-mk1-flags-objs = gen_platina_mk1_flags.o
+gen-platina-mk1-stats-objs = gen_platina_mk1_stats.o
 
-$(obj)/sample-platina-mk1: $(sample-platina-mk1-deps)
-	$(call cmd,gobuild) $(@F)
+xeth-go-dest = $(addprefix $(gopath-xeth)/,$(subst _,/,$(@F)))
 
-quiet_cmd_genstats = GOGEN   $@
-      cmd_genstats = $(obj)/gen-platina-mk1-stats
+quiet_cmd_xeth_install	= INSTALL $(xeth-go-dest)
+      cmd_xeth_install	= cp -f $@ $(xeth-go-dest)
 
-quiet_cmd_genflags = GOGEN   $@
-      cmd_genflags = $(obj)/gen-platina-mk1-flags
+quiet_cmd_xeth_godefs	= GODEFS  $@
+      cmd_xeth_godefs	= $(GO) tool cgo -godefs -- $(LINUXINCLUDE)
 
-$(GOPATH)/src/sample-platina-mk1/stats.go: $(obj)/gen-platina-mk1-stats
-	$(call cmd,genstats) > $@
+quiet_cmd_xeth_gen	= GOGEN   $@
+      cmd_xeth_gen	= $<
 
-$(GOPATH)/src/sample-platina-mk1/flags.go: $(obj)/gen-platina-mk1-flags
-	$(call cmd,genflags) > $@
+$(obj)/godefed.go: godefs.go include/uapi/linux/xeth.h
+	$(call cmd,xeth_godefs) $< > $@
+	$(call cmd,xeth_install)
 
-quiet_cmd_godefs  = GODEFS  $@
-      cmd_godefs  = go tool cgo -godefs -- $(LINUXINCLUDE)
+$(obj)/platina_mk1_flags.go: $(obj)/gen-platina-mk1-flags
+	$(call cmd,xeth_gen) > $@
+	$(call cmd,xeth_install)
 
-xeth-godefed-deps := $(GOPATH)/src/xeth/godefs.go
-xeth-godefed-deps += $(srctree)/include/uapi/linux/xeth.h
-
-$(GOPATH)/src/xeth/godefed.go: $(xeth-godefed-deps)
-	$(call cmd,godefs) $< > $@
+$(obj)/platina_mk1_stats.go: $(obj)/gen-platina-mk1-stats
+	$(call cmd,xeth_gen) > $@
+	$(call cmd,xeth_install)
