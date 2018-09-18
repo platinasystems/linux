@@ -118,11 +118,4 @@ config SAMPLE_STATX
 	help
 	  Build example userspace program to use the new extended-stat syscall.
 
-config SAMPLE_XETH
-	bool "Build example an XETH controller"
-	depends on NET_XETH
-	help
-	  Build example userspace program to demonstrate and exercise
-	  sideband control of an XETH driver.
-
 endif # SAMPLES

@@ -11,9 +11,9 @@ int main(int argc, char **argv)
 	int i;
 	printf("// Created by gen-platina-mk1-stats -- DO NOT EDIT\n");
 	printf("\n");
-	printf("package main\n");
+	printf("package mk1\n");
 	printf("\n");
-	printf("var stats = []string{\n");
+	printf("var EthtoolStats = []string{\n");
 	for (i = 0; stats[i]; i++)
 		printf("\t\"%s\",\n", stats[i]);
 	printf("}\n");
