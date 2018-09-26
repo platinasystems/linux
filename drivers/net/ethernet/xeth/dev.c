@@ -77,7 +77,7 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 
 	err = xeth_pr_nd_err(nd, register_netdevice(nd));
 	if (!err) {
-		hash_add_rcu(xeth.ht, &priv->node, xeth_ht_key(nd->name));
+		hash_add_rcu(xeth.ht, &priv->node, nd->ifindex);
 		err = xeth_sysfs_add(priv);
 	}
 	return err;
