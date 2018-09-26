@@ -31,6 +31,7 @@
 #include <priv.h>
 
 #include <linux/etherdevice.h>
+#include <linux/hashtable.h>
 #include <linux/inetdevice.h>
 #include <net/rtnetlink.h>
 #include <net/ip_fib.h>
@@ -142,11 +143,6 @@ static inline void xeth_ht_init(void)
 	int i;
 	for (i = 0; i < (1<<xeth_ht_bits); i++)
 		WRITE_ONCE(xeth.ht[i].first, NULL);
-}
-
-static inline int xeth_ht_key(const char *ifname)
-{
-	return full_name_hash(&xeth, ifname, strnlen(ifname, IFNAMSIZ));
 }
 
 static inline struct net_device *xeth_nd_of(s32 ifindex)
