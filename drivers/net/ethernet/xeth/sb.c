@@ -241,6 +241,24 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 	xeth_sb_nd_put(nd);
 }
 
+bool netif_is_dummy(struct net_device *nd)
+{
+	return nd->rtnl_link_ops &&
+		(strcmp("dummy", nd->rtnl_link_ops->kind) == 0);
+}
+
+bool xeth_sb_nd_send_filter(struct net_device *nd)
+{
+	if (xeth_count(sb_connections) == 0)
+		return true;
+	if (netif_is_xeth(nd) ||
+	    netif_is_bridge_master(nd) ||
+	    is_vlan_dev(nd) ||
+	    netif_is_dummy(nd))
+		return false;
+	return true;
+}
+
 int xeth_sb_send_break(void)
 {
 	struct xeth_sb_tx_entry *entry;
@@ -263,7 +281,7 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ethtool_flags);
 
-	if (xeth_count(sb_connections) == 0)
+	if (xeth_sb_nd_send_filter(nd))
 		return 0;
 	entry =  xeth_sb_alloc(n);
 	if (!entry)
@@ -284,7 +302,7 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ethtool_settings);
 
-	if (xeth_count(sb_connections) == 0)
+	if (xeth_sb_nd_send_filter(nd))
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
@@ -323,7 +341,7 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 	struct xeth_msg_ifa *msg;
 	size_t n = sizeof(struct xeth_msg_ifa);
 
-	if (xeth_count(sb_connections) == 0)
+	if (xeth_sb_nd_send_filter(nd))
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
@@ -346,7 +364,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 	struct xeth_priv *priv = netdev_priv(nd);
 	size_t n = sizeof(struct xeth_msg_ifinfo);
 
-	if (xeth_count(sb_connections) == 0)
+	if (xeth_sb_nd_send_filter(nd))
 		return 0;
 	entry = xeth_sb_alloc(n);
 	if (!entry)
