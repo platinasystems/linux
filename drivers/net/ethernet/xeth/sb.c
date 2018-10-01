@@ -251,10 +251,11 @@ bool xeth_sb_nd_send_filter(struct net_device *nd)
 {
 	if (xeth_count(sb_connections) == 0)
 		return true;
+	if (netif_is_dummy(nd))
+		return true;
 	if (netif_is_xeth(nd) ||
 	    netif_is_bridge_master(nd) ||
-	    is_vlan_dev(nd) ||
-	    netif_is_dummy(nd))
+	    is_vlan_dev(nd))
 		return false;
 	return true;
 }
