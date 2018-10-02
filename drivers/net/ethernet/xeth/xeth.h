@@ -117,8 +117,6 @@ struct net_device *xeth_iflink(int i);
 int xeth_iflink_index(u16 id);
 void xeth_iflink_reset(int i);
 
-void xeth_link_setup(struct net_device *nd);
-
 void xeth_ndo_send_vids(struct net_device *nd);
 
 int xeth_notifier_register_fib(void);
