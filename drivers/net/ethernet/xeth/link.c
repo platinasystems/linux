@@ -25,23 +25,6 @@
 
 #include <uapi/linux/xeth.h>
 
-void xeth_link_setup(struct net_device *nd)
-{
-	ether_setup(nd);
-	nd->netdev_ops = &xeth_ndo_ops;
-	nd->ethtool_ops = &xeth_ethtool_ops;
-	nd->needs_free_netdev = true;
-	nd->priv_destructor = NULL;
-	nd->priv_flags |= IFF_NO_QUEUE;
-	/* FIXME nd->priv_flags |= IFF_UNICAST_FLT; */
-	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->mtu = ETH_DATA_LEN;
-	nd->min_mtu = ETH_MIN_MTU;
-	nd->max_mtu = ETH_MAX_MTU;
-	/* FIXME netif_keep_dst(nd); */
-	eth_zero_addr(nd->broadcast);
-}
-
 static int xeth_link_validate(struct nlattr *tb[], struct nlattr *data[],
 			      struct netlink_ext_ack *extack)
 {
@@ -75,7 +58,7 @@ static unsigned int xeth_link_get_num_tx_queues(void)
 
 struct rtnl_link_ops xeth_link_ops = {
 	.kind		   = XETH_KIND,
-	.setup		   = xeth_link_setup,
+	.setup		   = NULL,
 	.newlink	   = NULL,
 	.dellink	   = NULL,
 	.validate	   = xeth_link_validate,
@@ -86,16 +69,15 @@ struct rtnl_link_ops xeth_link_ops = {
 
 int xeth_link_init(void)
 {
-	int err;
 	xeth_link_ops.priv_size = xeth.priv_size;
-	err = xeth_pr_err(rtnl_link_register(&xeth_link_ops));
-	if (err)
-		xeth_link_ops.priv_size = 0;
-	return err;
+	return rtnl_link_register(&xeth_link_ops);
 }
 
 void xeth_link_exit(void)
 {
-	if (xeth_link_ops.priv_size > 0)
-		rtnl_link_unregister(&xeth_link_ops);
-} 
+	if (xeth_link_ops.list.next && xeth_link_ops.list.prev) {
+		rtnl_lock();
+		list_del(&xeth_link_ops.list);
+		rtnl_unlock();
+	}
+}
