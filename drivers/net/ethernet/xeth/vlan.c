@@ -175,8 +175,8 @@ static rx_handler_result_t xeth_vlan_rx(struct sk_buff **pskb)
 		skb->protocol = iv->h_vlan_encapsulated_proto;
 		skb_pull_rcsum(skb, VLAN_HLEN);
 		/* make DST, SRC address precede encapsulated protocol */
-		memcpy(skb->data-ETH_HLEN, skb->data-(ETH_HLEN+VLAN_HLEN),
-		       2*ETH_ALEN);
+		memmove(skb->data-ETH_HLEN, skb->data-(ETH_HLEN+VLAN_HLEN),
+			2*ETH_ALEN);
 	} else {
 		skb->vlan_proto = 0;
 		skb->vlan_tci = 0;
