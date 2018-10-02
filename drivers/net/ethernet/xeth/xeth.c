@@ -67,10 +67,10 @@ void xeth_exit(void)
 	xeth_ethtool_exit();
 	xeth_notifier_exit();
 	xeth_ndo_exit();
-	xeth_link_exit();
 	xeth.encap.exit();
 	xeth_iflink_exit();
 	xeth_dev_exit();
+	xeth_link_exit();
 	while (vid = xeth_vid_pop(&xeth.free_vids), vid != NULL)
 		kfree(vid);
 }
