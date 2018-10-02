@@ -26,6 +26,22 @@
 
 static int xeth_dev_n = 0;
 
+static void xeth_dev_setup(struct net_device *nd)
+{
+	nd->rtnl_link_ops = &xeth_link_ops;
+	nd->netdev_ops = &xeth_ndo_ops;
+	nd->ethtool_ops = &xeth_ethtool_ops;
+	nd->needs_free_netdev = true;
+	nd->priv_destructor = NULL;
+	ether_setup(nd);
+	nd->priv_flags |= IFF_NO_QUEUE;
+	/* FIXME nd->priv_flags |= IFF_UNICAST_FLT; */
+	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
+	nd->max_mtu = ETH_MAX_MTU;
+	/* FIXME netif_keep_dst(nd); */
+	eth_zero_addr(nd->broadcast);
+}
+
 static int xeth_dev_new(const char *ifname, int port, int sub)
 {
 	int err;
@@ -33,11 +49,9 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	struct xeth_priv *priv;
 
 	nd = alloc_netdev_mqs(xeth.priv_size, ifname, NET_NAME_USER,
-			      ether_setup, xeth.txqs, xeth.rxqs);
+			      xeth_dev_setup, xeth.txqs, xeth.rxqs);
 	if (IS_ERR(nd))
 		return PTR_ERR(nd);
-	nd->rtnl_link_ops = &xeth_link_ops;
-	xeth_link_setup(nd);
 	priv = netdev_priv(nd);
 	priv->devtype = XETH_DEVTYPE_XETH_PORT;
 	priv->porti = port;
