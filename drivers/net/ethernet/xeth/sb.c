@@ -293,6 +293,11 @@ int xeth_sb_send_ethtool_flags(struct net_device *nd)
 	return 0;
 }
 
+/* Note, this sends speed 0 if autoneg, regardless of base.speed This is to
+ * cover controller (e.g. vnet) restart where in it's earlier run it has sent
+ * SPEED to note the auto-negotiated speed to ethtool user, but in subsequent
+ * run, we don't want the controller to override autoneg.
+ */
 int xeth_sb_send_ethtool_settings(struct net_device *nd)
 {
 	int i;
@@ -309,7 +314,8 @@ int xeth_sb_send_ethtool_settings(struct net_device *nd)
 	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS);
 	msg = (struct xeth_msg_ethtool_settings *)&entry->data[0];
 	msg->ifindex = nd->ifindex;
-	msg->speed = priv->ethtool.settings.base.speed;
+	msg->speed = priv->ethtool.settings.base.autoneg ?
+		0 : priv->ethtool.settings.base.speed;
 	msg->duplex = priv->ethtool.settings.base.duplex;
 	msg->port = priv->ethtool.settings.base.port;
 	msg->phy_address = priv->ethtool.settings.base.phy_address;
