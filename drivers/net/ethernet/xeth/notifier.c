@@ -83,6 +83,10 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 			if (nd == xeth_iflink(i))
 				xeth.encap.changemtu(nd);
 		break;
+	case NETDEV_CHANGE:
+		xeth_sb_send_ifinfo(nd, 0, (nd->flags & IFF_UP) ?
+				    XETH_IFINFO_REASON_UP :
+				    XETH_IFINFO_REASON_DOWN);
 	}
 	return NOTIFY_DONE;
 }
