@@ -28,7 +28,6 @@ static int xeth_dev_n = 0;
 
 static void xeth_dev_setup(struct net_device *nd)
 {
-	nd->rtnl_link_ops = &xeth_link_ops;
 	nd->netdev_ops = &xeth_ndo_ops;
 	nd->ethtool_ops = &xeth_ethtool_ops;
 	nd->needs_free_netdev = true;
