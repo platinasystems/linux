@@ -26,8 +26,11 @@
 int xeth_init(void)
 {
 	int i, err = 0;
+
 	xeth_ht_init();
+
 	INIT_LIST_HEAD_RCU(&xeth.free_vids);
+
 	for (i = 0; i < xeth.ports; i++) {
 		int provision = xeth.provision[i];
 		if (xeth_pr_true_expr(provision != 0 &&
@@ -38,10 +41,10 @@ int xeth_init(void)
 				      i, provision))
 			return -EINVAL;
 	}
+
 	xeth_reset_counters();
+
 	err = xeth.encap.init();
-	if (!err)
-		err = xeth_link_init();
 	if (!err)
 		err = xeth_ndo_init();
 	if (!err)
@@ -70,7 +73,7 @@ void xeth_exit(void)
 	xeth.encap.exit();
 	xeth_iflink_exit();
 	xeth_dev_exit();
-	xeth_link_exit();
+
 	while (vid = xeth_vid_pop(&xeth.free_vids), vid != NULL)
 		kfree(vid);
 }
