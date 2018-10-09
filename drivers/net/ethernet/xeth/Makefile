@@ -2,7 +2,6 @@ xeth-$(CONFIG_NET_XETH) := xeth.o
 xeth-$(CONFIG_NET_XETH) += dev.o
 xeth-$(CONFIG_NET_XETH) += ethtool.o
 xeth-$(CONFIG_NET_XETH) += iflink.o
-xeth-$(CONFIG_NET_XETH) += link.o
 xeth-$(CONFIG_NET_XETH) += ndo.o
 xeth-$(CONFIG_NET_XETH) += notifier.o
 xeth-$(CONFIG_NET_XETH) += sb.o

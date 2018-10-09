@@ -162,8 +162,7 @@ static inline void xeth_reset_counters(void)
 
 static inline bool netif_is_xeth(struct net_device *nd)
 {
-	return	(nd->rtnl_link_ops == &xeth_link_ops) &&
-		(nd->netdev_ops == &xeth_ndo_ops) &&
+	return	(nd->netdev_ops == &xeth_ndo_ops) &&
 		(nd->ethtool_ops == &xeth_ethtool_ops);
 }
 
