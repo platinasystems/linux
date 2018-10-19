@@ -28,6 +28,13 @@
         /* Map gpio interrupts to logical
          * User Space IO devices
          */
+        g2_7 {
+                compatible = "generic-uio", "uio_pdrv_genirq";
+                status = "okay";
+                interrupt-parent = <&gpio2>;
+                interrupts =    <7 IRQ_TYPE_EDGE_FALLING>;
+        };
+
         g4_7 {
                 compatible = "generic-uio", "uio_pdrv_genirq";
                 status = "okay";
