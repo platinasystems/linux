@@ -48,8 +48,6 @@ int xeth_init(void)
 	if (!err)
 		err = xeth_ndo_init();
 	if (!err)
-		err = xeth_notifier_init();
-	if (!err)
 		err = xeth_ethtool_init();
 	if (!err)
 		err = xeth_sb_init();
@@ -57,6 +55,8 @@ int xeth_init(void)
 		err = xeth_iflink_init();
 	if (!err)
 		err = xeth_dev_init();
+	if (!err)
+		err = xeth_notifier_init();
 	if (err)
 		xeth_exit();
 	return err;
