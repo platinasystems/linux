@@ -83,10 +83,14 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 			if (nd == xeth_iflink(i))
 				xeth.encap.changemtu(nd);
 		break;
-	case NETDEV_CHANGE:
-		xeth_sb_send_ifinfo(nd, 0, (nd->flags & IFF_UP) ?
-				    XETH_IFINFO_REASON_UP :
-				    XETH_IFINFO_REASON_DOWN);
+	case NETDEV_UP:
+		xeth_pr_nd(nd, "admin %s", "up");
+		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UP);
+		break;
+	case NETDEV_DOWN:
+		xeth_pr_nd(nd, "admin %s", "down");
+		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_DOWN);
+		break;
 	}
 	return NOTIFY_DONE;
 }
