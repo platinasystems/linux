@@ -66,9 +66,9 @@ void xeth_exit(void)
 {
 	struct xeth_vid *vid;
 
+	xeth_notifier_exit();
 	xeth_sb_exit();
 	xeth_ethtool_exit();
-	xeth_notifier_exit();
 	xeth_ndo_exit();
 	xeth.encap.exit();
 	xeth_iflink_exit();
