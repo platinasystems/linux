@@ -118,10 +118,16 @@ static int xeth_vlan_associate_dev(struct net_device *nd)
 
 static void xeth_vlan_disassociate_dev(struct net_device *nd)
 {
-	int i = xeth_vlan_id(nd);
-	if (i >= xeth_vlan_first_associate_dev) {
-		dev_put(nd);
-		xeth_vlan_reset_nd(i);
+	int i;
+	if (netif_is_xeth(nd)) {
+		return;
+	}
+	xeth_vlan_for_each_associate_dev(i) {
+		if (xeth_vlan_get_nd(i) == nd) {
+			xeth_vlan_reset_nd(i);
+			dev_put(nd);
+			return;
+		}
 	}
 }
 
@@ -302,8 +308,8 @@ void xeth_vlan_exit(void)
 	xeth_vlan_for_each_associate_dev(i) {
 		struct net_device *nd = xeth_vlan_get_nd(i);
 		if (nd) {
-			dev_put(nd);
 			xeth_vlan_reset_nd(i);
+			dev_put(nd);
 		}
 	}
 	xeth_vlan_for_each_dev(i) {
