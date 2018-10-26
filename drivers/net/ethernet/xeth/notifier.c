@@ -68,6 +68,7 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 			if (xeth.encap.id(nd) < 0)
 				xeth.encap.associate_dev(nd);
 		/* also notifies dev_change_net_namespace */
+		xeth_pr_nd(nd, "registered");
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_REG);
 		break;
 	case NETDEV_UNREGISTER:
@@ -76,7 +77,9 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 			if (nd == iflink)
 				xeth_iflink_reset(i);
 		}
+		xeth_pr_nd(nd, "unregistered");
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UNREG);
+		xeth.encap.disassociate_dev(nd);
 		break;
 	case NETDEV_CHANGEMTU:
 		xeth_for_each_iflink(i)
