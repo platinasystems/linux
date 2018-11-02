@@ -116,6 +116,16 @@ static int xeth_vlan_associate_dev(struct net_device *nd)
 	return -ENOSPC;
 }
 
+static void xeth_vlan_dump_associate_devs(void) {
+	int i;
+
+	xeth_vlan_for_each_associate_dev(i) {
+		struct net_device *nd = xeth_vlan_get_nd(i);
+		if (nd)
+			xeth_sb_dump_ifinfo(nd);
+	}
+}
+
 static void xeth_vlan_disassociate_dev(struct net_device *nd)
 {
 	int i;
@@ -294,6 +304,7 @@ int xeth_vlan_init(void)
 	xeth.encap.id = xeth_vlan_id;
 	xeth.encap.new_dev = xeth_vlan_new_dev;
 	xeth.encap.associate_dev = xeth_vlan_associate_dev;
+	xeth.encap.dump_associate_devs = xeth_vlan_dump_associate_devs;
 	xeth.encap.disassociate_dev = xeth_vlan_disassociate_dev;
 	xeth.encap.changemtu = xeth_vlan_changemtu;
 	xeth.encap.rx = xeth_vlan_rx;
