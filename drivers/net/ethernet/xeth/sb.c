@@ -601,6 +601,8 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 		struct xeth_priv *priv;
 		hash_for_each_rcu(xeth.ht, i, priv, node)
 			xeth_sb_dump_ifinfo(priv->nd);
+		if (xeth.encap.dump_associate_devs)
+			xeth.encap.dump_associate_devs();
 		xeth_sb_send_break();
 	}	break;
 	case XETH_MSG_KIND_SPEED:
