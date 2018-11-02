@@ -60,6 +60,7 @@ struct xeth {
 		int	(*id)(struct net_device *nd);
 		int	(*new_dev)(struct net_device *nd);
 		int	(*associate_dev)(struct net_device *nd);
+		void	(*dump_associate_devs)(void);
 		void	(*disassociate_dev)(struct net_device *nd);
 		void	(*changemtu)(struct net_device *iflink);
 		rx_handler_result_t
