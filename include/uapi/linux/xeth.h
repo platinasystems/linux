@@ -43,6 +43,7 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_IFDEL,
 	XETH_MSG_KIND_NEIGH_UPDATE,
 	XETH_MSG_KIND_IFVID,
+	XETH_MSG_KIND_CHANGE_UPPER,
 };
 
 #define xeth_msg_named(name)	xeth_msg_##name
@@ -76,6 +77,13 @@ xeth_msg_def(carrier,
 	s32	ifindex;
 	u8	flag;
 	u8	pad[3];
+);
+
+xeth_msg_def(change_upper,
+	s32	upper;
+	s32	lower;
+	u8	linking;
+	u8	pad[7];
 );
 
 xeth_msg_def(dump_fibinfo);
@@ -132,7 +140,6 @@ xeth_msg_def(ifa,
 
 enum xeth_msg_ifinfo_devtype {
 	XETH_DEVTYPE_XETH_PORT = 0,
-	XETH_DEVTYPE_XETH_BRIDGE_PORT,
 	XETH_DEVTYPE_LINUX_UNKNOWN = 128,
 	XETH_DEVTYPE_LINUX_VLAN,
 	XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT,
