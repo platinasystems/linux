@@ -16,6 +16,7 @@ const (
 	SizeofMsg                = C.sizeof_struct_xeth_msg
 	SizeofMsgBreak           = C.sizeof_struct_xeth_msg_break
 	SizeofMsgCarrier         = C.sizeof_struct_xeth_msg_carrier
+	SizeofMsgChangeUpper     = C.sizeof_struct_xeth_msg_change_upper
 	SizeofMsgDumpFibinfo     = C.sizeof_struct_xeth_msg_dump_fibinfo
 	SizeofMsgDumpIfinfo      = C.sizeof_struct_xeth_msg_dump_ifinfo
 	SizeofMsgEthtoolFlags    = C.sizeof_struct_xeth_msg_ethtool_flags
@@ -34,6 +35,8 @@ type Msg C.struct_xeth_msg
 type MsgBreak C.struct_xeth_msg_break
 
 type MsgCarrier C.struct_xeth_msg_carrier
+
+type MsgChangeUpper C.struct_xeth_msg_change_upper
 
 type MsgEthtoolFlags C.struct_xeth_msg_ethtool_flags
 

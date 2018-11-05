@@ -81,32 +81,18 @@ static int xeth_ndo_get_iflink(const struct net_device *nd)
 	return iflink ? iflink->ifindex : 0;
 }
 
-static int xeth_ndo_vlan_rx_add_vid(struct net_device *nd, __be16 proto, u16 id)
+static int xeth_ndo_vlan_rx_add_vid(struct net_device *nd,
+				    __be16 proto, u16 id)
 {
-	struct xeth_priv *priv = netdev_priv(nd);
-	struct xeth_vid *vid = xeth_vid_pop(&xeth.free_vids);
-	if (!vid) {
-		vid = kzalloc(sizeof(struct xeth_vid), GFP_KERNEL);
-		if (!vid)
-			return -ENOMEM;
-	}
-	vid->proto = proto;
-	vid->id = id;
-	list_add_tail_rcu(&vid->list, &priv->vids);
-	return 0;
+	return xeth_add_vid(nd, proto, id);
 }
 
-static int xeth_ndo_vlan_rx_del_vid(struct net_device *nd, __be16 proto, u16 id)
+static int xeth_ndo_vlan_rx_del_vid(struct net_device *nd,
+				    __be16 proto, u16 id)
 {
-	struct xeth_vid *vid;
-	struct xeth_priv *priv = netdev_priv(nd);
-	list_for_each_entry_rcu(vid, &priv->vids, list) {
-		if (vid->proto == proto && vid->id == id) {
-			list_del_rcu(&vid->list);
-			list_add_tail_rcu(&vid->list, &xeth.free_vids);
-			break;
-		}
-	}
+	struct xeth_vid *vid = xeth_find_vid(nd, proto, id);
+	if (vid)
+		xeth_free_vid(vid);
 	return 0;
 }
 
