@@ -129,8 +129,8 @@ void xeth_dev_exit(void)
 		if (priv->nd->reg_state == NETREG_REGISTERED) {
 			struct net_device *nd = priv->nd;
 			struct xeth_vid *vid;
-			while (vid = xeth_vid_pop(&priv->vids), vid != NULL)
-				list_add_tail_rcu(&vid->list, &xeth.free_vids);
+			while (vid = xeth_pop_vid(&priv->vids), vid != NULL)
+				list_add_tail_rcu(&vid->list, &xeth.free.vids);
 			xeth_sysfs_del(priv);
 			priv->nd = NULL;
 			hash_del_rcu(&priv->node);
