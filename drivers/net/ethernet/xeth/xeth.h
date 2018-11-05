@@ -47,7 +47,11 @@ enum {
 
 struct xeth {
 	struct hlist_head __rcu	ht[1<<xeth_ht_bits];
-	struct list_head  __rcu	free_vids;
+	struct list_head  __rcu	uppers;
+	struct {
+		struct list_head  __rcu	uppers;
+		struct list_head  __rcu	vids;
+	} free;
 	int	base;		/*  0 or 1 based port and subport */
 	int	*provision;	/* list of 1, 2, or 4 subports per port */
 	const char * const *iflinks;	/* a NULL terminated ifname list */
@@ -123,6 +127,7 @@ void xeth_ndo_send_vids(struct net_device *nd);
 int xeth_notifier_register_fib(void);
 void xeth_notifier_unregister_fib(void);
 
+int xeth_sb_send_change_upper(int upper, int lower, bool linking);
 int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
@@ -167,19 +172,103 @@ static inline bool netif_is_xeth(struct net_device *nd)
 		(nd->ethtool_ops == &xeth_ethtool_ops);
 }
 
+struct	xeth_upper {
+	struct	list_head __rcu list;
+	struct	{
+		s32	lower;
+		s32	upper;
+	} ifindex;
+};
+
+static inline struct xeth_upper *xeth_pop_upper(struct list_head __rcu *head)
+{
+	struct xeth_upper *p =
+		list_first_or_null_rcu(head, struct xeth_upper, list);
+	if (p)
+		list_del_rcu(&p->list);
+	return p;
+}
+
+static inline int xeth_add_upper(int upper, int lower)
+{
+	struct xeth_upper *p = xeth_pop_upper(&xeth.free.uppers);
+	if (!p) {
+		p = kzalloc(sizeof(struct xeth_upper), GFP_KERNEL);
+		if (!p)
+			return -ENOMEM;
+	}
+	p->ifindex.upper = upper;
+	p->ifindex.lower = lower;
+	list_add_tail_rcu(&p->list, &xeth.uppers);
+	return 0;
+}
+
+static inline struct xeth_upper *xeth_find_upper(int upper, int lower)
+{
+	struct xeth_upper *p;
+	list_for_each_entry_rcu(p, &xeth.uppers, list)
+		if (p &&
+		    p->ifindex.upper == upper &&
+		    p->ifindex.lower == lower)
+			return p;
+	return NULL;
+}
+
+static inline void xeth_free_upper(struct xeth_upper *p)
+{
+	p->ifindex.upper = 0;
+	p->ifindex.lower = 0;
+	list_del_rcu(&p->list);
+	list_add_tail_rcu(&p->list, &xeth.free.uppers);
+}
+
 struct	xeth_vid {
 	struct	list_head __rcu list;
 	__be16	proto;
 	u16	id;
 };
 
-static inline struct xeth_vid *xeth_vid_pop(struct list_head __rcu *head)
+static inline struct xeth_vid *xeth_pop_vid(struct list_head __rcu *head)
 {
-	struct xeth_vid *vid =
+	struct xeth_vid *p =
 		list_first_or_null_rcu(head, struct xeth_vid, list);
-	if (vid)
-		list_del_rcu(&vid->list);
-	return vid;
+	if (p)
+		list_del_rcu(&p->list);
+	return p;
+}
+
+static inline int xeth_add_vid(struct net_device *nd, __be16 proto, u16 id)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+	struct xeth_vid *p = xeth_pop_vid(&xeth.free.vids);
+	if (!p) {
+		p = kzalloc(sizeof(struct xeth_vid), GFP_KERNEL);
+		if (!p)
+			return -ENOMEM;
+	}
+	p->proto = proto;
+	p->id = id;
+	list_add_tail_rcu(&p->list, &priv->vids);
+	return 0;
+}
+
+static inline struct xeth_vid *xeth_find_vid(struct net_device *nd,
+					     __be16 proto, u16 id)
+{
+	struct xeth_priv *priv = netdev_priv(nd);
+	struct xeth_vid *p;
+	list_for_each_entry_rcu(p, &priv->vids, list)
+		if (p->proto == proto && p->id == id)
+			return p;
+	return NULL;
+}
+
+static inline void xeth_free_vid(struct xeth_vid *p)
+{
+	p->proto = 0;
+	p->id = 0;
+	list_del_rcu(&p->list);
+	list_add_tail_rcu(&p->list, &xeth.free.vids);
 }
 
 #endif  /* __XETH_H */

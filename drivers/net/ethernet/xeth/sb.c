@@ -273,6 +273,26 @@ int xeth_sb_send_break(void)
 	return 0;
 }
 
+int xeth_sb_send_change_upper(int upper, int lower, bool linking)
+{
+	struct xeth_sb_tx_entry *entry;
+	struct xeth_msg_change_upper *msg;
+	size_t n = sizeof(struct xeth_msg_change_upper);
+
+	if (xeth_count(sb_connections) == 0)
+		return 0;
+	entry =  xeth_sb_alloc(n);
+	if (!entry)
+		return -ENOMEM;
+	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_CHANGE_UPPER);
+	msg = (struct xeth_msg_change_upper *)&entry->data[0];
+	msg->upper = upper;
+	msg->lower = lower;
+	msg->linking = linking ? 1 : 0;
+	xeth_sb_tx_queue_rcu(entry);
+	return 0;
+}
+
 int xeth_sb_send_ethtool_flags(struct net_device *nd)
 {
 	struct xeth_sb_tx_entry *entry;
@@ -382,7 +402,13 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 	msg->iflinkindex = dev_get_iflink(nd);
 	msg->flags = iff ? iff : nd->flags;
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
-	if (is_vlan_dev(nd)) {
+	if (netif_is_xeth(nd)) {
+		msg->devtype = priv->devtype;
+		msg->portid = priv->portid;
+		msg->id = priv->id;
+		msg->portindex = priv->porti;
+		msg->subportindex = priv->subporti;
+	} else if (is_vlan_dev(nd)) {
 		msg->devtype = netif_is_bridge_port(nd) ?
 			XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT :
 			XETH_DEVTYPE_LINUX_VLAN;
@@ -394,14 +420,6 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 		msg->id = xeth.encap.id(nd);
 		msg->portindex = -1;
 		msg->subportindex = -1;
-	} else if (netif_is_xeth(nd)) {
-		msg->devtype = netif_is_bridge_port(nd) ?
-			XETH_DEVTYPE_XETH_BRIDGE_PORT :
-			priv->devtype;
-		msg->portid = priv->portid;
-		msg->id = priv->id;
-		msg->portindex = priv->porti;
-		msg->subportindex = priv->subporti;
 	} else {
 		msg->devtype = XETH_DEVTYPE_LINUX_UNKNOWN;
 		msg->portindex = -1;
@@ -599,10 +617,16 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 	case XETH_MSG_KIND_DUMP_IFINFO: {
 		int i;
 		struct xeth_priv *priv;
+		struct xeth_upper *upper;
 		hash_for_each_rcu(xeth.ht, i, priv, node)
 			xeth_sb_dump_ifinfo(priv->nd);
 		if (xeth.encap.dump_associate_devs)
 			xeth.encap.dump_associate_devs();
+		list_for_each_entry_rcu(upper, &xeth.uppers, list)
+			if (upper)
+				xeth_sb_send_change_upper(upper->ifindex.upper,
+							  upper->ifindex.lower,
+							  true);
 		xeth_sb_send_break();
 	}	break;
 	case XETH_MSG_KIND_SPEED:
