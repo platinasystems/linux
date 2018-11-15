@@ -125,6 +125,36 @@ xeth_sysfs_new_count_attr(sb_connections);
 xeth_sysfs_new_count_attr(sb_invalid);
 xeth_sysfs_new_count_attr(sb_no_dev);
 
+static struct attribute *xeth_sysfs_default_attrs[] = {
+	&xeth_sysfs_count_rx_invalid.attr,
+	&xeth_sysfs_count_rx_no_dev.attr,
+	&xeth_sysfs_count_sb_connections.attr,
+	&xeth_sysfs_count_sb_invalid.attr,
+	&xeth_sysfs_count_sb_no_dev.attr,
+};
+
+static struct kobj_type xeth_sysfs_ktype = {
+	.sysfs_ops = &xeth_sysfs_count_ops,
+	.release = xeth_sysfs_count_release,
+	.default_attrs = xeth_sysfs_default_attrs,
+};
+
+int xeth_sysfs_init(void)
+{
+	int err = kobject_init_and_add(&xeth.kobj,
+				       &xeth_sysfs_ktype,
+				       kernel_kobj,
+				       "%s", "xeth");
+	if (!err)
+		kobject_uevent(&xeth.kobj, KOBJ_ADD);
+	return err;
+}
+
+void xeth_sysfs_exit(void)
+{
+	kobject_put(&xeth.kobj);
+}
+
 #define xeth_sysfs_new_count_priv_attr(_name)				\
 static struct xeth_sysfs_count_attr xeth_sysfs_count_priv_##_name = {	\
 	.attr = {							\
@@ -154,12 +184,7 @@ xeth_sysfs_new_count_priv_attr(tx_noway);
 xeth_sysfs_new_count_priv_attr(tx_no_iflink);
 xeth_sysfs_new_count_priv_attr(tx_dropped);
 
-static struct attribute *xeth_sysfs_default_attrs[] = {
-	&xeth_sysfs_count_rx_invalid.attr,
-	&xeth_sysfs_count_rx_no_dev.attr,
-	&xeth_sysfs_count_sb_connections.attr,
-	&xeth_sysfs_count_sb_invalid.attr,
-	&xeth_sysfs_count_sb_no_dev.attr,
+static struct attribute *xeth_sysfs_default_priv_attrs[] = {
 	&xeth_sysfs_count_priv_rx_packets.attr,
 	&xeth_sysfs_count_priv_rx_bytes.attr,
 	&xeth_sysfs_count_priv_rx_nd_mismatch.attr,
@@ -180,16 +205,16 @@ static struct attribute *xeth_sysfs_default_attrs[] = {
 	NULL,
 };
 
-static struct kobj_type xeth_sysfs_ktype = {
+static struct kobj_type xeth_sysfs_priv_ktype = {
 	.sysfs_ops = &xeth_sysfs_count_ops,
 	.release = xeth_sysfs_count_release,
-	.default_attrs = xeth_sysfs_default_attrs,
+	.default_attrs = xeth_sysfs_default_priv_attrs,
 };
 
-int xeth_sysfs_add(struct xeth_priv *priv)
+int xeth_sysfs_priv_add(struct xeth_priv *priv)
 {
 	int err = kobject_init_and_add(&priv->kobj,
-				       &xeth_sysfs_ktype,
+				       &xeth_sysfs_priv_ktype,
 				       &priv->nd->dev.kobj,
 				       "%s", "xeth");
 	if (!err)
@@ -197,7 +222,7 @@ int xeth_sysfs_add(struct xeth_priv *priv)
 	return err;
 }
 
-void xeth_sysfs_del(struct xeth_priv *priv)
+void xeth_sysfs_priv_del(struct xeth_priv *priv)
 {
 	kobject_put(&priv->kobj);
 }

@@ -55,6 +55,7 @@ struct xeth {
 	int	base;		/*  0 or 1 based port and subport */
 	int	*provision;	/* list of 1, 2, or 4 subports per port */
 	const char * const *iflinks;	/* a NULL terminated ifname list */
+	const char 	*name;
 	const size_t	ports, rxqs, txqs;
 	const size_t	priv_size;
 	struct {
@@ -87,6 +88,7 @@ struct xeth {
 	void	(*init_ethtool_settings)(struct xeth_priv *priv);
 	int	(*validate_speed)(struct net_device *, u32);
 	atomic64_t	count[n_xeth_count];
+	struct	kobject	kobj;
 };
 
 #define xeth_for_each_iflink(index)	\
@@ -105,6 +107,7 @@ int xeth_link_init(void);
 int xeth_ndo_init(void);
 int xeth_notifier_init(void);
 int xeth_sb_init(void);
+int xeth_sysfs_init(void);
 int xeth_vlan_init(void);
 int xeth_create_links(void);
 
@@ -116,6 +119,7 @@ void xeth_link_exit(void);
 void xeth_ndo_exit(void);
 void xeth_notifier_exit(void);
 void xeth_sb_exit(void);
+void xeth_sysfs_exit(void);
 void xeth_vlan_exit(void);
 
 struct net_device *xeth_iflink(int i);
@@ -138,9 +142,8 @@ int xeth_sb_send_fibentry(unsigned long event,
 			  struct fib_entry_notifier_info *info);
 int xeth_sb_send_neigh_update(struct neighbour *neigh);
 
-int xeth_sysfs_add(struct xeth_priv *priv);
-
-void xeth_sysfs_del(struct xeth_priv *priv);
+int xeth_sysfs_priv_add(struct xeth_priv *priv);
+void xeth_sysfs_priv_del(struct xeth_priv *priv);
 
 static inline void xeth_ht_init(void)
 {
