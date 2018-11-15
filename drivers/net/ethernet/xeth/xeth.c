@@ -59,6 +59,8 @@ int xeth_init(void)
 		err = xeth_dev_init();
 	if (!err)
 		err = xeth_notifier_init();
+	if (!err)
+		err = xeth_sysfs_init();
 	if (err)
 		xeth_exit();
 	return err;
@@ -69,6 +71,7 @@ void xeth_exit(void)
 	struct xeth_vid *vid;
 	struct xeth_upper *upper;
 
+	xeth_sysfs_exit();
 	xeth_notifier_exit();
 	xeth_sb_exit();
 	xeth_ethtool_exit();
