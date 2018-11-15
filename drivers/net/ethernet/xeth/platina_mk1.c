@@ -54,6 +54,7 @@ static void platina_mk1_init_ethtool_settings(struct xeth_priv *priv);
 static int platina_mk1_validate_speed(struct net_device *nd, u32 speed);
 
 struct xeth xeth = {
+	.name = "platina-mk1",
 	.provision = provision,
 	.iflinks = platina_mk1_iflinks,
 	.priv_size = platina_mk1_priv_size,
