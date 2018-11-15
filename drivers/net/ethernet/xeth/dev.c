@@ -91,7 +91,7 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	err = xeth_pr_nd_err(nd, register_netdevice(nd));
 	if (!err) {
 		hash_add_rcu(xeth.ht, &priv->node, nd->ifindex);
-		err = xeth_sysfs_add(priv);
+		err = xeth_sysfs_priv_add(priv);
 	}
 	return err;
 }
@@ -131,7 +131,7 @@ void xeth_dev_exit(void)
 			struct xeth_vid *vid;
 			while (vid = xeth_pop_vid(&priv->vids), vid != NULL)
 				list_add_tail_rcu(&vid->list, &xeth.free.vids);
-			xeth_sysfs_del(priv);
+			xeth_sysfs_priv_del(priv);
 			priv->nd = NULL;
 			hash_del_rcu(&priv->node);
 			unregister_netdevice_queue(nd, NULL);
