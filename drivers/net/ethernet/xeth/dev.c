@@ -69,7 +69,9 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	iflink = xeth_iflink(priv->iflinki);
 	if (is_zero_ether_addr(nd->broadcast))
 		memcpy(nd->broadcast, iflink->broadcast, nd->addr_len);
-	nd->mtu = iflink->mtu;
+	nd->mtu = iflink->mtu < (ETH_DATA_LEN - xeth.encap.size) ?
+		iflink->mtu - xeth.encap.size :
+		ETH_DATA_LEN;
 	nd->max_mtu = iflink->max_mtu - xeth.encap.size;
 	nd->flags  = iflink->flags & ~(IFF_UP | IFF_PROMISC | IFF_ALLMULTI |
 				       IFF_MASTER | IFF_SLAVE);
