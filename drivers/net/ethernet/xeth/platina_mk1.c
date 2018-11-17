@@ -22,6 +22,7 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
+#include <linux/i2c.h>
 #include <linux/if_vlan.h>
 #include <linux/module.h>
 #include <uapi/linux/xeth.h>
@@ -37,6 +38,10 @@ static const char *const platina_mk1_stats[] = {
 	PLATINA_MK1_STATS
 };
 
+static const struct i2c_board_info const platina_mk1_i2c_board_info[] = {
+	{ I2C_BOARD_INFO("lm75", 0X4f) },
+};
+
 enum {
 	platina_mk1_n_ports = 32,
 	platina_mk1_n_rxqs = 1,
@@ -45,6 +50,7 @@ enum {
 	platina_mk1_n_stats = (sizeof(platina_mk1_stats) / sizeof(char*)) - 1,
 	platina_mk1_priv_size = sizeof(struct xeth_priv) +
 		(platina_mk1_n_stats * sizeof(u64)),
+	platina_mk1_n_i2c_clients = ARRAY_SIZE(platina_mk1_i2c_board_info),
 };
 
 static bool alpha = false;
@@ -71,8 +77,12 @@ struct xeth xeth = {
 	.validate_speed = platina_mk1_validate_speed,
 };
 
+static struct i2c_client *platina_mk1_i2c_client[platina_mk1_n_i2c_clients];
+
 static int __init platina_mk1_init(void)
 {
+	int i;
+	struct i2c_adapter *i2c0 = i2c_get_adapter(0);
 	struct net_device *eth0 = dev_get_by_name(&init_net, "eth0");
 	if (eth0 == NULL)
 		return -ENOENT;
@@ -82,11 +92,18 @@ static int __init platina_mk1_init(void)
 
 	xeth.base = alpha ? 0 : 1;
 
+	for (i = 0; i < platina_mk1_n_i2c_clients; i++)
+		platina_mk1_i2c_client[i] =
+			i2c_new_device(i2c0, &platina_mk1_i2c_board_info[i]);
 	return xeth_init();
 }
 
 static void __exit platina_mk1_exit(void)
 {
+	int i;
+	for (i = 0; i < platina_mk1_n_i2c_clients; i++)
+		if (platina_mk1_i2c_client[i])
+			i2c_unregister_device(platina_mk1_i2c_client[i]);
 	xeth_exit();
 }
 
