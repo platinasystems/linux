@@ -81,6 +81,7 @@ void xeth_iflink_reset(int i)
 int xeth_iflink_init(void)
 {
 	int i, err;
+	int sz_jumbo_frame = SZ_8K + SZ_1K + xeth.encap.size;
 
 	rtnl_lock();
 	for_each_iflink(i) {
@@ -96,6 +97,7 @@ int xeth_iflink_init(void)
 		rcu_assign_pointer(xeth_iflinks[i], iflink);
 		xeth_iflink_registered[i] = true;
 		xeth_iflink_index_mask = xeth_iflink_index_masks[i];
+		dev_set_mtu(iflink, sz_jumbo_frame);
 	}
 	rtnl_unlock();
 	return err;
