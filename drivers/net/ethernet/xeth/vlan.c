@@ -146,9 +146,12 @@ static void xeth_vlan_changemtu(struct net_device *iflink)
 	int i;
 	xeth_vlan_for_each_dev(i) {
 		struct net_device *nd = xeth_vlan_get_nd(i);
-		if (dev_get_iflink(nd) == iflink->ifindex)
-			if (iflink->mtu < nd->mtu + VLAN_HLEN)
-				dev_set_mtu(nd, iflink->mtu - VLAN_HLEN);
+		if (dev_get_iflink(nd) == iflink->ifindex) {
+			nd->max_mtu = iflink->mtu - VLAN_HLEN;
+			if (nd->mtu > nd->max_mtu) {
+				dev_set_mtu(nd, nd->max_mtu);
+			}
+		}
 	}
 }
 
