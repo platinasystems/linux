@@ -26,6 +26,11 @@
 
 #define XETH_KIND "xeth"
 
+extern struct xeth xeth;
+extern struct rtnl_link_ops xeth_link_ops;
+extern struct net_device_ops xeth_ndo_ops;
+extern struct ethtool_ops xeth_ethtool_ops;
+
 #include <count.h>
 #include <pr.h>
 #include <priv.h>
@@ -94,10 +99,6 @@ struct xeth {
 #define xeth_for_each_iflink(index)	\
 	for ((index) = 0; xeth.iflinks[(index)]; (index)++)
 
-extern struct xeth xeth;
-extern struct rtnl_link_ops xeth_link_ops;
-extern struct net_device_ops xeth_ndo_ops;
-extern struct ethtool_ops xeth_ethtool_ops;
 
 int xeth_init(void);
 int xeth_dev_init(void);
