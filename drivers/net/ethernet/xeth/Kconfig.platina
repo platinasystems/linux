@@ -14,7 +14,10 @@ if XETH_VENDOR_PLATINA
 config XETH_VENDOR_PLATINA_MK1
 	tristate "mk1 top of rack ethernet switch"
 	depends on NET_SWITCHDEV && VLAN_8021Q
+	select SENSORS_LM75
+	select EEPROM_AT24
 	---help---
-	  This connects through an IXGBE to an integrated ethernet switch.
+	  This mux XETH interfaces w/ an integrated ethernet switch through
+	  dual IXGBEs.
 
 endif # XETH_VENDOR_PLATINA
