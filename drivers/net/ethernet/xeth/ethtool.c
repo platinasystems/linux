@@ -26,7 +26,7 @@
 static void xeth_ethtool_get_drvinfo(struct net_device *nd,
 				     struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, XETH_KIND, sizeof(drvinfo->driver));
+	strlcpy(drvinfo->driver, xeth.name, sizeof(drvinfo->driver));
 	strlcpy(drvinfo->version, __stringify(XETH_VERSION),
 		sizeof(drvinfo->version));
 	strlcpy(drvinfo->fw_version, "n/a", sizeof(drvinfo->fw_version));
