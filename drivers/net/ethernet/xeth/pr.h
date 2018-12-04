@@ -65,7 +65,7 @@ do {									\
 	if (qualifier && XETH_PR_DYNAMIC_DEBUG) {			\
 		char prefix[64];					\
 		snprintf(prefix, sizeof(prefix), "%s:%s:%s: ",		\
-			 XETH_KIND, __func__,				\
+			 xeth.name, __func__,				\
 			 netdev_name(skb->dev));			\
 		print_hex_dump_bytes(prefix, DUMP_PREFIX_NONE,		\
 				     skb->data,	skb->len);		\
@@ -77,7 +77,7 @@ do {									\
 	if (qualifier && XETH_PR_DYNAMIC_DEBUG) {			\
 		char prefix[64];					\
 		snprintf(prefix, sizeof(prefix), "%s:%s: ",		\
-			 XETH_KIND, __func__);				\
+			 xeth.name, __func__);				\
 		print_hex_dump_bytes(prefix, DUMP_PREFIX_NONE,		\
 				     buf, len);				\
 	}								\
