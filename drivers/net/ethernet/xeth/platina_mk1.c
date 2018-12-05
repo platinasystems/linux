@@ -55,14 +55,23 @@ enum {
 
 static bool alpha = false;
 static int provision[platina_mk1_n_ports];
-static const char * const platina_mk1_iflinks[] = { "eth1", "eth2", NULL };
 static void platina_mk1_init_ethtool_settings(struct xeth_priv *priv);
 static int platina_mk1_validate_speed(struct net_device *nd, u32 speed);
-
+static const char * const platina_mk1_eth1_akas[] = {
+	"eth1", "enp3s0f0", NULL
+};
+static const char * const platina_mk1_eth2_akas[] = {
+	"eth2", "enp3s0f1", NULL
+};
+static const char * const * const platina_mk1_iflinks_akas[] = {
+	platina_mk1_eth1_akas,
+	platina_mk1_eth2_akas,
+	NULL,
+};
 struct xeth xeth = {
 	.name = "platina-mk1",
 	.provision = provision,
-	.iflinks = platina_mk1_iflinks,
+	.iflinks_akas = platina_mk1_iflinks_akas,
 	.priv_size = platina_mk1_priv_size,
 	.ports = platina_mk1_n_ports,
 	.rxqs = platina_mk1_n_rxqs,
