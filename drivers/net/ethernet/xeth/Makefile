@@ -11,7 +11,9 @@ vlan-$(CONFIG_NET_XETH) := vlan.o
 
 obj-$(CONFIG_XETH_VENDOR_PLATINA_MK1) += platina-mk1.o
 
-platina-mk1-y := platina_mk1.o  
+platina-mk1-y := platina_mk1.o
+platina-mk1-y += platina_mk1_i2c.o
+platina-mk1-y += platina_mk1_ethtool.o
 platina-mk1-y += $(xeth-y)
 platina-mk1-y += $(vlan-y)
 
