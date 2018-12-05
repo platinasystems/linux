@@ -71,6 +71,11 @@ void platina_mk1_ethtool_init_settings(struct xeth_priv *priv)
 					     100000baseCR4_Full);
 	ethtool_link_ksettings_add_link_mode(settings, supported,
 					     100000baseLR4_ER4_Full);
+	ethtool_link_ksettings_add_link_mode(settings, supported, TP);
+	ethtool_link_ksettings_add_link_mode(settings, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(settings, supported, FEC_NONE);
+	ethtool_link_ksettings_add_link_mode(settings, supported, FEC_RS);
+	ethtool_link_ksettings_add_link_mode(settings, supported, FEC_BASER);
 	bitmap_copy(settings->link_modes.advertising,
 		    settings->link_modes.supported,
 		    __ETHTOOL_LINK_MODE_MASK_NBITS);
