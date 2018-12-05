@@ -59,7 +59,8 @@ struct xeth {
 	} free;
 	int	base;		/*  0 or 1 based port and subport */
 	int	*provision;	/* list of 1, 2, or 4 subports per port */
-	const char * const *iflinks;	/* a NULL terminated ifname list */
+	/* a NULL terminated list of NULL terminated iflink aliases */
+	const char * const * const *iflinks_akas;
 	const char 	*name;
 	const size_t	ports, rxqs, txqs;
 	const size_t	priv_size;
@@ -96,9 +97,11 @@ struct xeth {
 	struct	kobject	kobj;
 };
 
-#define xeth_for_each_iflink(index)	\
-	for ((index) = 0; xeth.iflinks[(index)]; (index)++)
+#define xeth_for_each_iflink(IFLINK)	\
+	for ((IFLINK) = 0; xeth.iflinks_akas[IFLINK]; (IFLINK)++)
 
+#define xeth_for_each_iflink_aka(IFLINK,AKA)				\
+	for ((AKA) = 0; xeth.iflinks_akas[IFLINK][AKA]; (AKA)++)
 
 int xeth_init(void);
 int xeth_dev_init(void);
