@@ -26,11 +26,6 @@ enum {
 	xeth_max_iflinks = 16,
 };
 
-#define for_each_iflink(index)	\
-	for ((index) = 0; \
-	     (index) < xeth_max_iflinks && xeth.iflinks[(index)]; \
-	     (index)++)
-
 static struct net_device *xeth_iflinks[xeth_max_iflinks];
 static bool xeth_iflink_registered[xeth_max_iflinks];
 static const int const xeth_iflink_index_masks[xeth_max_iflinks] = {
@@ -80,25 +75,44 @@ void xeth_iflink_reset(int i)
 
 int xeth_iflink_init(void)
 {
-	int i, err;
+	int iflinki, akai, err = 0;
 	int sz_jumbo_frame = SZ_8K + SZ_1K + xeth.encap.size;
 
 	rtnl_lock();
-	for_each_iflink(i) {
-		const char *ifname = xeth.iflinks[i];
-		struct net_device *iflink = dev_get_by_name(&init_net, ifname);
-		if (xeth_pr_true_expr(!iflink, "%s not found", ifname))
-			return -ENOENT;
-		err = netdev_rx_handler_register(iflink, xeth.encap.rx, &xeth);
-		if (err) {
-			dev_put(iflink);
+	xeth_for_each_iflink(iflinki) {
+		struct net_device *iflink = NULL;
+		if (err)
+			break;
+		xeth_for_each_iflink_aka(iflinki, akai) {
+			const char *ifname = xeth.iflinks_akas[iflinki][akai];
+			iflink = dev_get_by_name(&init_net, ifname);
+			if (!iflink)
+				continue;
+			err = netdev_rx_handler_register(iflink,
+							 xeth.encap.rx,
+							 &xeth);
+			if (err) {
+				xeth_pr("failed to register rx handler (%d)",
+					err);
+				dev_put(iflink);
+				break;
+			}
+			rcu_assign_pointer(xeth_iflinks[iflinki], iflink);
+			xeth_iflink_registered[iflinki] = true;
+			xeth_iflink_index_mask = xeth_iflink_index_masks[iflinki];
+			dev_set_mtu(iflink, sz_jumbo_frame);
+		}
+		if (err)
+			break;
+		if (xeth_pr_true_expr(!iflink, "%s not found",
+				      xeth.iflinks_akas[iflinki][0])) {
+			err = -ENOENT;
 			break;
 		}
-		rcu_assign_pointer(xeth_iflinks[i], iflink);
-		xeth_iflink_registered[i] = true;
-		xeth_iflink_index_mask = xeth_iflink_index_masks[i];
-		dev_set_mtu(iflink, sz_jumbo_frame);
 	}
+	if (err)
+		xeth_for_each_iflink(iflinki)
+			xeth_iflink_reset(iflinki);
 	rtnl_unlock();
 	return err;
 }
@@ -107,7 +121,7 @@ void xeth_iflink_exit(void)
 {
 	int i;
 	rtnl_lock();
-	for_each_iflink(i)
+	xeth_for_each_iflink(i)
 		xeth_iflink_reset(i);
 	rtnl_unlock();
 }
