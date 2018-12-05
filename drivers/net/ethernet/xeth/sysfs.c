@@ -143,7 +143,7 @@ int xeth_sysfs_init(void)
 {
 	int err = kobject_init_and_add(&xeth.kobj,
 				       &xeth_sysfs_ktype,
-				       kernel_kobj,
+				       &xeth.kset->kobj,
 				       "%s", "xeth");
 	if (!err)
 		kobject_uevent(&xeth.kobj, KOBJ_ADD);
