@@ -94,7 +94,8 @@ struct xeth {
 	void	(*init_ethtool_settings)(struct xeth_priv *priv);
 	int	(*validate_speed)(struct net_device *, u32);
 	atomic64_t	count[n_xeth_count];
-	struct	kobject	kobj;
+	struct	kset	*kset;	/* /sys/kernel/<xeth.name> */
+	struct	kobject	kobj;	/* /sys/kernel/<xeth.name>/xeth */
 };
 
 #define xeth_for_each_iflink(IFLINK)	\
