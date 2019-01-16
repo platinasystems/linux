@@ -26,13 +26,13 @@
 #include <linux/if_vlan.h>
 
 enum {
-	xeth_vlan_first_dev = 4094,
-	xeth_vlan_first_associate_dev = 1,
+	xeth_vlan_first_dev = 3999,
+	xeth_vlan_first_associate_dev = 3000,
 	xeth_vlan_n_nd = xeth_vlan_first_dev + 1,
 };
 
-/* The vlan_nd table contains two types of devices: from the top (4094) down
- * are the xeth ports and subports, from the bottom (1) up are the user devices
+/* The vlan_nd table contains two types of devices: from the top (3999) down
+ * are the xeth ports and subports, from the bottom (3000) up are user devices
  * (e.g. bridge and tunnels) that master or associate with xeth devices.
  */
 static struct net_device *xeth_vlan_nd[xeth_vlan_n_nd];
