@@ -50,7 +50,6 @@ enum {
 		(platina_mk1_n_stats * sizeof(u64)),
 };
 
-static bool alpha;
 static int provision[platina_mk1_n_ports];
 static const char * const platina_mk1_eth1_akas[] = {
 	"eth1", "enp3s0f0", NULL
@@ -64,6 +63,7 @@ static const char * const * const platina_mk1_iflinks_akas[] = {
 	NULL,
 };
 struct xeth xeth = {
+	.base = 1,
 	.provision = provision,
 	.iflinks_akas = platina_mk1_iflinks_akas,
 	.name = "platina-mk1",
@@ -79,7 +79,6 @@ struct xeth xeth = {
 	.ethtool.stats = platina_mk1_stats,
 	.init_ethtool_settings = platina_mk1_ethtool_init_settings,
 	.validate_speed = platina_mk1_ethtool_validate_speed,
-
 };
 
 static void platina_mk1_end(void)
@@ -93,8 +92,6 @@ static int __init platina_mk1_init(void)
 {
 	int err;
 
-	/* FIXME set xeth.base from i2c eeprom instead of module parameter */
-	xeth.base = alpha ? 0 : 1;
 	xeth.kset = kset_create_and_add(xeth.name, NULL, kernel_kobj);
 	if (!xeth.kset)
 		return -ENOMEM;
@@ -114,11 +111,9 @@ static void __exit platina_mk1_exit(void)
 
 module_init(platina_mk1_init);
 module_exit(platina_mk1_exit);
-module_param(alpha, bool, false);
 module_param_array(provision, int, NULL, 0644);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_DESCRIPTION("XETH for Platina Systems MK1 TOR Ethernet Switch");
-MODULE_PARM_DESC(alpha, "zero based ports and subports");
 MODULE_PARM_DESC(provision, "1, 2, or 4 subports per port, default 1");
