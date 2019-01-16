@@ -16,6 +16,7 @@ config XETH_VENDOR_PLATINA_MK1
 	depends on NET_SWITCHDEV && VLAN_8021Q
 	select SENSORS_LM75
 	select EEPROM_AT24
+	select EEPROM_ONIE
 	---help---
 	  This mux XETH interfaces w/ an integrated ethernet switch through
 	  dual IXGBEs.
