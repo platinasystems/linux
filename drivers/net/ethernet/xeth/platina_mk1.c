@@ -131,6 +131,7 @@ MODULE_AUTHOR("Platina Systems");
 MODULE_DESCRIPTION("XETH for Platina Systems MK1 TOR Ethernet Switch");
 MODULE_PARM_DESC(alpha, "zero based ports and subports");
 MODULE_PARM_DESC(provision, "1, 2, or 4 subports per port, default 1");
+MODULE_INFO(srcversion, __stringify(XETH_VERSION));
 
 static void platina_mk1_init_ethtool_settings(struct xeth_priv *priv)
 {
