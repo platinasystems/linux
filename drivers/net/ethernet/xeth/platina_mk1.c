@@ -101,6 +101,9 @@ static int __init platina_mk1_init(void)
 
 	xeth.base = alpha ? 0 : 1;
 
+	xeth.kset = kset_create_and_add(xeth.name, NULL, kernel_kobj);
+	if (!xeth.kset)
+		return -ENOMEM;
 	for (i = 0; i < platina_mk1_n_i2c_clients; i++)
 		platina_mk1_i2c_client[i] =
 			i2c_new_device(i2c0, &platina_mk1_i2c_board_info[i]);
@@ -114,6 +117,8 @@ static void __exit platina_mk1_exit(void)
 		if (platina_mk1_i2c_client[i])
 			i2c_unregister_device(platina_mk1_i2c_client[i]);
 	xeth_exit();
+	if (xeth.kset)
+		kset_unregister(xeth.kset);
 }
 
 module_init(platina_mk1_init);
