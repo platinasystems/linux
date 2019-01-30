@@ -86,14 +86,14 @@ int xeth_iflink_init(void)
 		xeth_for_each_iflink_aka(iflinki, akai) {
 			const char *ifname = xeth.iflinks_akas[iflinki][akai];
 			iflink = dev_get_by_name(&init_net, ifname);
-			if (!iflink)
+			if (xeth_pr_true_expr(!iflink, "%s not found", ifname))
 				continue;
 			err = netdev_rx_handler_register(iflink,
 							 xeth.encap.rx,
 							 &xeth);
-			if (err) {
-				xeth_pr("failed to register rx handler (%d)",
-					err);
+			if (xeth_pr_true_expr(err,
+					      "rx_handler_register(%s), %d",
+					      ifname, err)) {
 				dev_put(iflink);
 				break;
 			}
@@ -101,11 +101,11 @@ int xeth_iflink_init(void)
 			xeth_iflink_registered[iflinki] = true;
 			xeth_iflink_index_mask = xeth_iflink_index_masks[iflinki];
 			dev_set_mtu(iflink, sz_jumbo_frame);
+			break;
 		}
 		if (err)
 			break;
-		if (xeth_pr_true_expr(!iflink, "%s not found",
-				      xeth.iflinks_akas[iflinki][0])) {
+		if (!iflink) {
 			err = -ENOENT;
 			break;
 		}
