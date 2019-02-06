@@ -83,14 +83,18 @@
 		compatible = "spansion,s25fl256s1";
 		spi-max-frequency = <29000000>;
 		reg = <0>;
-		partition@0 {
+		all@0 {
+			label = "all";
+			reg = <0x00000000 0x01000000>;
+		};
+		uboot@0 {
 			label = "u-boot";
 			reg = <0x00000000 0x00080000>;
 		};
 
-		dtb@80000 {
+		dtb@80000 {		/* Legacy */
 			label = "dtb";
-			reg = <0x00800000 0x00040000>;
+			reg = <0x00080000 0x00040000>;
 		};
 
 		env@c0000 {
@@ -98,16 +102,26 @@
 			reg = <0x000c0000 0x00040000>;
 		};
 
-		ker@10000 {
-			label = "kernel";
-			reg = <0x00100000 0x00200000>;
+		ker@10000 {		/* Legacy */
+			  label = "kernel";
+			  reg = <0x00100000 0x00200000>;
+		};
+
+		itb@10000 {
+			label = "itb";
+			reg = <0x00100000 0x00800000>;
 		};
 			
-		ini@30000 {
+		ini@30000 {		/* Legacy */
 			label = "initramfs";
 			reg = <0x00300000 0x00300000>;
 		};
-			
+
+		ubi@90000 {
+			  label = "ubi";
+			  reg = <0x00900000 0x00680000>;
+		};
+		
 		per@f80000 {
 			label = "per";
 			reg = <0x00f80000 0x00040000>;
