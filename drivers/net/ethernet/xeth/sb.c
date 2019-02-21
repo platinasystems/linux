@@ -1,21 +1,7 @@
 /* XETH side-band channel.
- * Copyright(c) 2018 Platina Systems, Inc.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+ * SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -41,33 +27,6 @@ static struct {
 	} task;
 	char	*rxbuf;
 } xeth_sb;
-
-static const char *const xeth_sb_link_stats[] = {
-	"rx-packets",
-	"tx-packets",
-	"rx-bytes",
-	"tx-bytes",
-	"rx-errors",
-	"tx-errors",
-	"rx-dropped",
-	"tx-dropped",
-	"multicast",
-	"collisions",
-	"rx-length-errors",
-	"rx-over-errors",
-	"rx-crc-errors",
-	"rx-frame-errors",
-	"rx-fifo-errors",
-	"rx-missed-errors",
-	"tx-aborted-errors",
-	"tx-carrier-errors",
-	"tx-fifo-errors",
-	"tx-heartbeat-errors",
-	"tx-window-errors",
-	"rx-compressed",
-	"tx-compressed",
-	"rx-nohandler",
-};
 
 static const size_t xeth_sb_n_link_stats =
 	sizeof(struct rtnl_link_stats64)/sizeof(u64);
@@ -445,41 +404,54 @@ void xeth_sb_dump_ifinfo(struct net_device *nd)
 	}
 }
 
-int xeth_sb_send_fibentry(unsigned long event,
-			  struct fib_entry_notifier_info *info)
+int xeth_sb_send_fib_entry(unsigned long event, struct fib_notifier_info *info)
 {
-	int i;
+	int i, nhs;
 	struct xeth_sb_tx_entry *entry;
 	struct xeth_next_hop *nh;
 	struct xeth_msg_fibentry *msg;
-	size_t n = sizeof(struct xeth_msg_fibentry) +
-		(info->fi->fib_nhs * sizeof(struct xeth_next_hop));
+	size_t n = sizeof(struct xeth_msg_fibentry);
+	struct fib_entry_notifier_info *feni =
+		container_of(info, struct fib_entry_notifier_info, info);
+	static const char * const names[] = {
+		[FIB_EVENT_ENTRY_REPLACE] "replace",
+		[FIB_EVENT_ENTRY_APPEND] "append",
+		[FIB_EVENT_ENTRY_ADD] "add",
+		[FIB_EVENT_ENTRY_DEL] "del",
+	};
 
 	if (xeth_count(sb_connections) == 0)
 		return 0;
+	nhs = 0;
+	if (feni->fi->fib_nhs > 0) {
+		nhs = feni->fi->fib_nhs;
+		n += (nhs * sizeof(struct xeth_next_hop));
+	}
 	entry = xeth_sb_alloc(n);
 	if (!entry)
 		return -ENOMEM;
 	msg = (struct xeth_msg_fibentry *)&entry->data[0];
 	nh = (struct xeth_next_hop*)&msg->nh[0];
 	xeth_msg_set(&entry->data[0], XETH_MSG_KIND_FIBENTRY);
-	msg->net = net_eq(info->info.net, &init_net) ? 1 :
-		info->info.net->ns.inum;
-	msg->address = htonl(info->dst);
-	msg->mask = inet_make_mask(info->dst_len);
+	msg->net = net_eq(feni->info.net, &init_net) ? 1 :
+		feni->info.net->ns.inum;
+	msg->address = htonl(feni->dst);
+	msg->mask = inet_make_mask(feni->dst_len);
 	msg->event = (u8)event;
-	msg->nhs = info->fi->fib_nhs;
-	msg->tos = info->tos;
-	msg->type = info->type;
-	msg->tb_id = info->tb_id;
+	msg->nhs = nhs;
+	msg->tos = feni->tos;
+	msg->type = feni->type;
+	msg->tb_id = feni->tb_id;
 	for(i = 0; i < msg->nhs; i++) {
-		nh[i].ifindex = info->fi->fib_nh[i].nh_dev->ifindex;
-		nh[i].weight = info->fi->fib_nh[i].nh_weight;
-		nh[i].flags = info->fi->fib_nh[i].nh_flags;
-		nh[i].gw = info->fi->fib_nh[i].nh_gw;
-		nh[i].scope = info->fi->fib_nh[i].nh_scope;
+		nh[i].ifindex = feni->fi->fib_nh[i].nh_dev->ifindex;
+		nh[i].weight = feni->fi->fib_nh[i].nh_weight;
+		nh[i].flags = feni->fi->fib_nh[i].nh_flags;
+		nh[i].gw = feni->fi->fib_nh[i].nh_gw;
+		nh[i].scope = feni->fi->fib_nh[i].nh_scope;
 	}
 	xeth_sb_tx_queue_rcu(entry);
+	no_xeth_pr("%s %pI4/%d w/ %d nexhop(s)", names[event], &msg->address,
+		   feni->dst_len, nhs);
 	return 0;
 }
 

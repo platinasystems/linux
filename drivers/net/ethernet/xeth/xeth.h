@@ -1,20 +1,5 @@
-/* Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -143,8 +128,8 @@ int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
 void xeth_sb_dump_ifinfo(struct net_device *nd);
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason);
-int xeth_sb_send_fibentry(unsigned long event,
-			  struct fib_entry_notifier_info *info);
+int xeth_sb_send_fib_entry(unsigned long event,
+			   struct fib_notifier_info *info);
 int xeth_sb_send_neigh_update(struct neighbour *neigh);
 
 int xeth_sysfs_priv_add(struct xeth_priv *priv);
