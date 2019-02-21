@@ -1,22 +1,5 @@
-/* XETH notifier
- *
- * Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -190,9 +173,11 @@ static void xeth_notifier_unregister_netevent(void)
 	xeth_notifier_registered_netevent = false;
 }
 
-static int xeth_notifier_fib(struct notifier_block *nb,
-			     unsigned long event, void *ptr)
+static int xeth_notifier_fib(struct notifier_block *nb, unsigned long event,
+			     void *ptr)
 {
+	struct fib_notifier_info *info = ptr;
+
 	if (nb != &xeth_notifier_block_fib)
 		return NOTIFY_DONE;
 	switch (event) {
@@ -200,11 +185,21 @@ static int xeth_notifier_fib(struct notifier_block *nb,
 	case FIB_EVENT_ENTRY_APPEND:
 	case FIB_EVENT_ENTRY_ADD:
 	case FIB_EVENT_ENTRY_DEL:
-		xeth_sb_send_fibentry(event,
-				      (struct fib_entry_notifier_info *)ptr);
+		switch (info->family) {
+		case AF_INET:
+			xeth_sb_send_fib_entry(event, info);
+			break;
+		}
+		break;
+	case FIB_EVENT_RULE_ADD:
+	case FIB_EVENT_RULE_DEL:
+	case FIB_EVENT_NH_ADD:
+	case FIB_EVENT_NH_DEL:
+	case FIB_EVENT_VIF_ADD:
+	case FIB_EVENT_VIF_DEL:
 		break;
 	default:
-		xeth_pr("unsupported fib event %ld", event);
+		xeth_pr("fib event %ld unknown", event);
 	}
 	return NOTIFY_DONE;
 }
