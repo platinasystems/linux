@@ -30,6 +30,11 @@ enum {
 	xeth_count_sb_connections,
 	xeth_count_sb_invalid,
 	xeth_count_sb_no_dev,
+	xeth_count_sb_from_user_msgs,
+	xeth_count_sb_from_user_ticks,
+	xeth_count_sb_to_user_msgs,
+	xeth_count_sb_to_user_retries,
+	xeth_count_sb_to_user_ticks,
 	n_xeth_count,
 };
 
