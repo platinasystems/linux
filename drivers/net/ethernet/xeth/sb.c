@@ -520,6 +520,8 @@ static inline void xeth_sb_service_tx(struct socket *sock)
 		};
 		struct xeth_sb_tx_entry *entry = xeth_sb_tx_pop();
 
+		xeth_count_inc(sb_to_user_ticks);
+
 		if (!entry) {
 			synchronize_rcu();
 			if (!list_empty(&sent)) {
@@ -538,10 +540,12 @@ static inline void xeth_sb_service_tx(struct socket *sock)
 #endif
 		n = kernel_sendmsg(sock, &msg, &iov, 1, iov.iov_len);
 		if (n == -EAGAIN) {
+			xeth_count_inc(sb_to_user_retries);
 			xeth_sb_tx_push(entry);
 			msleep(1);
 			continue;
-		}
+		} else
+			xeth_count_inc(sb_to_user_msgs);
 		list_add(&entry->list, &sent);
 		if (n < 0)
 			err = n;
@@ -561,11 +565,15 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 		.iov_base = xeth_sb.rxbuf,
 		.iov_len = XETH_SIZEOF_JUMBO_FRAME,
 	};
-	int ret = kernel_recvmsg(sock, &oob, &iov, 1, iov.iov_len, 0);
+	int ret;
+
+	xeth_count_inc(sb_from_user_ticks);
+	ret = kernel_recvmsg(sock, &oob, &iov, 1, iov.iov_len, 0);
 	if (ret == -EAGAIN) {
 		schedule();
 		return 0;
 	}
+	xeth_count_inc(sb_from_user_msgs);
 	if (ret == 0)
 		return 1;
 	if (ret < 0)
