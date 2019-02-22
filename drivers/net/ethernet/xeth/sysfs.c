@@ -124,6 +124,11 @@ xeth_sysfs_new_count_attr(rx_no_dev);
 xeth_sysfs_new_count_attr(sb_connections);
 xeth_sysfs_new_count_attr(sb_invalid);
 xeth_sysfs_new_count_attr(sb_no_dev);
+xeth_sysfs_new_count_attr(sb_from_user_msgs);
+xeth_sysfs_new_count_attr(sb_from_user_ticks);
+xeth_sysfs_new_count_attr(sb_to_user_msgs);
+xeth_sysfs_new_count_attr(sb_to_user_retries);
+xeth_sysfs_new_count_attr(sb_to_user_ticks);
 
 static struct attribute *xeth_sysfs_default_attrs[] = {
 	&xeth_sysfs_count_rx_invalid.attr,
@@ -131,6 +136,12 @@ static struct attribute *xeth_sysfs_default_attrs[] = {
 	&xeth_sysfs_count_sb_connections.attr,
 	&xeth_sysfs_count_sb_invalid.attr,
 	&xeth_sysfs_count_sb_no_dev.attr,
+	&xeth_sysfs_count_sb_from_user_msgs.attr,
+	&xeth_sysfs_count_sb_from_user_ticks.attr,
+	&xeth_sysfs_count_sb_to_user_msgs.attr,
+	&xeth_sysfs_count_sb_to_user_retries.attr,
+	&xeth_sysfs_count_sb_to_user_ticks.attr,
+	NULL,
 };
 
 static struct kobj_type xeth_sysfs_ktype = {
