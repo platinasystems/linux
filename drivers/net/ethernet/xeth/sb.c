@@ -49,8 +49,11 @@ static inline struct xeth_sb_tx_entry *xeth_sb_alloc(size_t data_len)
 {
 	size_t n = sizeof(struct xeth_sb_tx_entry) + data_len;
 	struct xeth_sb_tx_entry *entry = kzalloc(n, GFP_KERNEL);
-	if (entry)
+	if (entry) {
 		entry->data_len = data_len;
+		xeth_count_inc(sb_to_user_alloc);
+	} else
+		xeth_count_inc(sb_to_user_no_mem);
 	return entry;
 }
 
@@ -60,8 +63,9 @@ static void xeth_sb_tx_free(struct list_head *entries)
 		struct list_head *next = entries->next;
 		struct xeth_sb_tx_entry *entry =
 			container_of(next, struct xeth_sb_tx_entry, list);
-			list_del(next);
-			kfree(entry);
+		list_del(next);
+		kfree(entry);
+		xeth_count_inc(sb_to_user_free);
 	}
 }
 
