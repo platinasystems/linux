@@ -242,7 +242,7 @@ static void xeth_vlan_sb(const char *buf, size_t n)
 	priv = netdev_priv(nd);
 	skb = netdev_alloc_skb(nd, n);
 	if (!skb) {
-		xeth_count_priv_inc(priv, sb_nomem);
+		xeth_count_priv_inc(priv, sb_no_mem);
 		return;
 	}
 	skb_put(skb, n);
@@ -283,9 +283,9 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 
 	skb = vlan_insert_tag_set_proto(skb, tpid, tci);
 	if (!skb) {
-		xeth_count_priv_inc(priv, tx_nomem);
+		xeth_count_priv_inc(priv, tx_no_mem);
 	} else if (priv->ndi < 0) {
-		xeth_count_priv_inc(priv, tx_noway);
+		xeth_count_priv_inc(priv, tx_no_way);
 	} else if (!iflink) {
 		xeth_count_priv_inc(priv, tx_no_iflink);
 	} else {

@@ -126,7 +126,10 @@ xeth_sysfs_new_count_attr(sb_invalid);
 xeth_sysfs_new_count_attr(sb_no_dev);
 xeth_sysfs_new_count_attr(sb_from_user_msgs);
 xeth_sysfs_new_count_attr(sb_from_user_ticks);
+xeth_sysfs_new_count_attr(sb_to_user_alloc);
+xeth_sysfs_new_count_attr(sb_to_user_free);
 xeth_sysfs_new_count_attr(sb_to_user_msgs);
+xeth_sysfs_new_count_attr(sb_to_user_no_mem);
 xeth_sysfs_new_count_attr(sb_to_user_retries);
 xeth_sysfs_new_count_attr(sb_to_user_ticks);
 
@@ -138,7 +141,10 @@ static struct attribute *xeth_sysfs_default_attrs[] = {
 	&xeth_sysfs_count_sb_no_dev.attr,
 	&xeth_sysfs_count_sb_from_user_msgs.attr,
 	&xeth_sysfs_count_sb_from_user_ticks.attr,
+	&xeth_sysfs_count_sb_to_user_alloc.attr,
+	&xeth_sysfs_count_sb_to_user_free.attr,
 	&xeth_sysfs_count_sb_to_user_msgs.attr,
+	&xeth_sysfs_count_sb_to_user_no_mem.attr,
 	&xeth_sysfs_count_sb_to_user_retries.attr,
 	&xeth_sysfs_count_sb_to_user_ticks.attr,
 	NULL,
@@ -186,12 +192,12 @@ xeth_sysfs_new_count_priv_attr(sb_ethtool_stats);
 xeth_sysfs_new_count_priv_attr(sb_link_stats);
 xeth_sysfs_new_count_priv_attr(sb_packets);
 xeth_sysfs_new_count_priv_attr(sb_bytes);
-xeth_sysfs_new_count_priv_attr(sb_nomem);
+xeth_sysfs_new_count_priv_attr(sb_no_mem);
 xeth_sysfs_new_count_priv_attr(sb_dropped);
 xeth_sysfs_new_count_priv_attr(tx_packets);
 xeth_sysfs_new_count_priv_attr(tx_bytes);
-xeth_sysfs_new_count_priv_attr(tx_nomem);
-xeth_sysfs_new_count_priv_attr(tx_noway);
+xeth_sysfs_new_count_priv_attr(tx_no_mem);
+xeth_sysfs_new_count_priv_attr(tx_no_way);
 xeth_sysfs_new_count_priv_attr(tx_no_iflink);
 xeth_sysfs_new_count_priv_attr(tx_dropped);
 
@@ -205,12 +211,12 @@ static struct attribute *xeth_sysfs_default_priv_attrs[] = {
 	&xeth_sysfs_count_priv_sb_link_stats.attr,
 	&xeth_sysfs_count_priv_sb_packets.attr,
 	&xeth_sysfs_count_priv_sb_bytes.attr,
-	&xeth_sysfs_count_priv_sb_nomem.attr,
+	&xeth_sysfs_count_priv_sb_no_mem.attr,
 	&xeth_sysfs_count_priv_sb_dropped.attr,
 	&xeth_sysfs_count_priv_tx_packets.attr,
 	&xeth_sysfs_count_priv_tx_bytes.attr,
-	&xeth_sysfs_count_priv_tx_nomem.attr,
-	&xeth_sysfs_count_priv_tx_noway.attr,
+	&xeth_sysfs_count_priv_tx_no_mem.attr,
+	&xeth_sysfs_count_priv_tx_no_way.attr,
 	&xeth_sysfs_count_priv_tx_no_iflink.attr,
 	&xeth_sysfs_count_priv_tx_dropped.attr,
 	NULL,
