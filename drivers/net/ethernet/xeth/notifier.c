@@ -203,6 +203,12 @@ static int xeth_notifier_fib(struct notifier_block *nb,
 		xeth_sb_send_fibentry(event,
 				      (struct fib_entry_notifier_info *)ptr);
 		break;
+	case FIB_EVENT_RULE_ADD:
+	case FIB_EVENT_RULE_DEL:
+	case FIB_EVENT_NH_ADD:
+	case FIB_EVENT_NH_DEL:
+		/* ignored for now */
+		break;
 	default:
 		xeth_pr("unsupported fib event %ld", event);
 	}
