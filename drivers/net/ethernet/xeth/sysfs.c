@@ -126,10 +126,9 @@ xeth_sysfs_new_count_attr(sb_invalid);
 xeth_sysfs_new_count_attr(sb_no_dev);
 xeth_sysfs_new_count_attr(sb_from_user_msgs);
 xeth_sysfs_new_count_attr(sb_from_user_ticks);
-xeth_sysfs_new_count_attr(sb_to_user_alloc);
-xeth_sysfs_new_count_attr(sb_to_user_free);
 xeth_sysfs_new_count_attr(sb_to_user_msgs);
 xeth_sysfs_new_count_attr(sb_to_user_no_mem);
+xeth_sysfs_new_count_attr(sb_to_user_queued);
 xeth_sysfs_new_count_attr(sb_to_user_retries);
 xeth_sysfs_new_count_attr(sb_to_user_ticks);
 
@@ -141,10 +140,9 @@ static struct attribute *xeth_sysfs_default_attrs[] = {
 	&xeth_sysfs_count_sb_no_dev.attr,
 	&xeth_sysfs_count_sb_from_user_msgs.attr,
 	&xeth_sysfs_count_sb_from_user_ticks.attr,
-	&xeth_sysfs_count_sb_to_user_alloc.attr,
-	&xeth_sysfs_count_sb_to_user_free.attr,
 	&xeth_sysfs_count_sb_to_user_msgs.attr,
 	&xeth_sysfs_count_sb_to_user_no_mem.attr,
+	&xeth_sysfs_count_sb_to_user_queued.attr,
 	&xeth_sysfs_count_sb_to_user_retries.attr,
 	&xeth_sysfs_count_sb_to_user_ticks.attr,
 	NULL,

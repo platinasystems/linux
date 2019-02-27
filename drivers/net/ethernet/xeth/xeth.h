@@ -71,6 +71,22 @@ struct xeth {
 	} ea;
 	struct {
 		struct {
+			struct	task_struct *main;
+			struct	task_struct *rx;
+			struct	{
+				char	rx[IFNAMSIZ];
+			} name;
+		} task;
+		struct {
+			struct	mutex	mutex;
+			struct	list_head
+				queue;
+		} tx;
+		char	*rxbuf;
+	} sb;
+
+	struct {
+		struct {
 			const size_t flags, stats;
 		} n;
 		const char * const *flags;
