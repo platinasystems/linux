@@ -72,16 +72,16 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 	case NETDEV_CHANGEUPPER: {
 		struct netdev_notifier_changeupper_info *info = ptr;
 		int ui = info->upper_dev->ifindex;
-		struct xeth_upper *p = xeth_find_upper(ui, nd->ifindex);
+		struct xeth_upper *upper = xeth_upper_of(ui, nd->ifindex);
 		const char *op = info->linking ? "link" : "unlink";
 		const char *upper_name = netdev_name(info->upper_dev);
 		no_xeth_pr_nd(nd, "%s upper %s", op, upper_name);
-		if (info->linking && p == NULL) {
+		if (info->linking && upper == NULL) {
 			xeth_add_upper(ui, nd->ifindex);
 			xeth_sb_send_change_upper(ui, nd->ifindex,
 						  info->linking);
-		} else if (!info->linking && p != NULL) {
-			xeth_free_upper(p);
+		} else if (!info->linking && upper != NULL) {
+			xeth_del_upper(upper);
 			xeth_sb_send_change_upper(ui, nd->ifindex,
 						  info->linking);
 		} else

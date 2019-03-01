@@ -29,12 +29,17 @@
 #include <uapi/linux/if_link.h>
 
 struct	xeth_priv {
-	struct	hlist_node __rcu
-		node;
-	struct	list_head __rcu
-		vids;
-	struct	net_device
-		*nd;
+	struct	hlist_node __rcu	node;
+	struct {
+		struct	rcu_head	dump_ifinfo;
+		struct	rcu_head	reset_stats;
+		struct	rcu_head	carrier_off;
+	} rcu;
+	struct {
+		struct	list_head __rcu	list;
+		struct	spinlock	lock;
+	} vids;
+	struct	net_device	*nd;
 
 	u16	id;
 	s16	portid;
@@ -43,16 +48,16 @@ struct	xeth_priv {
 	u8	devtype;
 
 	struct {
-		struct	mutex	mutex;
 		struct	rtnl_link_stats64 stats;
+		struct	spinlock	lock;
 	} link;
 
 	struct	kobject	kobj;
 	atomic64_t	count[n_xeth_count_priv];
 
 	struct {
-		struct	mutex	mutex;
 		struct	ethtool_link_ksettings settings;
+		struct	spinlock	lock;
 		u32	flags;
 	} ethtool;
 	u64	ethtool_stats[];
@@ -65,6 +70,84 @@ static inline void xeth_priv_reset_counters(struct xeth_priv *priv)
 	int i;
 	for (i = 0; i < n_xeth_count_priv; i++)
 		atomic64_set(&priv->count[i], 0);
+}
+
+struct	xeth_priv_vid {
+	struct	list_head __rcu list;
+	struct {
+		struct	rcu_head	free;
+	} rcu;
+	__be16	proto;
+	u16	id;
+};
+
+#define xeth_priv_for_each_vid_rcu(priv,vid)				\
+	list_for_each_entry_rcu((vid), &(priv)->vids.list, list)
+
+static inline void xeth_priv_lock_vids(struct xeth_priv *priv)
+{
+	spin_lock(&priv->vids.lock);
+}
+
+static inline void xeth_priv_unlock_vids(struct xeth_priv *priv)
+{
+	spin_unlock(&priv->vids.lock);
+}
+
+static inline int xeth_priv_add_vid(struct xeth_priv *priv,
+				    __be16 proto, u16 id)
+{
+	struct xeth_priv_vid *p;
+
+	p = kzalloc(sizeof(struct xeth_priv_vid), GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+	p->proto = proto;
+	p->id = id;
+	xeth_priv_lock_vids(priv);
+	list_add_tail_rcu(&p->list, &priv->vids.list);
+	xeth_priv_unlock_vids(priv);
+	return 0;
+}
+
+static inline void xeth_priv_del_vid(struct xeth_priv *priv,
+				     struct xeth_priv_vid *vid)
+{
+	xeth_priv_lock_vids(priv);
+	list_del_rcu(&vid->list);
+	xeth_priv_unlock_vids(priv);
+	kfree_rcu(vid, rcu.free);
+}
+
+static inline struct xeth_priv_vid *xeth_priv_vid_rcu(struct xeth_priv *priv,
+						      __be16 proto, u16 id)
+{
+	struct xeth_priv_vid *vid;
+
+	list_for_each_entry_rcu(vid, &priv->vids.list, list)
+		if (vid->proto == proto && vid->id == id)
+			return vid;
+	return NULL;
+}
+
+static inline void xeth_priv_lock_link(struct xeth_priv *priv)
+{
+	spin_lock(&priv->link.lock);
+}
+
+static inline void xeth_priv_unlock_link(struct xeth_priv *priv)
+{
+	spin_unlock(&priv->link.lock);
+}
+
+static inline void xeth_priv_lock_ethtool(struct xeth_priv *priv)
+{
+	spin_lock(&priv->ethtool.lock);
+}
+
+static inline void xeth_priv_unlock_ethtool(struct xeth_priv *priv)
+{
+	spin_unlock(&priv->ethtool.lock);
 }
 
 #endif /* __XETH_PRIV_H */
