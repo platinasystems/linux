@@ -122,7 +122,7 @@ static void xeth_vlan_dump_associate_devs(void) {
 	xeth_vlan_for_each_associate_dev(i) {
 		struct net_device *nd = xeth_vlan_get_nd(i);
 		if (nd)
-			xeth_sb_dump_ifinfo(nd);
+			xeth_sb_dump_common_ifinfo(nd);
 	}
 }
 

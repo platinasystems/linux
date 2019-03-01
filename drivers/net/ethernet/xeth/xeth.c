@@ -27,11 +27,9 @@ int xeth_init(void)
 {
 	int i, err = 0;
 
-	xeth_ht_init();
+	xeth_init_privs();
 
-	INIT_LIST_HEAD_RCU(&xeth.uppers);
-	INIT_LIST_HEAD_RCU(&xeth.free.vids);
-	INIT_LIST_HEAD_RCU(&xeth.free.uppers);
+	INIT_LIST_HEAD_RCU(&xeth.uppers.list);
 
 	for (i = 0; i < xeth.ports; i++) {
 		int provision = xeth.provision[i];
@@ -68,9 +66,6 @@ int xeth_init(void)
 
 void xeth_exit(void)
 {
-	struct xeth_vid *vid;
-	struct xeth_upper *upper;
-
 	xeth_sysfs_exit();
 	xeth_notifier_exit();
 	xeth_sb_exit();
@@ -79,9 +74,4 @@ void xeth_exit(void)
 	xeth.encap.exit();
 	xeth_iflink_exit();
 	xeth_dev_exit();
-
-	while (upper = xeth_pop_upper(&xeth.free.uppers), upper != NULL)
-		kfree(upper);
-	while (vid = xeth_pop_vid(&xeth.free.vids), vid != NULL)
-		kfree(vid);
 }

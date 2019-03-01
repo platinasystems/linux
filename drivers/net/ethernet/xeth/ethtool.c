@@ -76,18 +76,18 @@ static void xeth_ethtool_get_ethtool_stats(struct net_device *nd,
 					   u64 *data)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	memcpy(data, priv->ethtool_stats, xeth.ethtool.n.stats*sizeof(u64));
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 }
 
 static u32 xeth_ethtool_get_priv_flags(struct net_device *nd)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 	u32 flags;
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	flags = priv->ethtool.flags;
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 	return flags;
 }
 
@@ -96,9 +96,9 @@ static int xeth_ethtool_set_priv_flags(struct net_device *nd, u32 flags)
 	struct xeth_priv *priv = netdev_priv(nd);
 	if (flags >= (1 << xeth.ethtool.n.flags))
 		return -EINVAL;
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	priv->ethtool.flags = flags;
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 	return xeth_sb_send_ethtool_flags(nd);
 }
 
@@ -106,10 +106,10 @@ static int xeth_ethtool_get_link_ksettings(struct net_device *nd,
 					   struct ethtool_link_ksettings *res)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	memcpy(res, &priv->ethtool.settings,
 	       sizeof(struct ethtool_link_ksettings));
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 	return 0;
 }
 
@@ -135,7 +135,7 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	struct xeth_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *settings = &priv->ethtool.settings;
 	int err = 0;
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	if (req->base.autoneg == AUTONEG_DISABLE) {
 		if (xeth.validate_speed)
 			err = xeth.validate_speed(nd, req->base.speed);
@@ -177,7 +177,7 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	}
 	if (!err)
 		err = xeth_sb_send_ethtool_settings(nd);
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 	return err;
 }
 

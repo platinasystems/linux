@@ -61,7 +61,7 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	if (err < 0)
 		return err;
 	priv->iflinki = xeth_iflink_index(priv->id);
-	INIT_LIST_HEAD_RCU(&priv->vids);
+	INIT_LIST_HEAD_RCU(&priv->vids.list);
 	priv->nd = nd;
 	xeth_priv_reset_counters(priv);
 	if (xeth.init_ethtool_settings)
@@ -93,7 +93,7 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 
 	err = xeth_pr_nd_err(nd, register_netdevice(nd));
 	if (!err) {
-		hash_add_rcu(xeth.ht, &priv->node, nd->ifindex);
+		xeth_add_priv(priv);
 		err = xeth_sysfs_priv_add(priv);
 	}
 	return err;
@@ -126,21 +126,19 @@ void xeth_dev_exit(void)
 {
 	int i;
 	struct xeth_priv *priv;
+	struct xeth_priv_vid *vid;
 
 	rtnl_lock();
-	hash_for_each_rcu(xeth.ht, i, priv, node)
+	rcu_read_lock();
+	xeth_for_each_priv_rcu(priv, i) {
+		xeth_priv_for_each_vid_rcu(priv, vid)
+			xeth_priv_del_vid(priv, vid);
+		xeth_del_priv(priv);
 		if (priv->nd->reg_state == NETREG_REGISTERED) {
-			struct net_device *nd = priv->nd;
-			struct xeth_vid *vid;
-			while (vid = xeth_pop_vid(&priv->vids), vid != NULL)
-				list_add_tail_rcu(&vid->list, &xeth.free.vids);
 			xeth_sysfs_priv_del(priv);
-			priv->nd = NULL;
-			hash_del_rcu(&priv->node);
-			unregister_netdevice_queue(nd, NULL);
-		} else {
-			priv->nd = NULL;
-			hash_del_rcu(&priv->node);
+			unregister_netdevice_queue(priv->nd, NULL);
 		}
+	}
+	rcu_read_unlock();
 	rtnl_unlock();
 }
