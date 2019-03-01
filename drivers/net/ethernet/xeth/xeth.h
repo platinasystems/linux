@@ -32,16 +32,18 @@ extern struct ethtool_ops xeth_ethtool_ops;
 #endif
 
 enum {
-	xeth_ht_bits = 4,
+	xeth_privs_ht_bits = 4,
 };
 
 struct xeth {
-	struct hlist_head __rcu	ht[1<<xeth_ht_bits];
-	struct list_head  __rcu	uppers;
 	struct {
-		struct list_head  __rcu	uppers;
-		struct list_head  __rcu	vids;
-	} free;
+		struct	hlist_head __rcu hlist[1<<xeth_privs_ht_bits];
+		struct	spinlock	lock;
+	} privs;
+	struct {
+		struct	list_head __rcu	list;
+		struct	spinlock	lock;
+	} uppers;
 	int	base;		/*  0 or 1 based port and subport */
 	int	*provision;	/* list of 1, 2, or 4 subports per port */
 	/* a NULL terminated list of NULL terminated iflink aliases */
@@ -78,9 +80,8 @@ struct xeth {
 			} name;
 		} task;
 		struct {
-			struct	mutex	mutex;
-			struct	list_head
-				queue;
+			struct	list_head	list;
+			struct	spinlock	lock;
 		} tx;
 		char	*rxbuf;
 	} sb;
@@ -99,11 +100,14 @@ struct xeth {
 	struct	kobject	kobj;	/* /sys/kernel/<xeth.name>/xeth */
 };
 
-#define xeth_for_each_iflink(IFLINK)	\
+#define xeth_for_each_iflink(IFLINK)					\
 	for ((IFLINK) = 0; xeth.iflinks_akas[IFLINK]; (IFLINK)++)
 
 #define xeth_for_each_iflink_aka(IFLINK,AKA)				\
 	for ((AKA) = 0; xeth.iflinks_akas[IFLINK][AKA]; (AKA)++)
+
+#define xeth_for_each_priv_rcu(priv,bkt)				\
+	hash_for_each_rcu(xeth.privs.hlist, (bkt), (priv), node)
 
 int xeth_init(void);
 int xeth_dev_init(void);
@@ -132,17 +136,15 @@ struct net_device *xeth_iflink(int i);
 int xeth_iflink_index(u16 id);
 void xeth_iflink_reset(int i);
 
-void xeth_ndo_send_vids(struct net_device *nd);
-
 int xeth_notifier_register_fib(void);
 void xeth_notifier_unregister_fib(void);
 
+void xeth_sb_dump_common_ifinfo(struct net_device *nd);
 int xeth_sb_send_change_upper(int upper, int lower, bool linking);
 int xeth_sb_send_ethtool_flags(struct net_device *nd);
 int xeth_sb_send_ethtool_settings(struct net_device *nd);
 int xeth_sb_send_ifa(struct net_device *nd, unsigned long event,
 		     struct in_ifaddr *ifa);
-void xeth_sb_dump_ifinfo(struct net_device *nd);
 int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason);
 int xeth_sb_send_fib_entry(unsigned long event,
 			   struct fib_notifier_info *info);
@@ -151,21 +153,56 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh);
 int xeth_sysfs_priv_add(struct xeth_priv *priv);
 void xeth_sysfs_priv_del(struct xeth_priv *priv);
 
-static inline void xeth_ht_init(void)
+static inline void xeth_lock_privs(void)
+{
+	spin_lock(&xeth.privs.lock);
+}
+
+static inline void xeth_unlock_privs(void)
+{
+	spin_unlock(&xeth.privs.lock);
+}
+
+static inline void xeth_init_privs(void)
 {
 	int i;
-	for (i = 0; i < (1<<xeth_ht_bits); i++)
-		WRITE_ONCE(xeth.ht[i].first, NULL);
+	for (i = 0; i < (1<<xeth_privs_ht_bits); i++)
+		WRITE_ONCE(xeth.privs.hlist[i].first, NULL);
+}
+
+static inline void xeth_add_priv(struct xeth_priv *priv)
+{
+	xeth_lock_privs();
+	hash_add_rcu(xeth.privs.hlist, &priv->node, priv->nd->ifindex);
+	xeth_unlock_privs();
+}
+
+static inline void xeth_del_priv(struct xeth_priv *priv)
+{
+	xeth_lock_privs();
+	hash_del_rcu(&priv->node);
+	xeth_unlock_privs();
+}
+
+static inline struct xeth_priv *xeth_priv_of(s32 ifindex)
+{
+	struct xeth_priv *priv;
+	int i = hash_min(ifindex, xeth_privs_ht_bits);
+
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(priv, &xeth.privs.hlist[i], node)
+		if (priv->nd->ifindex == ifindex) {
+			rcu_read_unlock();
+			return priv;
+		}
+	rcu_read_unlock();
+	return NULL;
 }
 
 static inline struct net_device *xeth_nd_of(s32 ifindex)
 {
-	struct xeth_priv *priv;
-	int i = hash_min(ifindex, xeth_ht_bits);
-	hlist_for_each_entry_rcu(priv, &xeth.ht[i], node)
-		if (priv->nd->ifindex == ifindex)
-			return priv->nd;
-	return NULL;
+	struct xeth_priv *priv = xeth_priv_of(ifindex);
+	return priv ? priv->nd : NULL;
 }
 
 static inline void xeth_reset_counters(void)
@@ -183,101 +220,76 @@ static inline bool netif_is_xeth(struct net_device *nd)
 
 struct	xeth_upper {
 	struct	list_head __rcu list;
+	struct {
+		struct	rcu_head	free;
+		struct	rcu_head	send_change;
+	} rcu;
 	struct	{
 		s32	lower;
 		s32	upper;
 	} ifindex;
 };
 
-static inline struct xeth_upper *xeth_pop_upper(struct list_head __rcu *head)
+#define xeth_for_each_upper_rcu(upper)					\
+	list_for_each_entry_rcu(upper, &xeth.uppers.list, list)
+
+static inline void xeth_lock_uppers(void)
 {
-	struct xeth_upper *p =
-		list_first_or_null_rcu(head, struct xeth_upper, list);
-	if (p)
-		list_del_rcu(&p->list);
-	return p;
+	spin_lock(&xeth.uppers.lock);
+}
+
+static inline void xeth_unlock_uppers(void)
+{
+	spin_unlock(&xeth.uppers.lock);
 }
 
 static inline int xeth_add_upper(int upper, int lower)
 {
-	struct xeth_upper *p = xeth_pop_upper(&xeth.free.uppers);
-	if (!p) {
-		p = kzalloc(sizeof(struct xeth_upper), GFP_KERNEL);
-		if (!p)
-			return -ENOMEM;
-	}
+	struct xeth_upper *p;
+
+	p = kzalloc(sizeof(struct xeth_upper), GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
 	p->ifindex.upper = upper;
 	p->ifindex.lower = lower;
-	list_add_tail_rcu(&p->list, &xeth.uppers);
+	xeth_lock_uppers();
+	list_add_tail_rcu(&p->list, &xeth.uppers.list);
+	xeth_unlock_uppers();
 	return 0;
 }
 
-static inline struct xeth_upper *xeth_find_upper(int upper, int lower)
+static inline void xeth_del_upper(struct xeth_upper *upper)
+{
+	xeth_lock_uppers();
+	list_del_rcu(&upper->list);
+	xeth_unlock_uppers();
+	kfree_rcu(upper, rcu.free);
+}
+
+static inline struct xeth_upper *xeth_upper_of(int upper, int lower)
 {
 	struct xeth_upper *p;
-	list_for_each_entry_rcu(p, &xeth.uppers, list)
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(p, &xeth.uppers.list, list)
 		if (p &&
 		    p->ifindex.upper == upper &&
-		    p->ifindex.lower == lower)
+		    p->ifindex.lower == lower) {
+			rcu_read_unlock();
 			return p;
+		}
+	rcu_read_unlock();
 	return NULL;
 }
 
-static inline void xeth_free_upper(struct xeth_upper *p)
+static inline void xeth_lock_sb_tx(void)
 {
-	p->ifindex.upper = 0;
-	p->ifindex.lower = 0;
-	list_del_rcu(&p->list);
-	list_add_tail_rcu(&p->list, &xeth.free.uppers);
+	spin_lock(&xeth.sb.tx.lock);
 }
 
-struct	xeth_vid {
-	struct	list_head __rcu list;
-	__be16	proto;
-	u16	id;
-};
-
-static inline struct xeth_vid *xeth_pop_vid(struct list_head __rcu *head)
+static inline void xeth_unlock_sb_tx(void)
 {
-	struct xeth_vid *p =
-		list_first_or_null_rcu(head, struct xeth_vid, list);
-	if (p)
-		list_del_rcu(&p->list);
-	return p;
-}
-
-static inline int xeth_add_vid(struct net_device *nd, __be16 proto, u16 id)
-{
-	struct xeth_priv *priv = netdev_priv(nd);
-	struct xeth_vid *p = xeth_pop_vid(&xeth.free.vids);
-	if (!p) {
-		p = kzalloc(sizeof(struct xeth_vid), GFP_KERNEL);
-		if (!p)
-			return -ENOMEM;
-	}
-	p->proto = proto;
-	p->id = id;
-	list_add_tail_rcu(&p->list, &priv->vids);
-	return 0;
-}
-
-static inline struct xeth_vid *xeth_find_vid(struct net_device *nd,
-					     __be16 proto, u16 id)
-{
-	struct xeth_priv *priv = netdev_priv(nd);
-	struct xeth_vid *p;
-	list_for_each_entry_rcu(p, &priv->vids, list)
-		if (p->proto == proto && p->id == id)
-			return p;
-	return NULL;
-}
-
-static inline void xeth_free_vid(struct xeth_vid *p)
-{
-	p->proto = 0;
-	p->id = 0;
-	list_del_rcu(&p->list);
-	list_add_tail_rcu(&p->list, &xeth.free.vids);
+	spin_unlock(&xeth.sb.tx.lock);
 }
 
 #endif  /* __XETH_H */

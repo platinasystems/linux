@@ -75,15 +75,15 @@ static struct xeth_sb_tx_entry *xeth_sb_tx_pop(void)
 {
 	struct xeth_sb_tx_entry *entry = NULL;
 
-	mutex_lock(&xeth.sb.tx.mutex);
-	if (!list_empty(&xeth.sb.tx.queue)) {
-		entry = list_first_entry(&xeth.sb.tx.queue,
+	xeth_lock_sb_tx();
+	if (!list_empty(&xeth.sb.tx.list)) {
+		entry = list_first_entry(&xeth.sb.tx.list,
 					 struct xeth_sb_tx_entry,
 					 list);
 		list_del(&entry->list);
 		xeth_count_dec(sb_to_user_queued);
 	}
-	mutex_unlock(&xeth.sb.tx.mutex);
+	xeth_unlock_sb_tx();
 	return entry;
 }
 
@@ -101,38 +101,40 @@ static void xeth_sb_tx_flush(void)
 
 static void xeth_sb_tx_push(struct xeth_sb_tx_entry *entry)
 {
-	mutex_lock(&xeth.sb.tx.mutex);
-	list_add(&entry->list, &xeth.sb.tx.queue);
-	mutex_unlock(&xeth.sb.tx.mutex);
+	xeth_lock_sb_tx();
+	list_add(&entry->list, &xeth.sb.tx.list);
+	xeth_unlock_sb_tx();
 	xeth_count_inc(sb_to_user_queued);
 }
 
 static void xeth_sb_tx_queue(struct xeth_sb_tx_entry *entry)
 {
 	if (xeth_count(sb_connections)) {
-		mutex_lock(&xeth.sb.tx.mutex);
-		list_add_tail(&entry->list, &xeth.sb.tx.queue);
-		mutex_unlock(&xeth.sb.tx.mutex);
+		xeth_lock_sb_tx();
+		list_add_tail(&entry->list, &xeth.sb.tx.list);
+		xeth_unlock_sb_tx();
 		xeth_count_inc(sb_to_user_queued);
 	} else {
 		kfree(entry);
 	}
 }
 
-static void xeth_sb_reset_nd_stats(struct net_device *nd)
+static void xeth_sb_reset_stats_cb(struct rcu_head *rcu)
 {
-	struct xeth_priv *priv = netdev_priv(nd);
-	u64 *link_stat = (u64*)&priv->link.stats;
+	struct xeth_priv *priv =
+		container_of(rcu, struct xeth_priv, rcu.reset_stats);
+	u64 *link_stat;
 	int i;
 
-	mutex_lock(&priv->link.mutex);
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_link(priv);
+	link_stat = (u64*)&priv->link.stats;
 	for (i = 0; i < xeth_sb_n_link_stats; i++)
 		link_stat[i] = 0;
+	xeth_priv_unlock_link(priv);
+	xeth_priv_lock_ethtool(priv);
 	for (i = 0; i < xeth.ethtool.n.stats; i++)
 		priv->ethtool_stats[i] = 0;
-	mutex_unlock(&priv->link.mutex);
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 }
 
 static void xeth_sb_nd_put(struct net_device *nd)
@@ -181,9 +183,9 @@ static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 	}
 	priv = netdev_priv(nd);
 	stat = (u64*)&priv->link.stats + msg->index;
-	mutex_lock(&priv->link.mutex);
+	xeth_priv_lock_link(priv);
 	*stat = msg->count;
-	mutex_unlock(&priv->link.mutex);
+	xeth_priv_unlock_link(priv);
 	xeth_count_priv_inc(priv, sb_link_stats);
 	xeth_sb_nd_put(nd);
 }
@@ -203,9 +205,9 @@ static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 		return;
 	}
 	priv = netdev_priv(nd);
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	priv->ethtool_stats[msg->index] = msg->count;
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 	xeth_count_priv_inc(priv, sb_ethtool_stats);
 	xeth_sb_nd_put(nd);
 }
@@ -256,6 +258,14 @@ int xeth_sb_send_change_upper(int upper, int lower, bool linking)
 	msg->linking = linking ? 1 : 0;
 	xeth_sb_tx_queue(entry);
 	return 0;
+}
+
+static void xeth_sb_send_change_upper_cb(struct rcu_head *rcu)
+{
+	struct xeth_upper *upper =
+		container_of(rcu, struct xeth_upper, rcu.send_change);
+	xeth_sb_send_change_upper(upper->ifindex.upper, upper->ifindex.lower,
+				  true);
 }
 
 int xeth_sb_send_ethtool_flags(struct net_device *nd)
@@ -395,7 +405,7 @@ int xeth_sb_send_ifinfo(struct net_device *nd, unsigned int iff, u8 reason)
 	return 0;
 }
 
-void xeth_sb_dump_ifinfo(struct net_device *nd)
+void xeth_sb_dump_common_ifinfo(struct net_device *nd)
 {
 	xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_DUMP);
 	if (nd->ip_ptr) {
@@ -403,11 +413,15 @@ void xeth_sb_dump_ifinfo(struct net_device *nd)
 		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sb_send_ifa(nd, NETDEV_UP, ifa);
 	}
-	if (netif_is_xeth(nd)) {
-		xeth_ndo_send_vids(nd);
-		xeth_sb_send_ethtool_flags(nd);
-		xeth_sb_send_ethtool_settings(nd);
-	}
+}
+
+static void xeth_sb_dump_ifinfo_cb(struct rcu_head *rcu)
+{
+	struct xeth_priv *priv =
+		container_of(rcu, struct xeth_priv, rcu.dump_ifinfo);
+	xeth_sb_dump_common_ifinfo(priv->nd);
+	xeth_sb_send_ethtool_flags(priv->nd);
+	xeth_sb_send_ethtool_settings(priv->nd);
 }
 
 int xeth_sb_send_fib_entry(unsigned long event, struct fib_notifier_info *info)
@@ -498,9 +512,9 @@ static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 		return;
 	}
 	priv = netdev_priv(nd);
-	mutex_lock(&priv->ethtool.mutex);
+	xeth_priv_lock_ethtool(priv);
 	priv->ethtool.settings.base.speed = msg->mbps;
-	mutex_unlock(&priv->ethtool.mutex);
+	xeth_priv_unlock_ethtool(priv);
 	xeth_sb_nd_put(nd);
 }
 
@@ -557,8 +571,50 @@ static void xeth_sb_service_tx(struct socket *sock)
 	}
 }
 
+static void xeth_sb_dump_all_ifinfo(void)
+{
+	int i;
+	struct xeth_priv *priv;
+	struct xeth_upper *upper;
+	struct xeth_priv_vid *vid;
+	struct net_device *vnd;
+
+	/* first dump xeth devices */
+	rcu_read_lock();
+	xeth_for_each_priv_rcu(priv, i)
+		call_rcu(&priv->rcu.dump_ifinfo, xeth_sb_dump_ifinfo_cb);
+	rcu_read_unlock();
+	rcu_barrier();
+	/* then dump xeth vlan devices */
+	rcu_read_lock();
+	xeth_for_each_priv_rcu(priv, i)
+		xeth_priv_for_each_vid_rcu(priv, vid) {
+			vnd = __vlan_find_dev_deep_rcu(priv->nd,
+						       vid->proto,
+						       vid->id);
+			if (!vnd)
+				xeth_pr_nd(priv->nd,
+					   "can't find vlan (%u, %u)",
+					   be16_to_cpu(vid->proto),
+					   vid->id);
+			else if (!netif_is_xeth(vnd))
+				xeth_sb_dump_common_ifinfo(vnd);
+		}
+	rcu_read_unlock();
+	/* now bridges and tunnels */
+	if (xeth.encap.dump_associate_devs)
+		xeth.encap.dump_associate_devs();
+	/* finally, send upper/lower associations */
+	rcu_read_lock();
+	xeth_for_each_upper_rcu(upper)
+		call_rcu(&upper->rcu.send_change, xeth_sb_send_change_upper_cb);
+	rcu_read_unlock();
+	rcu_barrier();
+	xeth_sb_send_break();
+}
+
 // return < 0 if error, 1 if sock closed, and 0 othewise
-static inline int xeth_sb_service_rx_one(struct socket *sock)
+static int xeth_sb_service_rx_one(struct socket *sock)
 {
 	struct xeth_msg *msg = (struct xeth_msg *)(xeth.sb.rxbuf);
 	struct msghdr oob = {};
@@ -585,6 +641,7 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 		xeth.encap.sb(xeth.sb.rxbuf, ret);
 		return 0;
 	}
+	ret = 0;
 	switch (msg->kind) {
 	case XETH_MSG_KIND_CARRIER:
 		xeth_sb_carrier((struct xeth_msg_carrier *)xeth.sb.rxbuf);
@@ -595,35 +652,21 @@ static inline int xeth_sb_service_rx_one(struct socket *sock)
 	case XETH_MSG_KIND_ETHTOOL_STAT:
 		xeth_sb_ethtool_stat((struct xeth_msg_stat *)xeth.sb.rxbuf);
 		break;
-	case XETH_MSG_KIND_DUMP_IFINFO: {
-		int i;
-		struct xeth_priv *priv;
-		struct xeth_upper *upper;
-		hash_for_each_rcu(xeth.ht, i, priv, node)
-			xeth_sb_dump_ifinfo(priv->nd);
-		if (xeth.encap.dump_associate_devs)
-			xeth.encap.dump_associate_devs();
-		list_for_each_entry_rcu(upper, &xeth.uppers, list)
-			if (upper)
-				xeth_sb_send_change_upper(upper->ifindex.upper,
-							  upper->ifindex.lower,
-							  true);
-		xeth_sb_send_break();
-	}	break;
+	case XETH_MSG_KIND_DUMP_IFINFO:
+		xeth_sb_dump_all_ifinfo();
+		break;
 	case XETH_MSG_KIND_SPEED:
 		xeth_sb_speed((struct xeth_msg_speed *)xeth.sb.rxbuf);
 		break;
-	case XETH_MSG_KIND_DUMP_FIBINFO: {
-		int err = xeth_pr_err(xeth_notifier_register_fib());
+	case XETH_MSG_KIND_DUMP_FIBINFO:
+		ret = xeth_pr_err(xeth_notifier_register_fib());
 		xeth_sb_send_break();
-		if (err)
-			return err;
-	}	break;
+		break;
 	default:
 		xeth_count_inc(sb_invalid);
-		return -EINVAL;
+		ret = -EINVAL;
 	}
-	return 0;
+	return ret;
 }
 
 static inline int xeth_sb_task_rx(void *data)
@@ -645,7 +688,14 @@ static inline int xeth_sb_task_rx(void *data)
 	return err;
 }
 
-static inline void xeth_sb_service(struct socket *sock)
+static void xeth_sb_carrier_off_cb(struct rcu_head *rcu)
+{
+	struct xeth_priv *priv =
+		container_of(rcu, struct xeth_priv, rcu.carrier_off);
+	netif_carrier_off(priv->nd);
+}
+
+static void xeth_sb_service(struct socket *sock)
 {
 	int i, err;
 	struct xeth_priv *priv;
@@ -664,8 +714,10 @@ static inline void xeth_sb_service(struct socket *sock)
 	xeth_count_dec(sb_connections);
 	sock_release(sock);
 	xeth_notifier_unregister_fib();
-	hash_for_each_rcu(xeth.ht, i, priv, node)
-		netif_carrier_off(priv->nd);
+	rcu_read_lock();
+	xeth_for_each_priv_rcu(priv, i)
+		call_rcu(&priv->rcu.carrier_off, xeth_sb_carrier_off_cb);
+	rcu_read_unlock();
 }
 
 static int xeth_sb_task_main(void *data)
@@ -709,14 +761,22 @@ static int xeth_sb_task_main(void *data)
 		if (!err) {
 			int i;
 			struct xeth_priv *priv;
-			hash_for_each_rcu(xeth.ht, i, priv, node)
-				xeth_sb_reset_nd_stats(priv->nd);
+
+			rcu_barrier();
+			rcu_read_lock();
+			xeth_for_each_priv_rcu(priv, i)
+				call_rcu(&priv->rcu.reset_stats,
+					 xeth_sb_reset_stats_cb);
+			rcu_read_unlock();
+			rcu_barrier();
+
 			xeth_pr("@%s: connected", addr.sun_path+1);
 			xeth_sb_service(conn);
 			xeth_pr("@%s: disconnected", addr.sun_path+1);
 			xeth_sb_tx_flush();
 		}
 	}
+	rcu_barrier();
 xeth_sb_task_main_egress:
 	if (err)
 		xeth_pr("@%s: err %d", addr.sun_path+1, err);
@@ -729,7 +789,7 @@ xeth_sb_task_main_egress:
 
 int xeth_sb_init(void)
 {
-	INIT_LIST_HEAD(&xeth.sb.tx.queue);
+	INIT_LIST_HEAD(&xeth.sb.tx.list);
 	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth.sb.rxbuf)
 		return -ENOMEM;

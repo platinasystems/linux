@@ -69,9 +69,9 @@ static void xeth_ndo_get_stats64(struct net_device *nd,
 					 struct rtnl_link_stats64 *dst)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	mutex_lock(&priv->link.mutex);
+	xeth_priv_lock_link(priv);
 	memcpy(dst, &priv->link.stats, sizeof(struct rtnl_link_stats64));
-	mutex_unlock(&priv->link.mutex);
+	xeth_priv_unlock_link(priv);
 }
 
 static int xeth_ndo_get_iflink(const struct net_device *nd)
@@ -84,32 +84,21 @@ static int xeth_ndo_get_iflink(const struct net_device *nd)
 static int xeth_ndo_vlan_rx_add_vid(struct net_device *nd,
 				    __be16 proto, u16 id)
 {
-	return xeth_add_vid(nd, proto, id);
+	return xeth_priv_add_vid(netdev_priv(nd), proto, id);
 }
 
 static int xeth_ndo_vlan_rx_del_vid(struct net_device *nd,
 				    __be16 proto, u16 id)
 {
-	struct xeth_vid *vid = xeth_find_vid(nd, proto, id);
-	if (vid)
-		xeth_free_vid(vid);
-	return 0;
-}
-
-void xeth_ndo_send_vids(struct net_device *nd)
-{
-	struct xeth_vid *vid;
 	struct xeth_priv *priv = netdev_priv(nd);
-	list_for_each_entry(vid, &priv->vids, list) {
-		struct net_device *vnd = __vlan_find_dev_deep_rcu(nd,
-								  vid->proto,
-								  vid->id);
-		if (vnd)
-			xeth_sb_dump_ifinfo(vnd);
-		else
-			xeth_pr_nd(nd, "can't find vlan (%u, %u)",
-				   be16_to_cpu(vid->proto), vid->id);
-	}
+	struct xeth_priv_vid *vid;
+
+	rcu_read_lock();
+	vid = xeth_priv_vid_rcu(priv, proto, id);
+	rcu_read_unlock();
+	if (vid)
+		xeth_priv_del_vid(priv, vid);
+	return 0;
 }
 
 struct net_device_ops xeth_ndo_ops = {
