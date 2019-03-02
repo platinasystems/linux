@@ -61,7 +61,9 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	if (err < 0)
 		return err;
 	priv->iflinki = xeth_iflink_index(priv->id);
-	INIT_LIST_HEAD_RCU(&priv->vids.list);
+	xeth_priv_init_vids(priv);
+	xeth_priv_init_link_lock(priv);
+	xeth_priv_init_ethtool_lock(priv);
 	priv->nd = nd;
 	xeth_priv_reset_counters(priv);
 	if (xeth.init_ethtool_settings)
@@ -127,6 +129,7 @@ void xeth_dev_exit(void)
 	int i;
 	struct xeth_priv *priv;
 	struct xeth_priv_vid *vid;
+	LIST_HEAD(list);
 
 	rtnl_lock();
 	rcu_read_lock();
@@ -136,9 +139,11 @@ void xeth_dev_exit(void)
 		xeth_del_priv(priv);
 		if (priv->nd->reg_state == NETREG_REGISTERED) {
 			xeth_sysfs_priv_del(priv);
-			unregister_netdevice_queue(priv->nd, NULL);
+			unregister_netdevice_queue(priv->nd, &list);
 		}
 	}
 	rcu_read_unlock();
+	rcu_barrier();
+	unregister_netdevice_many(&list);
 	rtnl_unlock();
 }
