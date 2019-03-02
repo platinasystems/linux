@@ -789,10 +789,10 @@ xeth_sb_task_main_egress:
 
 int xeth_sb_init(void)
 {
-	INIT_LIST_HEAD(&xeth.sb.tx.list);
 	xeth.sb.rxbuf = kmalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 	if (!xeth.sb.rxbuf)
 		return -ENOMEM;
+	xeth_init_sb_tx();
 	scnprintf(xeth.sb.task.name.rx, IFNAMSIZ, "%s-rx", XETH_KIND);
 	xeth.sb.task.main = kthread_run(xeth_sb_task_main, NULL, XETH_KIND);
 	return xeth_pr_is_err_val(xeth.sb.task.main);

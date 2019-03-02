@@ -153,6 +153,15 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh);
 int xeth_sysfs_priv_add(struct xeth_priv *priv);
 void xeth_sysfs_priv_del(struct xeth_priv *priv);
 
+static inline void xeth_init_privs(void)
+{
+	int i;
+
+	spin_lock_init(&xeth.privs.lock);
+	for (i = 0; i < (1<<xeth_privs_ht_bits); i++)
+		WRITE_ONCE(xeth.privs.hlist[i].first, NULL);
+}
+
 static inline void xeth_lock_privs(void)
 {
 	spin_lock(&xeth.privs.lock);
@@ -161,13 +170,6 @@ static inline void xeth_lock_privs(void)
 static inline void xeth_unlock_privs(void)
 {
 	spin_unlock(&xeth.privs.lock);
-}
-
-static inline void xeth_init_privs(void)
-{
-	int i;
-	for (i = 0; i < (1<<xeth_privs_ht_bits); i++)
-		WRITE_ONCE(xeth.privs.hlist[i].first, NULL);
 }
 
 static inline void xeth_add_priv(struct xeth_priv *priv)
@@ -233,6 +235,12 @@ struct	xeth_upper {
 #define xeth_for_each_upper_rcu(upper)					\
 	list_for_each_entry_rcu(upper, &xeth.uppers.list, list)
 
+static inline void xeth_init_uppers(void)
+{
+	spin_lock_init(&xeth.uppers.lock);
+	INIT_LIST_HEAD_RCU(&xeth.uppers.list);
+}
+
 static inline void xeth_lock_uppers(void)
 {
 	spin_lock(&xeth.uppers.lock);
@@ -280,6 +288,12 @@ static inline struct xeth_upper *xeth_upper_of(int upper, int lower)
 		}
 	rcu_read_unlock();
 	return NULL;
+}
+
+static inline void xeth_init_sb_tx(void)
+{
+	spin_lock_init(&xeth.sb.tx.lock);
+	INIT_LIST_HEAD(&xeth.sb.tx.list);
 }
 
 static inline void xeth_lock_sb_tx(void)
