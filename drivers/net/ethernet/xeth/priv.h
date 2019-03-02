@@ -84,6 +84,12 @@ struct	xeth_priv_vid {
 #define xeth_priv_for_each_vid_rcu(priv,vid)				\
 	list_for_each_entry_rcu((vid), &(priv)->vids.list, list)
 
+static inline void xeth_priv_init_vids(struct xeth_priv *priv)
+{
+	spin_lock_init(&priv->vids.lock);
+	INIT_LIST_HEAD_RCU(&priv->vids.list);
+}
+
 static inline void xeth_priv_lock_vids(struct xeth_priv *priv)
 {
 	spin_lock(&priv->vids.lock);
@@ -130,6 +136,11 @@ static inline struct xeth_priv_vid *xeth_priv_vid_rcu(struct xeth_priv *priv,
 	return NULL;
 }
 
+static inline void xeth_priv_init_link_lock(struct xeth_priv *priv)
+{
+	spin_lock_init(&priv->link.lock);
+}
+
 static inline void xeth_priv_lock_link(struct xeth_priv *priv)
 {
 	spin_lock(&priv->link.lock);
@@ -138,6 +149,11 @@ static inline void xeth_priv_lock_link(struct xeth_priv *priv)
 static inline void xeth_priv_unlock_link(struct xeth_priv *priv)
 {
 	spin_unlock(&priv->link.lock);
+}
+
+static inline void xeth_priv_init_ethtool_lock(struct xeth_priv *priv)
+{
+	spin_lock_init(&priv->ethtool.lock);
 }
 
 static inline void xeth_priv_lock_ethtool(struct xeth_priv *priv)

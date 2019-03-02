@@ -28,8 +28,7 @@ int xeth_init(void)
 	int i, err = 0;
 
 	xeth_init_privs();
-
-	INIT_LIST_HEAD_RCU(&xeth.uppers.list);
+	xeth_init_uppers();
 
 	for (i = 0; i < xeth.ports; i++) {
 		int provision = xeth.provision[i];
