@@ -43,7 +43,7 @@ struct	xeth_priv {
 
 	u16	id;
 	s16	portid;
-	s16	ndi, iflinki, porti;
+	s16	iflinki, porti;
 	s8	subporti;
 	u8	devtype;
 
