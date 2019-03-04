@@ -201,12 +201,6 @@ static inline struct xeth_priv *xeth_priv_of(s32 ifindex)
 	return NULL;
 }
 
-static inline struct net_device *xeth_nd_of(s32 ifindex)
-{
-	struct xeth_priv *priv = xeth_priv_of(ifindex);
-	return priv ? priv->nd : NULL;
-}
-
 static inline void xeth_reset_counters(void)
 {
 	int i;
