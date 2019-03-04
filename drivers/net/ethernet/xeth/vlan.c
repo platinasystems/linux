@@ -284,8 +284,6 @@ static netdev_tx_t xeth_vlan_tx(struct sk_buff *skb, struct net_device *nd)
 	skb = vlan_insert_tag_set_proto(skb, tpid, tci);
 	if (!skb) {
 		xeth_count_priv_inc(priv, tx_no_mem);
-	} else if (priv->ndi < 0) {
-		xeth_count_priv_inc(priv, tx_no_way);
 	} else if (!iflink) {
 		xeth_count_priv_inc(priv, tx_no_iflink);
 	} else {
