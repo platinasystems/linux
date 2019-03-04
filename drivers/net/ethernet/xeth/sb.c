@@ -137,79 +137,53 @@ static void xeth_sb_reset_stats_cb(struct rcu_head *rcu)
 	xeth_priv_unlock_ethtool(priv);
 }
 
-static void xeth_sb_nd_put(struct net_device *nd)
-{
-	struct xeth_priv *priv = netdev_priv(nd);
-	if (priv->ndi < 0)
-		dev_put(nd);
-}
-
 static void xeth_sb_carrier(const struct xeth_msg_carrier *msg)
 {
-	struct net_device *nd = xeth_nd_of(msg->ifindex);
-	struct xeth_priv *priv;
-	if (!nd) {
+	struct xeth_priv *priv = xeth_priv_of(msg->ifindex);
+	if (priv) {
+		switch (msg->flag) {
+		case XETH_CARRIER_ON:
+			netif_carrier_on(priv->nd);
+			xeth_count_priv_set(priv, sb_carrier, 1);
+			break;
+		case XETH_CARRIER_OFF:
+			netif_carrier_off(priv->nd);
+			xeth_count_priv_set(priv, sb_carrier, 0);
+			break;
+		}
+	} else
 		xeth_count_inc(sb_no_dev);
-		return;
-	}
-	priv = netdev_priv(nd);
-	switch (msg->flag) {
-	case XETH_CARRIER_ON:
-		netif_carrier_on(nd);
-		xeth_count_priv_set(priv, sb_carrier, 1);
-		break;
-	case XETH_CARRIER_OFF:
-		netif_carrier_off(nd);
-		xeth_count_priv_set(priv, sb_carrier, 0);
-		break;
-	}
-	xeth_sb_nd_put(nd);
 }
 
 static void xeth_sb_link_stat(const struct xeth_msg_stat *msg)
 {
-	struct net_device *nd;
-	struct xeth_priv *priv;
-	u64 *stat;
-
-	if (msg->index >= xeth_sb_n_link_stats) {
-		xeth_count_inc(sb_invalid);
-		return;
-	}
-	nd = xeth_nd_of(msg->ifindex);
-	if (!nd) {
+	struct xeth_priv *priv = xeth_priv_of(msg->ifindex);
+	if (priv) {
+		if (msg->index < xeth_sb_n_link_stats) {
+			u64 *stat = (u64*)&priv->link.stats + msg->index;
+			xeth_priv_lock_link(priv);
+			*stat = msg->count;
+			xeth_priv_unlock_link(priv);
+			xeth_count_priv_inc(priv, sb_link_stats);
+		} else
+			xeth_count_inc(sb_invalid);
+	} else
 		xeth_count_inc(sb_no_dev);
-		return;
-	}
-	priv = netdev_priv(nd);
-	stat = (u64*)&priv->link.stats + msg->index;
-	xeth_priv_lock_link(priv);
-	*stat = msg->count;
-	xeth_priv_unlock_link(priv);
-	xeth_count_priv_inc(priv, sb_link_stats);
-	xeth_sb_nd_put(nd);
 }
 
 static void xeth_sb_ethtool_stat(const struct xeth_msg_stat *msg)
 {
-	struct net_device *nd;
-	struct xeth_priv *priv;
-
-	if (msg->index >= xeth.ethtool.n.stats) {
-		xeth_count_inc(sb_invalid);
-		return;
-	}
-	nd = xeth_nd_of(msg->ifindex);
-	if (!nd) {
+	struct xeth_priv *priv = xeth_priv_of(msg->ifindex);
+	if (priv) {
+		if (msg->index < xeth.ethtool.n.stats) {
+			xeth_priv_lock_ethtool(priv);
+			priv->ethtool_stats[msg->index] = msg->count;
+			xeth_priv_unlock_ethtool(priv);
+			xeth_count_priv_inc(priv, sb_ethtool_stats);
+		} else
+			xeth_count_inc(sb_invalid);
+	} else
 		xeth_count_inc(sb_no_dev);
-		return;
-	}
-	priv = netdev_priv(nd);
-	xeth_priv_lock_ethtool(priv);
-	priv->ethtool_stats[msg->index] = msg->count;
-	xeth_priv_unlock_ethtool(priv);
-	xeth_count_priv_inc(priv, sb_ethtool_stats);
-	xeth_sb_nd_put(nd);
 }
 
 bool netif_is_dummy(struct net_device *nd)
@@ -503,21 +477,14 @@ int xeth_sb_send_neigh_update(struct neighbour *neigh)
 
 static inline void xeth_sb_speed(const struct xeth_msg_speed *msg)
 {
-	struct net_device *nd;
-	struct xeth_priv *priv;
-
-	nd = xeth_nd_of(msg->ifindex);
-	if (!nd) {
+	struct xeth_priv *priv = xeth_priv_of(msg->ifindex);
+	if (priv) {
+		xeth_priv_lock_ethtool(priv);
+		priv->ethtool.settings.base.speed = msg->mbps;
+		xeth_priv_unlock_ethtool(priv);
+	} else
 		xeth_count_inc(sb_no_dev);
-		return;
-	}
-	priv = netdev_priv(nd);
-	xeth_priv_lock_ethtool(priv);
-	priv->ethtool.settings.base.speed = msg->mbps;
-	xeth_priv_unlock_ethtool(priv);
-	xeth_sb_nd_put(nd);
 }
-
 
 static bool xeth_sb_service_tx_continue(int err)
 {
