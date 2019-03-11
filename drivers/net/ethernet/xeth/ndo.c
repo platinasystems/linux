@@ -56,15 +56,6 @@ static int xeth_ndo_stop(struct net_device *nd)
 	return 0;
 }
 
-static int xeth_ndo_change_carrier(struct net_device *nd, bool new_carrier)
-{
-	if (new_carrier)
-		netif_carrier_on(nd);
-	else
-		netif_carrier_off(nd);
-	return 0;
-}
-
 static void xeth_ndo_get_stats64(struct net_device *nd,
 					 struct rtnl_link_stats64 *dst)
 {
@@ -104,7 +95,6 @@ static int xeth_ndo_vlan_rx_del_vid(struct net_device *nd,
 struct net_device_ops xeth_ndo_ops = {
 	.ndo_open		= xeth_ndo_open,
 	.ndo_stop		= xeth_ndo_stop,
-	.ndo_change_carrier	= xeth_ndo_change_carrier,
 	.ndo_get_stats64	= xeth_ndo_get_stats64,
 	.ndo_get_iflink		= xeth_ndo_get_iflink,
 	.ndo_vlan_rx_add_vid	= xeth_ndo_vlan_rx_add_vid,
