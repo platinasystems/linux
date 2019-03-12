@@ -434,7 +434,8 @@ int xeth_sb_send_fib_entry(unsigned long event, struct fib_notifier_info *info)
 	msg->type = feni->type;
 	msg->tb_id = feni->tb_id;
 	for(i = 0; i < msg->nhs; i++) {
-		nh[i].ifindex = feni->fi->fib_nh[i].nh_dev->ifindex;
+		nh[i].ifindex = feni->fi->fib_nh[i].nh_dev ?
+			feni->fi->fib_nh[i].nh_dev->ifindex : 0;
 		nh[i].weight = feni->fi->fib_nh[i].nh_weight;
 		nh[i].flags = feni->fi->fib_nh[i].nh_flags;
 		nh[i].gw = feni->fi->fib_nh[i].nh_gw;
