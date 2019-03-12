@@ -438,7 +438,8 @@ int xeth_sb_send_fibentry(unsigned long event,
 	msg->type = info->type;
 	msg->tb_id = info->tb_id;
 	for(i = 0; i < msg->nhs; i++) {
-		nh[i].ifindex = info->fi->fib_nh[i].nh_dev->ifindex;
+		nh[i].ifindex = info->fi->fib_nh[i].nh_dev ?
+			info->fi->fib_nh[i].nh_dev->ifindex : 0;
 		nh[i].weight = info->fi->fib_nh[i].nh_weight;
 		nh[i].flags = info->fi->fib_nh[i].nh_flags;
 		nh[i].gw = info->fi->fib_nh[i].nh_gw;
