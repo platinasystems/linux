@@ -1,22 +1,5 @@
-/* XETH ethtool ops
- *
- * Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -26,12 +9,11 @@
 static void xeth_ethtool_get_drvinfo(struct net_device *nd,
 				     struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, xeth.name, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->version, __stringify(XETH_VERSION),
-		sizeof(drvinfo->version));
+	strlcpy(drvinfo->driver, xeth_name, sizeof(drvinfo->driver));
+	strlcpy(drvinfo->version, xeth_version, sizeof(drvinfo->version));
 	strlcpy(drvinfo->fw_version, "n/a", sizeof(drvinfo->fw_version));
 	strlcpy(drvinfo->bus_info, "n/a", sizeof(drvinfo->bus_info));
-	drvinfo->n_priv_flags = xeth.ethtool.n.flags;
+	drvinfo->n_priv_flags = xeth_n_ethtool_flags;
 }
 
 static int xeth_ethtool_get_sset_count(struct net_device *nd, int sset)
@@ -40,9 +22,9 @@ static int xeth_ethtool_get_sset_count(struct net_device *nd, int sset)
 	case ETH_SS_TEST:
 		return 0;
 	case ETH_SS_STATS:
-		return xeth.ethtool.n.stats;
+		return xeth_n_ethtool_stats;
 	case ETH_SS_PRIV_FLAGS:
-		return xeth.ethtool.n.flags;
+		return xeth_n_ethtool_flags;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -57,14 +39,16 @@ static void xeth_ethtool_get_strings(struct net_device *nd, u32 sset, u8 *data)
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		for (i = 0; i < xeth.ethtool.n.stats; i++) {
-			strlcpy(p, xeth.ethtool.stats[i], ETH_GSTRING_LEN);
+		for (i = 0; xeth_config->ethtool.stats[i]; i++) {
+			strlcpy(p, xeth_config->ethtool.stats[i],
+				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < xeth.ethtool.n.flags; i++) {
-			strlcpy(p, xeth.ethtool.flags[i], ETH_GSTRING_LEN);
+		for (i = 0; xeth_config->ethtool.flags[i]; i++) {
+			strlcpy(p, xeth_config->ethtool.flags[i],
+				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
@@ -77,7 +61,7 @@ static void xeth_ethtool_get_ethtool_stats(struct net_device *nd,
 {
 	struct xeth_priv *priv = netdev_priv(nd);
 	xeth_priv_lock_ethtool(priv);
-	memcpy(data, priv->ethtool_stats, xeth.ethtool.n.stats*sizeof(u64));
+	memcpy(data, priv->ethtool_stats, xeth_n_ethtool_stats*sizeof(u64));
 	xeth_priv_unlock_ethtool(priv);
 }
 
@@ -94,7 +78,7 @@ static u32 xeth_ethtool_get_priv_flags(struct net_device *nd)
 static int xeth_ethtool_set_priv_flags(struct net_device *nd, u32 flags)
 {
 	struct xeth_priv *priv = netdev_priv(nd);
-	if (flags >= (1 << xeth.ethtool.n.flags))
+	if (flags >= (1 << xeth_n_ethtool_flags))
 		return -EINVAL;
 	xeth_priv_lock_ethtool(priv);
 	priv->ethtool.flags = flags;
@@ -137,8 +121,9 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 	int err = 0;
 	xeth_priv_lock_ethtool(priv);
 	if (req->base.autoneg == AUTONEG_DISABLE) {
-		if (xeth.validate_speed)
-			err = xeth.validate_speed(nd, req->base.speed);
+		u32 speed = req->base.speed;
+		if (xeth_config->ethtool.validate_speed)
+			err = xeth_config->ethtool.validate_speed(speed);
 		if (!err)
 			err = xeth_ethtool_validate_duplex(nd, req);
 		if (!err) {
@@ -152,15 +137,6 @@ static int xeth_ethtool_set_link_ksettings(struct net_device *nd,
 				  req->link_modes.advertising,
 				  settings->link_modes.supported,
 				  __ETHTOOL_LINK_MODE_MASK_NBITS)) {
-			xeth_pr_nd(nd, "capn't advertise: %*pbl"
-				   "\nrequest: %*pbl"
-				   "\nsupport: %*pbl",
-				   __ETHTOOL_LINK_MODE_MASK_NBITS,
-				   res,
-				   __ETHTOOL_LINK_MODE_MASK_NBITS,
-				   req->link_modes.advertising,
-				   __ETHTOOL_LINK_MODE_MASK_NBITS,
-				   settings->link_modes.supported);
 			err = -EINVAL;
 		} else {
 			int err;
@@ -192,12 +168,3 @@ struct ethtool_ops xeth_ethtool_ops = {
 	.get_link_ksettings = xeth_ethtool_get_link_ksettings,
 	.set_link_ksettings = xeth_ethtool_set_link_ksettings,
 };
-
-int xeth_ethtool_init(void)
-{
-	return 0;
-}
-
-void xeth_ethtool_exit(void)
-{
-}

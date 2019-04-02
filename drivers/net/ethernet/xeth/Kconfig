@@ -1,12 +1,10 @@
 config NET_XETH
-	bool "XETH drivers"
-	depends on ETHERNET
+	tristate
 	default n
+	depends on ETHERNET && NET_SWITCHDEV && VLAN_8021Q
 	---help---
-	  This section contains XETH drivers for Ethernet switches.
+	  This platform driver provides network device proxy of remote or
+	  integrated ethernet switch ports and bridges.
 
-if NET_XETH
-
-source "drivers/net/ethernet/xeth/Kconfig.platina"
-
-endif # NET_XETH
+	  This must be selected by a parent platform driver.
+	  See drivers/platform/x86/platina-mk1

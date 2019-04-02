@@ -1,32 +1,50 @@
-/* Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#ifndef __XETH_PRIV_H
-#define __XETH_PRIV_H
+#ifndef __NET_ETHERNET_XETH_PRIV_H
+#define __NET_ETHERNET_XETH_PRIV_H
 
 #include <linux/atomic.h>
 #include <linux/ethtool.h>
 #include <uapi/linux/if_link.h>
+
+enum {
+	xeth_count_priv_rx_packets,
+	xeth_count_priv_rx_bytes,
+	xeth_count_priv_rx_nd_mismatch,
+	xeth_count_priv_rx_dropped,
+	xeth_count_priv_sb_carrier,
+	xeth_count_priv_sb_ethtool_stats,
+	xeth_count_priv_sb_link_stats,
+	xeth_count_priv_sb_packets,
+	xeth_count_priv_sb_bytes,
+	xeth_count_priv_sb_no_mem,
+	xeth_count_priv_sb_dropped,
+	xeth_count_priv_tx_packets,
+	xeth_count_priv_tx_bytes,
+	xeth_count_priv_tx_no_mem,
+	xeth_count_priv_tx_no_way,
+	xeth_count_priv_tx_no_iflink,
+	xeth_count_priv_tx_dropped,
+	n_xeth_count_priv,
+};
+
+#define xeth_priv_counter(priv, name)	priv->count[xeth_count_priv_##name]
+#define xeth_count_priv(priv, name)					\
+	atomic64_read(&xeth_priv_counter(priv, name)
+#define xeth_count_priv_add(priv, n, name)				\
+	atomic64_add(n, &xeth_priv_counter(priv, name))
+#define xeth_count_priv_dec(priv, name)					\
+	atomic64_dec(&xeth_priv_counter(priv, name))
+#define xeth_count_priv_inc(priv, name)					\
+	atomic64_inc(&xeth_priv_counter(priv, name))
+#define xeth_count_priv_set(priv, name, n)				\
+	atomic64_set(&xeth_priv_counter(priv, name), n)
 
 struct	xeth_priv {
 	struct	hlist_node __rcu	node;
@@ -166,4 +184,4 @@ static inline void xeth_priv_unlock_ethtool(struct xeth_priv *priv)
 	spin_unlock(&priv->ethtool.lock);
 }
 
-#endif /* __XETH_PRIV_H */
+#endif /* __NET_ETHERNET_XETH_PRIV_H */

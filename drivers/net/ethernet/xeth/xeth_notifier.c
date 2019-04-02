@@ -30,7 +30,6 @@ static struct notifier_block xeth_notifier_block_fib = {
 	.notifier_call = xeth_notifier_fib,
 };
 
-
 static bool xeth_notifier_registered_netdevice = false;
 static bool xeth_notifier_registered_inetaddr = false;
 static bool xeth_notifier_registered_netevent = false;
@@ -48,10 +47,10 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 	switch (event) {
 	case NETDEV_REGISTER:
 		if (netif_is_bridge_master(nd))
-			if (xeth.encap.id(nd) < 0)
-				xeth.encap.associate_dev(nd);
+			if (xeth_vlan_id(nd) < 0)
+				xeth_vlan_associate_dev(nd);
 		/* also notifies dev_change_net_namespace */
-		no_xeth_pr_nd(nd, "registered");
+		no_netdev_dbg(nd, "registered");
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_REG);
 		break;
 	case NETDEV_UNREGISTER:
@@ -60,14 +59,14 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 			if (nd == iflink)
 				xeth_iflink_reset(i);
 		}
-		no_xeth_pr_nd(nd, "unregistered");
+		no_netdev_dbg(nd, "unregistered");
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UNREG);
-		xeth.encap.disassociate_dev(nd);
+		xeth_vlan_disassociate_dev(nd);
 		break;
 	case NETDEV_CHANGEMTU:
 		xeth_for_each_iflink(i)
 			if (nd == xeth_iflink(i))
-				xeth.encap.changemtu(nd);
+				xeth_vlan_changemtu(nd);
 		break;
 	case NETDEV_CHANGEUPPER: {
 		struct netdev_notifier_changeupper_info *info = ptr;
@@ -75,7 +74,7 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 		struct xeth_upper *upper = xeth_upper_of(ui, nd->ifindex);
 		const char *op = info->linking ? "link" : "unlink";
 		const char *upper_name = netdev_name(info->upper_dev);
-		no_xeth_pr_nd(nd, "%s upper %s", op, upper_name);
+		no_netdev_dbg(nd, "%s upper %s", op, upper_name);
 		if (info->linking && upper == NULL) {
 			xeth_add_upper(ui, nd->ifindex);
 			xeth_sb_send_change_upper(ui, nd->ifindex,
@@ -85,14 +84,14 @@ static int xeth_notifier_netdevice(struct notifier_block *nb,
 			xeth_sb_send_change_upper(ui, nd->ifindex,
 						  info->linking);
 		} else
-			xeth_pr_nd(nd, "ignored %s upper %s", op, upper_name);
+			netdev_dbg(nd, "ignored %s upper %s", op, upper_name);
 	}	break;
 	case NETDEV_UP:
-		xeth_pr_nd(nd, "admin %s", "up");
+		netdev_dbg(nd, "admin %s", "up");
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_UP);
 		break;
 	case NETDEV_DOWN:
-		xeth_pr_nd(nd, "admin %s", "down");
+		netdev_dbg(nd, "admin %s", "down");
 		xeth_sb_send_ifinfo(nd, 0, XETH_IFINFO_REASON_DOWN);
 		break;
 	}
@@ -199,14 +198,14 @@ static int xeth_notifier_fib(struct notifier_block *nb, unsigned long event,
 	case FIB_EVENT_VIF_DEL:
 		break;
 	default:
-		xeth_pr("fib event %ld unknown", event);
+		no_pr_debug("fib event %ld unknown", event);
 	}
 	return NOTIFY_DONE;
 }
 
 static void xeth_notifier_fib_cb(struct notifier_block *nb)
 {
-	xeth_pr("register_fib_cb");
+	no_pr_debug("register_fib_cb");
 }
 
 int xeth_notifier_register_fib(void)
@@ -232,7 +231,7 @@ void xeth_notifier_unregister_fib(void)
 	xeth_notifier_unregister_netevent();
 }
 
-int xeth_notifier_init(void)
+int __init xeth_notifier_init(void)
 {
 	int (*const registers[])(void) = {
 		xeth_notifier_register_netdevice,
@@ -247,15 +246,13 @@ int xeth_notifier_init(void)
 
 	for (i = 0; registers[i]; i++) {
 		int err = registers[i]();
-		if (err) {
-			xeth_notifier_exit();
-			return err;
-		}
+		if (err)
+			return xeth_notifier_deinit(err);
 	}
 	return 0;
 }
 
-void xeth_notifier_exit(void)
+int xeth_notifier_deinit(int err)
 {
 	void (*const unregisters[])(void) = {
 		xeth_notifier_unregister_fib,
@@ -268,4 +265,10 @@ void xeth_notifier_exit(void)
 
 	for (i = 0; unregisters[i]; i++)
 		unregisters[i]();
+	return err;
+}
+
+void __exit xeth_notifier_exit(void)
+{
+	xeth_notifier_deinit(0);
 }

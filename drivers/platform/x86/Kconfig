@@ -1334,6 +1334,15 @@ config PCENGINES_APU2
 	  To compile this driver as a module, choose M here: the module
 	  will be called pcengines-apuv2.
 
+config PLATINA_MK1
+	tristate "Platina MK1 top of rack ethernet switch"
+	select SENSORS_LM75
+	select EEPROM_AT24
+	select EEPROM_ONIE
+	select NET_XETH
+	---help---
+	  Use only with a Platina MK1 top of rack switch.
+
 source "drivers/platform/x86/intel_speed_select_if/Kconfig"
 
 endif # X86_PLATFORM_DEVICES

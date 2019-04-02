@@ -1,22 +1,5 @@
-/* XETH netdev ops
- *
- * Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -99,12 +82,5 @@ struct net_device_ops xeth_ndo_ops = {
 	.ndo_get_iflink		= xeth_ndo_get_iflink,
 	.ndo_vlan_rx_add_vid	= xeth_ndo_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= xeth_ndo_vlan_rx_del_vid,
+	.ndo_start_xmit		= xeth_vlan_tx,
 };
-
-int xeth_ndo_init(void)
-{
-	xeth_ndo_ops.ndo_start_xmit = xeth.encap.tx;
-	return 0;
-}
-
-void xeth_ndo_exit(void) {}

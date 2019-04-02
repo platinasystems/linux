@@ -1,21 +1,5 @@
-/* Platina Systems XETH driver for the MK1 top of rack ethernet switch
- * Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -49,15 +33,16 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	struct net_device *nd, *iflink;
 	struct xeth_priv *priv;
 
-	nd = alloc_netdev_mqs(xeth.priv_size, ifname, NET_NAME_USER,
-			      xeth_dev_setup, xeth.txqs, xeth.rxqs);
+	nd = alloc_netdev_mqs(xeth_priv_size, ifname, NET_NAME_USER,
+			      xeth_dev_setup, xeth_config->txqs,
+			      xeth_config->rxqs);
 	if (IS_ERR(nd))
 		return PTR_ERR(nd);
 	priv = netdev_priv(nd);
 	priv->devtype = XETH_DEVTYPE_XETH_PORT;
 	priv->porti = port;
 	priv->subporti = sub;
-	err = xeth.encap.new_dev(nd);
+	err = xeth_vlan_new_dev(nd);
 	if (err < 0)
 		return err;
 	priv->iflinki = xeth_iflink_index(priv->id);
@@ -66,14 +51,14 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	xeth_priv_init_ethtool_lock(priv);
 	priv->nd = nd;
 	xeth_priv_reset_counters(priv);
-	if (xeth.init_ethtool_settings)
-		xeth.init_ethtool_settings(priv);
-	u64_to_ether_addr(xeth.ea.base + xeth_dev_n++, nd->dev_addr);
-	nd->addr_assign_type = xeth.ea.assign_type;
+	if (xeth_config->ethtool.init_settings)
+		xeth_config->ethtool.init_settings(&priv->ethtool.settings);
+	u64_to_ether_addr(xeth_config->ea.base + xeth_dev_n++, nd->dev_addr);
+	nd->addr_assign_type = xeth_config->ea.assign_type;
 	iflink = xeth_iflink(priv->iflinki);
 	if (is_zero_ether_addr(nd->broadcast))
 		memcpy(nd->broadcast, iflink->broadcast, nd->addr_len);
-	nd->max_mtu = iflink->mtu - xeth.encap.size;
+	nd->max_mtu = iflink->mtu - xeth_encap_size;
 	if (nd->mtu > nd->max_mtu)
 		nd->mtu = nd->max_mtu;
 	nd->flags  = iflink->flags & ~(IFF_UP | IFF_PROMISC | IFF_ALLMULTI |
@@ -93,7 +78,7 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	/* FIXME dev->dev_id = real_dev->dev_id; */
 	/* FIXME SET_NETDEV_DEVTYPE(nd, &vlan_type); */
 
-	err = xeth_pr_nd_err(nd, register_netdevice(nd));
+	err = pr_nd_expr_err(nd, register_netdevice(nd));
 	if (!err) {
 		xeth_add_priv(priv);
 		err = xeth_sysfs_priv_add(priv);
@@ -101,22 +86,23 @@ static int xeth_dev_new(const char *ifname, int port, int sub)
 	return err;
 }
 
-int xeth_dev_init(void)
+int xeth_dev_start(void)
 {
 	int port, err = 0;
 	rtnl_lock();
-	for (port = 0; !err && port < xeth.ports; port++) {
+	for (port = 0; !err && port < xeth_config->ports; port++) {
 		char ifname[IFNAMSIZ];
-		int provision = xeth.provision[port];
+		int provision = xeth_config->provision[port];
 		if (provision > 1) {
 			int sub;
 			for (sub = 0; !err && sub < provision; sub++) {
 				sprintf(ifname, "xeth%d-%d",
-					port+xeth.base, sub+xeth.base);
+					port+xeth_config->base,
+					sub+xeth_config->base);
 				err = xeth_dev_new(ifname, port, sub);
 			}
 		} else {
-			sprintf(ifname, "xeth%d", port+xeth.base);
+			sprintf(ifname, "xeth%d", port+xeth_config->base);
 			err = xeth_dev_new(ifname, port, -1);
 		}
 	}
@@ -124,13 +110,14 @@ int xeth_dev_init(void)
 	return err;
 }
 
-void xeth_dev_exit(void)
+void xeth_dev_stop(void)
 {
 	int i;
 	struct xeth_priv *priv;
 	struct xeth_priv_vid *vid;
 	LIST_HEAD(list);
 
+	xeth_vlan_stop();
 	rtnl_lock();
 	rcu_read_lock();
 	xeth_for_each_priv_rcu(priv, i) {
