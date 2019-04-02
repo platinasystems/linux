@@ -1,20 +1,5 @@
-/* Copyright(c) 2018 Platina Systems, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+/* SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -55,7 +40,7 @@ static atomic64_t *xeth_sysfs_counter(struct kobject *kobj,
 	size_t index = attr->index & xeth_sysfs_count_priv_mask;
 	return	is_xeth_sysfs_count_priv_attr(attr) ?
 		&to_xeth_priv(kobj)->count[index] :
-		&xeth.count[index];
+		&xeth_count_of(index);
 }
 
 static ssize_t xeth_sysfs_count_show(struct kobject *kobj,
@@ -154,20 +139,33 @@ static struct kobj_type xeth_sysfs_ktype = {
 	.default_attrs = xeth_sysfs_default_attrs,
 };
 
-int xeth_sysfs_init(void)
+struct kobject *xeth_sysfs_start(struct kobject *parent)
 {
-	int err = kobject_init_and_add(&xeth.kobj,
-				       &xeth_sysfs_ktype,
-				       &xeth.kset->kobj,
-				       "%s", "xeth");
-	if (!err)
-		kobject_uevent(&xeth.kobj, KOBJ_ADD);
-	return err;
+	int err;
+	struct kobject *kobj;
+
+	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
+	if (!kobj)
+		return ERR_PTR(-ENOMEM);
+
+	err = kobject_init_and_add(kobj, &xeth_sysfs_ktype,
+				   parent ? parent : kernel_kobj,
+				   "%s", "xeth");
+	if (err) {
+		kfree(kobj);
+		return ERR_PTR(err);
+	}
+	kobject_uevent(kobj, KOBJ_ADD);
+	return kobj;
 }
 
-void xeth_sysfs_exit(void)
+void xeth_sysfs_stop(struct kobject *kobj)
 {
-	kobject_put(&xeth.kobj);
+	if (IS_ERR_OR_NULL(kobj))
+		return;
+	if (!IS_ERR_OR_NULL(kobj->parent))
+		kobject_put(kobj);
+	kfree(kobj);
 }
 
 #define xeth_sysfs_new_count_priv_attr(_name)				\
