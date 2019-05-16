@@ -1,4 +1,5 @@
-/* XETH driver, see include/net/xeth.h
+/**
+ * XETH driver, see Documentation/networking/xeth.txt
  *
  * SPDX-License-Identifier: GPL-2.0
  * Copyright(c) 2018-2019 Platina Systems, Inc.
@@ -9,90 +10,67 @@
  * Copyright(c) 2018 Platina Systems, Inc.
  */
 
-MODULE_DESCRIPTION("Network device proxy of switch ports and bridges");
+MODULE_DESCRIPTION("mux proxy netdevs with a remote switch");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_VERSION(xeth_version);
 
-static int __init xeth_init(void);
-static void __exit xeth_exit(void);
-module_init(xeth_init);
-module_exit(xeth_exit);
+int xeth_encap = XETH_ENCAP_VLAN;
+module_param(xeth_encap, int, 0);
+MODULE_PARM_DESC(xeth_encap, " 0 - vlan (default and only option)");
 
-static int xeth_deinit(int err)
+int xeth_base_xid = 3000;
+module_param(xeth_base_xid, int, 0);
+MODULE_PARM_DESC(xeth_base_xid, " of 1st dynamic interface, default 3000");
+
+static int xeth_main_deinit(int err)
 {
-	xeth_sb_deinit(err);
-	xeth_notifier_deinit(err);
+#define xeth_main_sub_deinit(deinit, err)				\
+({									\
+	int __err = (err);						\
+	int ___err = (deinit)(__err);					\
+	xeth_debug("%s'd", #deinit);					\
+	(__err) ?  (__err) : (___err);					\
+})
+
+	if (!xeth_mux_is_registered())
+		return -ENODEV;
+
+	err = xeth_main_sub_deinit(xeth_upper_deinit, err);
+	err = xeth_main_sub_deinit(xeth_mux_deinit, err);
+
 	return err;
 }
 
-static int __init xeth_init(void)
-{
-	int (*const inits[])(void) = {
-		xeth_sb_init,
-		xeth_notifier_init,
-		NULL,
-	};
-	int i;
 
-	if (false)
-		xeth_pr_test();
-	xeth_init_priv_by_ifindex();
-	xeth_init_uppers();
-	for (i = 0; inits[i]; i++) {
-		int err = inits[i]();
-		if (err)
-			return xeth_deinit(err);
-	}
-	return 0;
+static int __init xeth_main_init(void)
+{
+	int err = 0;
+
+#define xeth_main_sub_init(init, err)					\
+({									\
+	int __err = (err);						\
+	if (!__err) {							\
+		__err = xeth_debug_err((init)());			\
+		if (!__err)						\
+			xeth_debug("%s'd", #init);			\
+	}								\
+	(__err);							\
+})
+
+	if (true)
+		xeth_debug_test();
+
+	err = xeth_main_sub_init(xeth_mux_init, err);
+	err = xeth_main_sub_init(xeth_upper_init, err);
+	return err ? xeth_main_deinit(err) : 0;
 }
 
-static void __exit xeth_exit(void)
+module_init(xeth_main_init);
+
+static void __exit xeth_main_exit(void)
 {
-	xeth_sb_exit();
-	xeth_notifier_exit();
+	xeth_main_deinit(0);
 }
 
-static struct kobject *xeth_egress(struct kobject *kobj, int err)
-{
-	xeth_sb_stop();
-	xeth_dev_stop();
-	xeth_iflink_stop();
-	xeth_sysfs_stop(kobj);
-	xeth_config_deinit();
-	return err ? ERR_PTR(err) : NULL;
-}
-
-struct kobject *xeth_create(struct kobject *parent,
-			    const struct xeth_config *config)
-{
-	int err;
-	struct kobject *kobj;
-
-	xeth_config_init(config);
-	xeth_reset_counters();
-
-	kobj = xeth_sysfs_start(parent);
-	if (IS_ERR_OR_NULL(kobj))
-		return kobj;
-
-	err = xeth_iflink_start();
-	if (err)
-		return xeth_egress(kobj, err);
-	err = xeth_dev_start();
-	if (err)
-		return xeth_egress(kobj, err);
-	err = xeth_sb_start();
-	if (err)
-		return xeth_egress(kobj, err);
-	return kobj;
-}
-
-EXPORT_SYMBOL(xeth_create);
-
-void xeth_delete(struct kobject *kobj)
-{
-	xeth_egress(kobj, 0);
-}
-
-EXPORT_SYMBOL(xeth_delete);
+module_exit(xeth_main_exit);

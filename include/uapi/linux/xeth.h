@@ -1,21 +1,8 @@
-/* XETH side-band channel protocol.
- * Copyright(c) 2018 Platina Systems, Inc.
+/**
+ * XETH side-band channel protocol.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
+ * SPDX-License-Identifier: GPL-2.0
+ * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -25,7 +12,54 @@
 #ifndef __XETH_UAPI_H
 #define __XETH_UAPI_H
 
-#define XETH_SIZEOF_JUMBO_FRAME		9728
+#ifdef IFNAMSIZE
+# define XETH_IFNAMSIZ IFNAMSIZ
+#else
+# define XETH_IFNAMSIZ 16
+#endif
+
+#ifdef ETH_ALEN
+# define XETH_ALEN ETH_ALEN
+#else
+# define XETH_ALEN 6
+#endif
+
+#ifdef VLAN_VID_MASK
+# define XETH_VLAN_VID_MASK VLAN_VID_MASK
+#else
+# define XETH_VLAN_VID_MASK 0x0fff
+#endif
+
+#ifdef VLAN_N_VID
+# define XETH_VLAN_N_VID VLAN_N_VID
+#else
+# define XETH_VLAN_N_VID 4096
+#endif
+
+enum xeth_msg_version {
+	XETH_MSG_VERSION = 2,
+};
+
+enum {
+	XETH_SIZEOF_JUMBO_FRAME = 9728,
+};
+
+/* These are the xeth proxy netdev attributes. */
+enum xeth_ifla {
+	XETH_IFLA_UNSPEC,
+	XETH_IFLA_XID,
+	XETH_IFLA_VID,
+	XETH_IFLA_KIND,
+	__XETH_IFLA,
+};
+
+enum xeth_dev_kind {
+	XETH_DEV_KIND_UNSPEC,
+	XETH_DEV_KIND_PORT,
+	XETH_DEV_KIND_VLAN,
+	XETH_DEV_KIND_BRIDGE,
+	XETH_DEV_KIND_LAG,
+};
 
 enum xeth_msg_kind {
 	XETH_MSG_KIND_BREAK,
@@ -43,107 +77,12 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_IFDEL,
 	XETH_MSG_KIND_NEIGH_UPDATE,
 	XETH_MSG_KIND_IFVID,
-	XETH_MSG_KIND_CHANGE_UPPER,
+	XETH_MSG_KIND_CHANGE_UPPER_XID,
 };
-
-#define xeth_msg_named(name)	xeth_msg_##name
-
-#define xeth_msg_def(name, ...)						\
-struct xeth_msg_named(name) {						\
-	u64	z64;							\
-	u32	z32;							\
-	u16	z16;							\
-	u8	z8;							\
-	u8	kind;							\
-	__VA_ARGS__;							\
-}
-
-struct xeth_msg {
-	u64	z64;
-	u32	z32;
-	u16	z16;
-	u8	z8;
-	u8	kind;
-};
-
-xeth_msg_def(break);
 
 enum xeth_msg_carrier_flag {
 	XETH_CARRIER_OFF,
 	XETH_CARRIER_ON,
-};
-
-xeth_msg_def(carrier,
-	s32	ifindex;
-	u8	flag;
-	u8	pad[3];
-);
-
-xeth_msg_def(change_upper,
-	s32	upper;
-	s32	lower;
-	u8	linking;
-	u8	pad[7];
-);
-
-xeth_msg_def(dump_fibinfo);
-xeth_msg_def(dump_ifinfo);
-
-xeth_msg_def(ethtool_flags,
-	s32	ifindex;
-	u32	flags;
-);
-
-xeth_msg_def(ethtool_settings,
-	s32	ifindex;
-	u32	speed;
-	u8	duplex;
-	u8	port;
-	u8	phy_address;
-	u8	autoneg;
-	u8	mdio_support;
-	u8	eth_tp_mdix;
-	u8	eth_tp_mdix_ctrl;
-	s8	link_mode_masks_nwords;
-	u32	link_modes_supported[2];
-	u32	link_modes_advertising[2];
-	u32	link_modes_lp_advertising[2];
-);
-
-struct xeth_next_hop {
-	s32	ifindex;
-	s32	weight;
-	u32	flags;
-	__be32	gw;
-	u8	scope;
-	u8	pad[7];
-};
-
-xeth_msg_def(fibentry,
-	u64	net;
-	__be32	address;
-	__be32	mask;
-	u8	event;
-	u8	nhs;
-	u8	tos;
-	u8	type;
-	u32	tb_id;
-	struct xeth_next_hop nh[];
-);
-
-xeth_msg_def(ifa,
-	s32	ifindex;
-	u32	event;
-	__be32	address;
-	__be32	mask;
-);
-
-enum xeth_msg_ifinfo_devtype {
-	XETH_DEVTYPE_XETH_PORT = 0,
-	XETH_DEVTYPE_LINUX_UNKNOWN = 128,
-	XETH_DEVTYPE_LINUX_VLAN,
-	XETH_DEVTYPE_LINUX_VLAN_BRIDGE_PORT,
-	XETH_DEVTYPE_LINUX_BRIDGE,
 };
 
 enum xeth_msg_ifinfo_reason {
@@ -156,58 +95,134 @@ enum xeth_msg_ifinfo_reason {
 	XETH_IFINFO_REASON_UNREG,
 };
 
-xeth_msg_def(ifinfo,
-	u8	ifname[IFNAMSIZ];
-	u64	net;
-	s32	ifindex;
-	s32	iflinkindex;
-	u32	flags;
-	u16	id;
-	u8 	addr[ETH_ALEN];
-	s16	portindex;
-	s8	subportindex;
-	u8	devtype;
-	s16	portid;
-	u8	reason;
-	u8	pad[5];
-);
+struct xeth_msg_header {
+	uint64_t z64;
+	uint32_t z32;	
+	uint16_t z16;
+	uint8_t version;
+	uint8_t kind;
+};
 
-xeth_msg_def(neigh_update,
-	u64	net;
-	s32	ifindex;
-	u8	family;
-	u8	len;
-	u8	pad0[2];
-	u8	dst[16];
-	u8 	lladdr[ETH_ALEN];
-	u8	pad[8-ETH_ALEN];
-);
+struct xeth_msg {
+	struct xeth_msg_header header;
+};
 
-xeth_msg_def(speed,
-	s32	ifindex;
-	u32	mbps;
-);
+struct xeth_msg_break {
+	struct xeth_msg_header header;
+};
 
-xeth_msg_def(stat,
-	s32	ifindex;
-	u8	pad[4];
-	u64	index;
-	u64	count;
-);
+struct xeth_msg_carrier {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint8_t flag;
+	uint8_t pad[3];
+};
 
-static inline bool xeth_is_msg(struct xeth_msg *p)
-{
-	return	p->z64 == 0 && p->z32 == 0 && p->z16 == 0 && p->z8 == 0;
-}
+struct xeth_msg_change_upper_xid {
+	struct xeth_msg_header header;
+	uint32_t upper;
+	uint32_t lower;
+	uint8_t linking;
+	uint8_t pad[7];
+};
 
-static inline void xeth_msg_set(void *data, u8 kind)
-{
-	struct xeth_msg *msg = data;
-	msg->z64 = 0;
-	msg->z32 = 0;
-	msg->z16 = 0;
-	msg->z8 = 0;
-	msg->kind = kind;
-}
+struct xeth_msg_dump_fibinfo {
+	struct xeth_msg_header header;
+};
+
+struct xeth_msg_dump_ifinfo {
+	struct xeth_msg_header header;
+};
+
+struct xeth_msg_ethtool_flags {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t flags;
+};
+
+struct xeth_msg_ethtool_settings {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t speed;
+	uint8_t duplex;
+	uint8_t port;
+	uint8_t phy_address;
+	uint8_t autoneg;
+	uint8_t mdio_support;
+	uint8_t eth_tp_mdix;
+	uint8_t eth_tp_mdix_ctrl;
+	uint8_t link_mode_masks_nwords;
+	uint32_t link_modes_supported[2];
+	uint32_t link_modes_advertising[2];
+	uint32_t link_modes_lp_advertising[2];
+};
+
+struct xeth_next_hop {
+	int32_t ifindex;
+	int32_t weight;
+	uint32_t flags;
+	__be32 gw;
+	uint8_t scope;
+	uint8_t pad[7];
+};
+
+struct xeth_msg_fibentry {
+	struct xeth_msg_header header;
+	uint64_t net;
+	__be32 address;
+	__be32 mask;
+	uint8_t event;
+	uint8_t nhs;
+	uint8_t tos;
+	uint8_t type;
+	uint32_t table;
+	struct xeth_next_hop nh[];
+};
+
+struct xeth_msg_ifa {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t event;
+	__be32 address;
+	__be32 mask;
+};
+
+struct xeth_msg_ifinfo {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t reserved;
+	uint8_t ifname[XETH_IFNAMSIZ];
+	uint64_t net;
+	int32_t ifindex;
+	uint32_t flags;
+	uint8_t addr[XETH_ALEN];
+	uint8_t kind;
+	uint8_t reason;
+};
+
+struct xeth_msg_neigh_update {
+	struct xeth_msg_header header;
+	uint64_t net;
+	int32_t ifindex;
+	uint8_t family;
+	uint8_t len;
+	uint16_t reserved;
+	uint8_t dst[16];
+	uint8_t lladdr[XETH_ALEN];
+	uint8_t pad[8-XETH_ALEN];
+};
+
+struct xeth_msg_speed {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t mbps;
+};
+
+struct xeth_msg_stat {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t index;
+	uint64_t count;
+};
 
 #endif /* __XETH_UAPI_H */

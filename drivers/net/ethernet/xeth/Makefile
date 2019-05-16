@@ -1,14 +1,12 @@
 obj-$(CONFIG_NET_XETH) += xeth.o
 
 xeth-y := xeth_main.o
-xeth-y += xeth_dev.o
-xeth-y += xeth_ethtool.o
-xeth-y += xeth_iflink.o
-xeth-y += xeth_ndo.o
-xeth-y += xeth_notifier.o
+xeth-y += xeth_kstrs.o
+xeth-y += xeth_mux.o
+xeth-y += xeth_nb.o
 xeth-y += xeth_sb.o
-xeth-y += xeth_sysfs.o
-xeth-y += xeth_vlan.o
+xeth-y += xeth_sbrx.o
+xeth-y += xeth_sbtx.o
+xeth-y += xeth_upper.o
 
 ccflags-y += -I$(src) --include=xeth.h
-CFLAGS_xeth_main.o = -DXETH_MAIN
