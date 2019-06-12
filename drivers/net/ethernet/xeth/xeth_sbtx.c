@@ -197,6 +197,7 @@ int xeth_sbtx_ethtool_flags(u64 xid, u32 flags)
 	msg->xid = xid;
 	msg->flags = flags;
 	xeth_sbtx_queue(entry);
+	xeth_debug("xid %llu, flags %u", xid, flags);
 	return 0;
 }
 
@@ -237,6 +238,7 @@ int xeth_sbtx_ethtool_settings(u64 xid, struct ethtool_link_ksettings *p)
 		msg->link_modes_lp_advertising[i] =
 			p->link_modes.lp_advertising[i];
 	xeth_sbtx_queue(entry);
+	xeth_debug("xid %llu", xid);
 	return 0;
 }
 

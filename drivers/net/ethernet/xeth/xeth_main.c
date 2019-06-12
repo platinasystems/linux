@@ -29,7 +29,6 @@ static int xeth_main_deinit(int err)
 ({									\
 	int __err = (err);						\
 	int ___err = (deinit)(__err);					\
-	xeth_debug("%s'd", #deinit);					\
 	(__err) ?  (__err) : (___err);					\
 })
 
@@ -52,13 +51,11 @@ static int __init xeth_main_init(void)
 	int __err = (err);						\
 	if (!__err) {							\
 		__err = xeth_debug_err((init)());			\
-		if (!__err)						\
-			xeth_debug("%s'd", #init);			\
 	}								\
 	(__err);							\
 })
 
-	if (true)
+	if (false)
 		xeth_debug_test();
 
 	err = xeth_main_sub_init(xeth_mux_init, err);

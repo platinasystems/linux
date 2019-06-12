@@ -467,7 +467,6 @@ int xeth_mux_deinit(int err)
 
 	unregister_netdev(xeth_mux);
 	xeth_mux = NULL;
-	xeth_debug("%s unregistered", xeth_name);
 
 	return xeth_sbrx_deinit(err);
 }

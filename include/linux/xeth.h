@@ -38,17 +38,26 @@ static inline int xeth_add_lowers(struct net_device *lowers[])
 }
 
 /**
+ */
+
+/**
  * xeth_create_port - create and add an upper port proxy to the xeth mux
  *
  * @name:	IFNAMSIZ buffer
  * @xid:	A unique and immutable xeth device identifier; if zero,
  *		the device is assigned the next available xid
  * @ea:		Ethernet Address, if zero, it's assigned a random address
+ * @ethtool_flag_names
+ *		A NULL terminate list of flag names
+ * @ethtool_cb
+ *		An initialization call-back
  *
  * Returns a non-zero, negative number on error; otherwise, returns the
  * non-zero, poistive xid.
  */
-s64 xeth_create_port(const char *name, u32 xid, u64 ea);
+s64 xeth_create_port(const char *name, u32 xid, u64 ea,
+		     const char *const ethtool_flag_names[],
+		     void (*ethtool_cb) (struct ethtool_link_ksettings *));
 
 void xeth_delete_port(u32 xid);
 

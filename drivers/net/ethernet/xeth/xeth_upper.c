@@ -114,6 +114,8 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	struct in_ifaddr *ifa;
 
 	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0, XETH_IFINFO_REASON_DUMP);
+	xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flag.bits);
+	xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
 	if (nd->ip_ptr)
 		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sbtx_ifa(ifa, priv->xid, NETDEV_UP);
@@ -651,13 +653,18 @@ static bool xeth_upper_lnko_is_registered(void)
 	return xeth_upper_link_ops.list.next || xeth_upper_link_ops.list.prev;
 }
 
+static int xeth_upper_lnko_registered_ok(void)
+{
+	return xeth_upper_lnko_is_registered() ? 0 : -EINVAL;
+}
+
 __init int xeth_upper_init(void)
 {
 	int err;
 	
 	err = xeth_debug_err(rtnl_link_register(&xeth_upper_link_ops));
-	if (!err && xeth_upper_lnko_is_registered())
-		xeth_debug("%s register'd", xeth_upper_link_ops.kind);
+	if (!err)
+		err = xeth_debug_err(xeth_upper_lnko_registered_ok());
 	return err;
 }
 
@@ -665,7 +672,6 @@ int xeth_upper_deinit(int err)
 {
 	if (xeth_upper_lnko_is_registered()) {
 		rtnl_link_unregister(&xeth_upper_link_ops);
-		xeth_debug("%s unregister'd", xeth_upper_link_ops.kind);
 	}
 	return err;
 }
@@ -784,7 +790,9 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
 	return priv->kind;
 }
 
-s64 xeth_create_port(const char *name, u32 xid, u64 ea)
+s64 xeth_create_port(const char *name, u32 xid, u64 ea,
+		     const char *const ethtool_flag_names[],
+		     void (*ethtool_cb) (struct ethtool_link_ksettings *))
 {
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
@@ -806,9 +814,15 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea)
 		return PTR_ERR(nd);
 
 	priv = netdev_priv(nd);
+
+	spin_lock_init(&priv->mutex);
+	spin_lock_init(&priv->ethtool.mutex);
+	spin_lock_init(&priv->link.mutex);
+
 	priv->xid = xid;
 	priv->kind = XETH_DEV_KIND_PORT;
 	xeth_debug_rcu(xeth_upper_add_rcu(nd));
+
 	if (ea) {
 		u64_to_ether_addr(ea, nd->dev_addr);
 		nd->addr_assign_type = NET_ADDR_PERM;
@@ -818,13 +832,29 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea)
 	rtnl_lock();
 	x = xeth_debug_err(register_netdevice(nd));
 	rtnl_unlock();
+
 	if (x < 0) {
 		xeth_mux_lock();
 		hlist_del_rcu(&priv->node);
 		xeth_mux_unlock();
 		return x;
 	}
-	xeth_debug("%s %u %pM", name, xid, nd->dev_addr);
+
+	xeth_debug_err(xeth_kstrs_init(&priv->ethtool.flag.names,
+				       &nd->dev.kobj,
+				       "ethtool-flag-names",
+				       xeth_upper_ethtool_flags));
+	xeth_debug_err(xeth_kstrs_copy(&priv->ethtool.flag.names,
+				       ethtool_flag_names));
+
+	xeth_debug_err(xeth_kstrs_init(&priv->ethtool.stat.names,
+				       &nd->dev.kobj,
+				       "ethtool-stat-names",
+				       xeth_upper_ethtool_stats));
+	if (ethtool_cb)
+		ethtool_cb(&priv->ethtool.settings);
+
+	xeth_debug("%s xid %u mac %pM", name, xid, nd->dev_addr);
 	return xid;
 }
 EXPORT_SYMBOL(xeth_create_port);
@@ -834,12 +864,11 @@ void xeth_delete_port(u32 xid)
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
 	
-	xeth_debug("%u", xid);
 	nd = xeth_upper_lookup_rcu(xid);
 	if (IS_ERR_OR_NULL(nd))
 		return;
 	priv = netdev_priv(nd);
-	xeth_debug("%s %u", nd->name, xid);
+	xeth_debug("%s xid %u", nd->name, xid);
 	xeth_mux_lock();
 	hlist_del_rcu(&priv->node);
 	xeth_mux_unlock();
