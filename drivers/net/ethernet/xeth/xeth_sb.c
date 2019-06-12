@@ -34,7 +34,6 @@ static int xeth_sb_task(void *data)
 
 	xeth_flag_set(sb_task);
 	get_task_comm(name, current);
-	xeth_debug("%s start", name);
 	allow_signal(SIGKILL);
 	// set_current_state(TASK_INTERRUPTIBLE);
 
@@ -76,11 +75,10 @@ static int xeth_sb_task(void *data)
 	rcu_barrier();
 	xeth_flag_clear(sb_listen);
 xeth_sb_task_egress:
-	xeth_debug("@%s: err %d", addr.sun_path+1, err);
 	if (ln)
 		sock_release(ln);
-	xeth_debug("%s exit with %d", name, err);
 	xeth_flag_clear(sb_task);
+	xeth_debug_err(err);
 	return err;
 }
 

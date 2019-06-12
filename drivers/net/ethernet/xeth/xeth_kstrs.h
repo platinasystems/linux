@@ -63,4 +63,13 @@ ssize_t xeth_kstrs_string(struct xeth_kstrs *kstrs, char *buf, size_t n, int i);
  */
 size_t xeth_kstrs_count(struct xeth_kstrs *kstrs);
 
+/**
+ * xeth_kstrs_copy - copy NULL terminated list of strings into attribute table
+ *
+ * Returns the number of strings copied;
+ * ENOSPC if that exceeds the attriutes;
+ * or ENOMEM with insuffient memory.
+ **/
+size_t xeth_kstrs_copy(struct xeth_kstrs *kstrs, const char *const strs[]);
+
 #endif /* __NET_ETHERNET_XETH_KSTRS_H */
