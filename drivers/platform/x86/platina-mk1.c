@@ -33,14 +33,14 @@ MODULE_VERSION("2.0");
 
 #define platina_mk1_pr_egress(err, format, args...)			\
 ({									\
-	int _err = (err);						\
+	int _err = platina_mk1_egress(err);				\
 	if (_err)							\
 		pr_err(NAME ": %d, " format "\n", (_err), ##args);	\
 	else if (platina_mk1_dynamic_debug)				\
 		pr_debug(format "\n", ##args);				\
 	else								\
 		no_printk(KERN_DEBUG pr_fmt(format), ##args);		\
-	(platina_mk1_egress(_err));					\
+	(_err);								\
 })
 
 enum {
@@ -66,9 +66,6 @@ static const unsigned short platina_mk1_eeprom_addrs[];
 static struct i2c_board_info platina_mk1_eeprom_info;
 static const struct property_entry platina_mk1_eeprom_properties[];
 static const struct i2c_board_info platina_mk1_mezzanine_info;
-static const char * const * const platina_mk1_iflinks_akas[];
-static const char * const platina_mk1_ethtool_flags[];
-static const char * const platina_mk1_ethtool_stats[];
 
 static size_t platina_mk1_n_eeprom_addrs(void);
 
@@ -79,6 +76,82 @@ static struct {
 	u8	eeprom_cache[onie_max_data];
 	void	*onie;
 } *platina_mk1;
+
+static const char *const platina_mk1_flag_names[] = {
+	"copper",
+	"fec74",
+	"fec91",
+	NULL,
+};
+
+static void platina_mk1_ethtool_port_cb(struct ethtool_link_ksettings *ks)
+{
+	ks->base.speed = 0;
+	ks->base.duplex = DUPLEX_FULL;
+	ks->base.autoneg = AUTONEG_ENABLE;
+	ks->base.port = PORT_OTHER;
+	ethtool_link_ksettings_zero_link_mode(ks, supported);
+	ethtool_link_ksettings_add_link_mode(ks, supported, Autoneg);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKX4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseR_FEC);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseMLD2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseLR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseCR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseSR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 100000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 100000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 100000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported,
+					     100000baseLR4_ER4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, TP);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_NONE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_RS);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_BASER);
+	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
+		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static void platina_mk1_ethtool_subport_cb(struct ethtool_link_ksettings *ks)
+{
+	ks->base.speed = 0;
+	ks->base.duplex = DUPLEX_FULL;
+	ks->base.autoneg = AUTONEG_ENABLE;
+	ks->base.port = PORT_OTHER;
+	ethtool_link_ksettings_zero_link_mode(ks, supported);
+	ethtool_link_ksettings_add_link_mode(ks, supported, Autoneg);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKX4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseR_FEC);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseMLD2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseLR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseCR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseSR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, TP);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_NONE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_RS);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_BASER);
+	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
+		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
 
 static int platina_mk1_rewind_eeprom(void)
 {
@@ -205,13 +278,17 @@ static int platina_mk1_create_ports(void)
 				scnprintf(name, IFNAMSIZ, "xeth%d-%d",
 					  port + first_port,
 					  subport + first_port);
-				err = xeth_create_port(name, xid, pea);
+				err = xeth_create_port(name, xid, pea,
+						       platina_mk1_flag_names,
+						       platina_mk1_ethtool_subport_cb);
 			}
 		} else {
 			u32 xid = platina_mk1_top_xid - port;
 			u64 pea = ea ? ea + port : 0;
 			scnprintf(name, IFNAMSIZ, "xeth%d", port + first_port);
-			err = xeth_create_port(name, xid, pea);
+			err = xeth_create_port(name, xid, pea,
+					       platina_mk1_flag_names,
+					       platina_mk1_ethtool_port_cb);
 		}
 	}
 	return (err < 0) ? (int)err : 0;

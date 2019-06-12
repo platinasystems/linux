@@ -145,3 +145,32 @@ size_t xeth_kstrs_count(struct xeth_kstrs *kstrs)
 		;
 	return n;
 }
+
+size_t xeth_kstrs_copy(struct xeth_kstrs *kstrs, const char *const strs[])
+{
+	ssize_t ret = 0;
+	int i;
+
+	spin_lock(&kstrs->mutex);
+
+	for (i = 0; strs[i]; i++) {
+		if (i >= kstrs->n) {
+			ret = -ENOSPC;
+			break;
+		}
+		if (kstrs->str[i]) {
+			kfree(kstrs->str[i]);
+			kstrs->str[i] = NULL;
+		}
+		kstrs->str[i] = kzalloc(strlen(strs[i])+1, GFP_KERNEL);
+		if (!kstrs->str[i]) {
+			ret = -ENOMEM;
+			break;
+		}
+		strcpy(kstrs->str[i], strs[i]);
+		ret++;
+	}
+
+	spin_unlock(&kstrs->mutex);
+	return ret;
+}
