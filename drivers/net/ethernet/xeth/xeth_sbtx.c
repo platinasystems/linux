@@ -201,6 +201,25 @@ int xeth_sbtx_ethtool_flags(u64 xid, u32 flags)
 	return 0;
 }
 
+#define xeth_sbtx_ethtool_link_modes(ptr, msg_kind, mode_kind)		\
+do {									\
+	struct xeth_sbtx_entry *entry;					\
+	struct xeth_msg_ethtool_link_modes *msg;			\
+	size_t sz = sizeof(*msg) + sizeof((ptr)->link_modes.mode_kind);	\
+	entry = xeth_sbtx_alloc(sz);					\
+	if (!entry)							\
+		return -ENOMEM;						\
+	xeth_sbtx_msg_set(&entry->data[0],				\
+			  XETH_MSG_KIND_ETHTOOL_LINK_MODES_##msg_kind);	\
+	msg = (typeof(msg))&entry->data[0];				\
+	msg->xid = xid;							\
+	msg->nbytes = sizeof((ptr)->link_modes.mode_kind);		\
+	for (bit = 0; bit <= __ETHTOOL_LINK_MODE_LAST; bit++)		\
+		if (test_bit(bit, (ptr)->link_modes.mode_kind))		\
+			msg->modes[bit/8] |= 1<<(bit & (8-1));		\
+	xeth_sbtx_queue(entry);						\
+} while (0)
+
 /* Note, this sends speed 0 if autoneg, regardless of base.speed This is to
  * cover controller (e.g. vnet) restart where in it's earlier run it has sent
  * SPEED to note the auto-negotiated speed to ethtool user, but in subsequent
@@ -208,7 +227,7 @@ int xeth_sbtx_ethtool_flags(u64 xid, u32 flags)
  */
 int xeth_sbtx_ethtool_settings(u64 xid, struct ethtool_link_ksettings *p)
 {
-	int i;
+	int bit;
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_settings *msg;
 
@@ -226,19 +245,10 @@ int xeth_sbtx_ethtool_settings(u64 xid, struct ethtool_link_ksettings *p)
 	msg->mdio_support = p->base.mdio_support;
 	msg->eth_tp_mdix = p->base.eth_tp_mdix;
 	msg->eth_tp_mdix_ctrl = p->base.eth_tp_mdix_ctrl;
-	msg->link_mode_masks_nwords =
-		sizeof(p->link_modes.supported) / sizeof(unsigned long);
-	for (i = 0; i < msg->link_mode_masks_nwords; i++)
-		msg->link_modes_supported[i] =
-			p->link_modes.supported[i];
-	for (i = 0; i < msg->link_mode_masks_nwords; i++)
-		msg->link_modes_advertising[i] =
-			p->link_modes.advertising[i];
-	for (i = 0; i < msg->link_mode_masks_nwords; i++)
-		msg->link_modes_lp_advertising[i] =
-			p->link_modes.lp_advertising[i];
 	xeth_sbtx_queue(entry);
-	xeth_debug("xid %llu", xid);
+	xeth_sbtx_ethtool_link_modes(p, SUPPORTED, supported);
+	xeth_sbtx_ethtool_link_modes(p, ADVERTISING, advertising);
+	xeth_sbtx_ethtool_link_modes(p, LP_ADVERTISING, lp_advertising);
 	return 0;
 }
 
