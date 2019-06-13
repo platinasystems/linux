@@ -67,6 +67,9 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_ETHTOOL_STAT,
 	XETH_MSG_KIND_ETHTOOL_FLAGS,
 	XETH_MSG_KIND_ETHTOOL_SETTINGS,
+	XETH_MSG_KIND_ETHTOOL_LINK_MODES_SUPPORTED,
+	XETH_MSG_KIND_ETHTOOL_LINK_MODES_ADVERTISING,
+	XETH_MSG_KIND_ETHTOOL_LINK_MODES_LP_ADVERTISING,
 	XETH_MSG_KIND_DUMP_IFINFO,
 	XETH_MSG_KIND_CARRIER,
 	XETH_MSG_KIND_SPEED,
@@ -149,10 +152,16 @@ struct xeth_msg_ethtool_settings {
 	uint8_t mdio_support;
 	uint8_t eth_tp_mdix;
 	uint8_t eth_tp_mdix_ctrl;
-	uint8_t link_mode_masks_nwords;
-	uint32_t link_modes_supported[2];
-	uint32_t link_modes_advertising[2];
-	uint32_t link_modes_lp_advertising[2];
+	uint8_t pad;
+};
+
+
+struct xeth_msg_ethtool_link_modes {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint8_t nbytes;
+	uint8_t pad[3];
+	uint8_t modes[];
 };
 
 struct xeth_next_hop {
