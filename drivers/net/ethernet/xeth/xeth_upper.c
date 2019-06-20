@@ -111,14 +111,30 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	struct xeth_upper_priv *priv =
 		container_of(rcu, struct xeth_upper_priv, rcu.dump_ifinfo);
 	struct net_device *nd = xeth_netdev(priv);
-	struct in_ifaddr *ifa;
+	struct in_device *in_dev = in_dev_get(nd);
+	struct inet6_dev *in6_dev = in6_dev_get(nd);
 
 	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0, XETH_IFINFO_REASON_DUMP);
 	xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flag.bits);
 	xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
-	if (nd->ip_ptr)
-		for(ifa = nd->ip_ptr->ifa_list; ifa; ifa = ifa->ifa_next)
+
+	if (in_dev) {
+		struct in_ifaddr *ifa;
+
+		for (ifa = in_dev->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sbtx_ifa(ifa, priv->xid, NETDEV_UP);
+		in_dev_put(in_dev);
+	}
+
+	if (in6_dev) {
+		struct inet6_ifaddr *ifa6;
+
+		read_lock_bh(&in6_dev->lock);
+		list_for_each_entry(ifa6, &in6_dev->addr_list, if_list)
+			xeth_sbtx_ifa6(ifa6, priv->xid, NETDEV_UP);
+		read_unlock_bh(&in6_dev->lock);
+		in6_dev_put(in6_dev);
+	}
 }
 
 static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)

@@ -10,7 +10,7 @@
  */
 
 static struct {
-	struct notifier_block fib, inetaddr, netdevice, netevent;
+	struct notifier_block fib, inetaddr, inet6addr, netdevice, netevent;
 } xeth_nb;
 
 static int xeth_nb_fib(struct notifier_block *nb, unsigned long event,
@@ -27,7 +27,18 @@ static int xeth_nb_fib(struct notifier_block *nb, unsigned long event,
 	case FIB_EVENT_ENTRY_DEL:
 		switch (info->family) {
 		case AF_INET:
-			xeth_sbtx_fib_entry(event, info);
+			do {
+				struct fib_entry_notifier_info *feni =
+					container_of(info, typeof(*feni), info);
+				xeth_sbtx_fib_entry(event, feni);
+			} while(0);
+			break;
+		case AF_INET6:
+			do {
+				struct fib6_entry_notifier_info *feni =
+					container_of(info, typeof(*feni), info);
+				xeth_sbtx_fib6_entry(event, feni);
+			} while(0);
 			break;
 		}
 		break;
@@ -60,6 +71,22 @@ static int xeth_nb_inetaddr(struct notifier_block *nb, unsigned long event,
 			u32 xid = xeth_upper_xid(nd);
 			if (xid)
 				xeth_sbtx_ifa(ifa, xid, event);
+		}
+	}
+	return NOTIFY_DONE;
+}
+
+static int xeth_nb_inet6addr(struct notifier_block *nb, unsigned long event,
+			     void *ptr)
+{
+	struct inet6_ifaddr *ifa6 = (struct inet6_ifaddr *)ptr;
+
+	if (nb == &xeth_nb.inet6addr && ifa6->idev) {
+		struct net_device *nd = ifa6->idev->dev;
+		if (xeth_upper_check(nd)) {
+			u32 xid = xeth_upper_xid(nd);
+			if (xid)
+				xeth_sbtx_ifa6(ifa6, xid, event);
 		}
 	}
 	return NOTIFY_DONE;
@@ -150,6 +177,11 @@ int xeth_nb_start_inetaddr(void)
 	return xeth_nb_start(inetaddr);
 }
 
+int xeth_nb_start_inet6addr(void)
+{
+	return xeth_nb_start(inet6addr);
+}
+
 int xeth_nb_start_netdevice(void)
 {
 	return xeth_nb_start(netdevice);
@@ -176,6 +208,11 @@ void xeth_nb_stop_fib(void)
 void xeth_nb_stop_inetaddr(void)
 {
 	xeth_nb_stop(inetaddr);
+}
+
+void xeth_nb_stop_inet6addr(void)
+{
+	xeth_nb_stop(inet6addr);
 }
 
 void xeth_nb_stop_netdevice(void)

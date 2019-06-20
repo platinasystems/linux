@@ -25,9 +25,11 @@
 #include <net/sock.h>
 #include <net/rtnetlink.h>
 #include <net/ip_fib.h>
+#include <net/ip6_fib.h>
 #include <net/netevent.h>
 #include <uapi/linux/un.h>
 #include <uapi/linux/xeth.h>
+#include <net/addrconf.h>
 
 #if defined(KBUILD_MODNAME)
 # define xeth_name KBUILD_MODNAME
@@ -91,6 +93,7 @@ do {									\
 enum xeth_flag {
 	xeth_flag_fib_notifier,
 	xeth_flag_inetaddr_notifier,
+	xeth_flag_inet6addr_notifier,
 	xeth_flag_netdevice_notifier,
 	xeth_flag_netevent_notifier,
 	xeth_flag_sb_task,
@@ -180,11 +183,15 @@ struct task_struct *xeth_sbrx_fork(struct socket *conn);
 int xeth_sbtx_service(struct socket *conn);
 int xeth_sbtx_break(void);
 int xeth_sbtx_change_upper(u64 upper, u64 lower, bool linking);
-int xeth_sbtx_ethtool_flags(u64 xid, u32 flags);
-int xeth_sbtx_ethtool_settings(u64 xid, struct ethtool_link_ksettings *);
-int xeth_sbtx_fib_entry(unsigned long event, struct fib_notifier_info *info);
-int xeth_sbtx_ifa(struct in_ifaddr *ifa, u64 xid, unsigned long event);
-int xeth_sbtx_ifinfo(struct net_device *nd, u64 xid, enum xeth_dev_kind kind,
+int xeth_sbtx_ethtool_flags(u32 xid, u32 flags);
+int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *);
+int xeth_sbtx_fib_entry(unsigned long event,
+			struct fib_entry_notifier_info *feni);
+int xeth_sbtx_fib6_entry(unsigned long event,
+			 struct fib6_entry_notifier_info *feni);
+int xeth_sbtx_ifa(struct in_ifaddr *ifa, u32 xid, unsigned long event);
+int xeth_sbtx_ifa6(struct inet6_ifaddr *ifa, u32 xid, unsigned long event);
+int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason);
 int xeth_sbtx_neigh_update(struct neighbour *neigh);
 
