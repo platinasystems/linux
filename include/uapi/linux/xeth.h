@@ -75,8 +75,10 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_SPEED,
 	XETH_MSG_KIND_IFINFO,
 	XETH_MSG_KIND_IFA,
+	XETH_MSG_KIND_IFA6,
 	XETH_MSG_KIND_DUMP_FIBINFO,
 	XETH_MSG_KIND_FIBENTRY,
+	XETH_MSG_KIND_FIB6ENTRY,
 	XETH_MSG_KIND_NEIGH_UPDATE,
 	XETH_MSG_KIND_CHANGE_UPPER_XID,
 };
@@ -186,12 +188,42 @@ struct xeth_msg_fibentry {
 	struct xeth_next_hop nh[];
 };
 
+struct xeth_next_hop6 {
+	int32_t ifindex;
+	int32_t weight;
+	uint32_t flags;
+	uint32_t reserved;
+	uint8_t gw[16];
+};
+
+struct xeth_msg_fib6entry {
+	struct xeth_msg_header header;
+	uint64_t net;
+	uint8_t address[16];
+	uint8_t length;
+	uint8_t event;
+	uint8_t nsiblings;
+	uint8_t type;
+	uint32_t table;
+	struct xeth_next_hop6 nh;
+	struct xeth_next_hop6 siblings[];
+};
+
 struct xeth_msg_ifa {
 	struct xeth_msg_header header;
 	uint32_t xid;
 	uint32_t event;
 	__be32 address;
 	__be32 mask;
+};
+
+struct xeth_msg_ifa6 {
+	struct xeth_msg_header header;
+	uint32_t xid;
+	uint32_t event;
+	uint8_t address[16];
+	uint8_t length;
+	uint8_t pad[7];
 };
 
 struct xeth_msg_ifinfo {
