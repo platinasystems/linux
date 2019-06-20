@@ -184,7 +184,7 @@ int xeth_sbtx_change_upper(u64 upper, u64 lower, bool linking)
 	return 0;
 }
 
-int xeth_sbtx_ethtool_flags(u64 xid, u32 flags)
+int xeth_sbtx_ethtool_flags(u32 xid, u32 flags)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_flags *msg;
@@ -197,7 +197,6 @@ int xeth_sbtx_ethtool_flags(u64 xid, u32 flags)
 	msg->xid = xid;
 	msg->flags = flags;
 	xeth_sbtx_queue(entry);
-	xeth_debug("xid %llu, flags %u", xid, flags);
 	return 0;
 }
 
@@ -225,7 +224,7 @@ do {									\
  * SPEED to note the auto-negotiated speed to ethtool user, but in subsequent
  * run, we don't want the controller to override autoneg.
  */
-int xeth_sbtx_ethtool_settings(u64 xid, struct ethtool_link_ksettings *p)
+int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *p)
 {
 	int bit;
 	struct xeth_sbtx_entry *entry;
@@ -252,20 +251,20 @@ int xeth_sbtx_ethtool_settings(u64 xid, struct ethtool_link_ksettings *p)
 	return 0;
 }
 
-int xeth_sbtx_fib_entry(unsigned long event, struct fib_notifier_info *info)
+static const char * const xeth_sbtx_fib_event_names[] = {
+	[FIB_EVENT_ENTRY_REPLACE] "replace",
+	[FIB_EVENT_ENTRY_APPEND] "append",
+	[FIB_EVENT_ENTRY_ADD] "add",
+	[FIB_EVENT_ENTRY_DEL] "del",
+};
+
+int xeth_sbtx_fib_entry(unsigned long event,
+			struct fib_entry_notifier_info *feni)
 {
 	int i, nhs = 0;
 	struct xeth_sbtx_entry *entry;
 	struct xeth_next_hop *nh;
 	struct xeth_msg_fibentry *msg;
-	struct fib_entry_notifier_info *feni =
-		container_of(info, struct fib_entry_notifier_info, info);
-	static const char * const names[] = {
-		[FIB_EVENT_ENTRY_REPLACE] "replace",
-		[FIB_EVENT_ENTRY_APPEND] "append",
-		[FIB_EVENT_ENTRY_ADD] "add",
-		[FIB_EVENT_ENTRY_DEL] "del",
-	};
 	size_t n = sizeof(*msg);
 
 	if (feni->fi->fib_nhs > 0) {
@@ -296,12 +295,65 @@ int xeth_sbtx_fib_entry(unsigned long event, struct fib_notifier_info *info)
 		nh[i].scope = feni->fi->fib_nh[i].nh_scope;
 	}
 	no_xeth_debug("%s %pI4/%d w/ %d nexhop(s)",
-		      names[event], &msg->address, feni->dst_len, nhs);
+		      xeth_sbtx_fib_event_names[event],
+		      &msg->address, feni->dst_len, nhs);
 	xeth_sbtx_queue(entry);
 	return 0;
 }
 
-int xeth_sbtx_ifa(struct in_ifaddr *ifa, u64 xid, unsigned long event)
+int xeth_sbtx_fib6_entry(unsigned long event,
+			 struct fib6_entry_notifier_info *feni)
+{
+	struct fib6_info *rt = xeth_debug_ptr_err(feni->rt);
+	struct xeth_sbtx_entry *entry;
+	struct xeth_msg_fib6entry *msg;
+	struct xeth_next_hop6 *sibling;
+	size_t n = sizeof(*msg);
+	struct fib6_info *iter;
+	int i;
+
+	if (IS_ERR(rt))
+		return PTR_ERR(rt);
+	if (rt->fib6_nsiblings)
+		n += (rt->fib6_nsiblings * sizeof(struct xeth_next_hop6));
+	entry = xeth_sbtx_alloc(n);
+	if (!entry)
+		return -ENOMEM;
+	msg = (typeof(msg))&entry->data[0];
+	sibling = (typeof(sibling))&msg->siblings[0];
+	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_FIB6ENTRY);
+	msg->net = net_eq(feni->info.net, &init_net) ? 1 :
+		feni->info.net->ns.inum;
+	memcpy(msg->address, &rt->fib6_dst.addr, 16);
+	msg->length = rt->fib6_dst.plen;
+	msg->event = (u8)event;
+	msg->nsiblings = rt->fib6_nsiblings;
+	msg->type = rt->fib6_type;
+	msg->table = rt->fib6_table->tb6_id;
+	msg->nh.ifindex = rt->fib6_nh.nh_dev->ifindex;
+	msg->nh.weight = rt->fib6_nh.nh_weight;
+	msg->nh.flags = rt->fib6_nh.nh_flags;
+	memcpy(msg->nh.gw, &rt->fib6_nh.nh_gw, 16);
+	i = 0;
+	list_for_each_entry(iter, &rt->fib6_siblings, fib6_siblings) {
+		if (i == rt->fib6_nsiblings)
+			break;
+		sibling->ifindex = iter->fib6_nh.nh_dev->ifindex;
+		sibling->weight = iter->fib6_nh.nh_weight;
+		sibling->flags = iter->fib6_nh.nh_flags;
+		memcpy(sibling->gw, &iter->fib6_nh.nh_gw, 16);
+		i++;
+		sibling++;
+	}
+	xeth_debug("fib6 %s %pI6c/%d w/ %d nexhop(s)",
+		      xeth_sbtx_fib_event_names[event],
+		      &rt->fib6_dst.addr, rt->fib6_dst.plen,
+		      1+i);
+	xeth_sbtx_queue(entry);
+	return 0;
+}
+
+int xeth_sbtx_ifa(struct in_ifaddr *ifa, u32 xid, unsigned long event)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ifa *msg;
@@ -319,7 +371,26 @@ int xeth_sbtx_ifa(struct in_ifaddr *ifa, u64 xid, unsigned long event)
 	return 0;
 }
 
-int xeth_sbtx_ifinfo(struct net_device *nd, u64 xid, enum xeth_dev_kind kind,
+int xeth_sbtx_ifa6(struct inet6_ifaddr *ifa6, u32 xid, unsigned long event)
+{
+	struct xeth_sbtx_entry *entry;
+	struct xeth_msg_ifa6 *msg;
+
+	entry = xeth_sbtx_alloc(sizeof(*msg));
+	if (!entry)
+		return -ENOMEM;
+	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_IFA6);
+	msg = (typeof(msg))&entry->data[0];
+	msg->xid = xid;
+	msg->event = event;
+	memcpy(msg->address, &ifa6->addr, 16);
+	msg->length = ifa6->prefix_len;
+	xeth_sbtx_queue(entry);
+	return 0;
+}
+
+
+int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason)
 {
 	struct xeth_sbtx_entry *entry;
