@@ -30,6 +30,24 @@
 
 enum { platina_mk1_i2c_eeprom_pgsz = 32 };
 
+static const unsigned short platina_mk1_i2c_eeprom_addrs[] = { 0x53, 0x51 };
+
+static size_t platina_mk1_i2c_n_eeprom_addrs(void)
+{
+	return ARRAY_SIZE(platina_mk1_i2c_eeprom_addrs);
+}
+
+static const struct property_entry platina_mk1_i2c_eeprom_properties[] = {
+	PROPERTY_ENTRY_U32("pagesize", platina_mk1_i2c_eeprom_pgsz),
+	PROPERTY_ENTRY_BOOL("no-read-rollover"),
+	{},
+};
+
+static struct i2c_board_info platina_mk1_i2c_eeprom_info = {
+	.type = "24c04",
+	.properties = platina_mk1_i2c_eeprom_properties,
+};
+
 static struct {
 	struct i2c_adapter *adapter;
 	struct {
@@ -37,8 +55,6 @@ static struct {
 		struct i2c_client *client;
 	} mezzanine_temp;
 	struct {
-		const struct property_entry properties[3];
-		const struct i2c_board_info info;
 		struct i2c_client *client;
 		u8 data[onie_max_data];
 		void *onie;
@@ -49,21 +65,9 @@ static struct {
 			I2C_BOARD_INFO("lm75", 0X4f),
 		},
 	},
-	.eeprom = {
-		.properties = {
-			PROPERTY_ENTRY_U32("pagesize",
-					   platina_mk1_i2c_eeprom_pgsz),
-			PROPERTY_ENTRY_BOOL("no-read-rollover"),
-			{ },
-		},
-		.info = {
-			I2C_BOARD_INFO("24c04", 0X51),
-			.properties = platina_mk1_i2c.eeprom.properties,
-		},
-	},
 };
 
-static ssize_t platina_mk1_i2c_eeprom_load(void);
+static ssize_t platina_mk1_i2c_eeprom_load(unsigned short addr);
 static int platina_mk1_i2c_eeprom_rewind(void);
 static ssize_t platina_mk1_i2c_eeprom_read(size_t offset, size_t count);
 
@@ -85,7 +89,7 @@ int __init platina_mk1_i2c_init(void)
 {
 	struct kobject *parent, *onie;
 	ssize_t sz;
-	int err;
+	int i, err;
 	u8 v[ETH_ALEN];
 
 	err = platina_mk1_i2c_get_adapter(0);
@@ -96,11 +100,12 @@ int __init platina_mk1_i2c_init(void)
 	if (err)
 		goto platina_mk1_i2c_init_err;
 
-	err = platina_mk1_i2c_new_device(eeprom);
-	if (err)
-		goto platina_mk1_i2c_init_err;
-
-	sz = platina_mk1_i2c_eeprom_load();
+	for (i = 0; i < platina_mk1_i2c_n_eeprom_addrs(); i++) {
+		unsigned short ua = platina_mk1_i2c_eeprom_addrs[i];
+		sz = platina_mk1_i2c_eeprom_load(ua);
+		if (sz > 0)
+			break;
+	}
 	if (sz < 0) {
 		err = sz;
 		goto platina_mk1_i2c_init_err;
@@ -150,12 +155,18 @@ void platina_mk1_i2c_exit(void)
 	platina_mk1_i2c.adapter = NULL;
 }
 
-static ssize_t platina_mk1_i2c_eeprom_load()
+static ssize_t platina_mk1_i2c_eeprom_load(unsigned short addr)
 {
 	u8 *data = platina_mk1_i2c.eeprom.data;
 	int err, tries;
 	ssize_t rem, sz;
 
+	platina_mk1_i2c_eeprom_info.addr = addr;
+	platina_mk1_i2c.eeprom.client =
+		i2c_new_device(platina_mk1_i2c.adapter,
+			       &platina_mk1_i2c_eeprom_info);
+	if (!platina_mk1_i2c.eeprom.client)
+		return -ENODEV;
 	/* we retry b/c the EEPROM driver probe interferes w/ first read */
 	for (tries = 0; tries < 3; tries++) {
 		msleep(10);
