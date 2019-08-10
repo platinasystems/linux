@@ -393,7 +393,7 @@ static void __exit platina_mk1_exit(void)
 	platina_mk1_pr_egress(0, "done");
 }
 
-static const unsigned short platina_mk1_eeprom_addrs[] = { 0x51, 0x50 };
+static const unsigned short platina_mk1_eeprom_addrs[] = { 0x53, 0x51 };
 
 static size_t platina_mk1_n_eeprom_addrs(void)
 {
