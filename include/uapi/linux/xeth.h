@@ -44,14 +44,13 @@ enum {
 	XETH_SIZEOF_JUMBO_FRAME = 9728,
 };
 
-/* These are the xeth proxy netdev attributes. */
-enum xeth_ifla {
-	XETH_IFLA_UNSPEC,
-	XETH_IFLA_XID,
-	XETH_IFLA_VID,
-	XETH_IFLA_KIND,
-	__XETH_IFLA,
+enum xeth_vlan_ifla {
+	XETH_VLAN_IFLA_UNSPEC,
+	XETH_VLAN_IFLA_VID,
+	__XETH_VLAN_IFLA_MAX,
 };
+
+#define XETH_VLAN_IFLA_MAX	(__XETH_VLAN_IFLA_MAX - 1)
 
 enum xeth_dev_kind {
 	XETH_DEV_KIND_UNSPEC,

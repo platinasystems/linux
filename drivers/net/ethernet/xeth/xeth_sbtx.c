@@ -167,7 +167,7 @@ int xeth_sbtx_break(void)
 	return 0;
 }
 
-int xeth_sbtx_change_upper(u64 upper, u64 lower, bool linking)
+int xeth_sbtx_change_upper(u32 upper_xid, u32 lower_xid, bool linking)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_change_upper_xid *msg;
@@ -177,8 +177,8 @@ int xeth_sbtx_change_upper(u64 upper, u64 lower, bool linking)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_CHANGE_UPPER_XID);
 	msg = (typeof(msg))&entry->data[0];
-	msg->upper = upper;
-	msg->lower = lower;
+	msg->upper = upper_xid;
+	msg->lower = lower_xid;
 	msg->linking = linking ? 1 : 0;
 	xeth_sbtx_queue(entry);
 	return 0;
