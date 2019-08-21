@@ -44,6 +44,7 @@
 
 extern int xeth_encap;
 extern int xeth_base_xid;
+extern struct net_device *xeth_mux;
 
 enum xeth_encap {
 	XETH_ENCAP_VLAN = 0,
@@ -182,7 +183,7 @@ struct task_struct *xeth_sbrx_fork(struct socket *conn);
 
 int xeth_sbtx_service(struct socket *conn);
 int xeth_sbtx_break(void);
-int xeth_sbtx_change_upper(u64 upper, u64 lower, bool linking);
+int xeth_sbtx_change_upper(u32 upper_xid, u32 lower_xid, bool linking);
 int xeth_sbtx_ethtool_flags(u32 xid, u32 flags);
 int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *);
 int xeth_sbtx_fib_entry(unsigned long event,

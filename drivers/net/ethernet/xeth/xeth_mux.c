@@ -67,7 +67,7 @@ static const char *const xeth_mux_flag_names[] = {
 static const struct net_device_ops xeth_mux_netdev_ops;
 static const struct ethtool_ops xeth_mux_ethtool_ops;
 
-static struct net_device *xeth_mux;
+struct net_device *xeth_mux;
 
 static struct xeth_mux_priv *xeth_mux_priv(void)
 {
