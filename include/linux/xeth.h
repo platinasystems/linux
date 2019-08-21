@@ -33,12 +33,11 @@ static inline int xeth_add_lowers(struct net_device *lowers[])
 	ndo_add_slave = xeth_mux->netdev_ops->ndo_add_slave;
 	for (i = 0; !err && lowers[i]; i++)
 		err = ndo_add_slave(xeth_mux, lowers[i], NULL);
+	xeth_mux->addr_assign_type = NET_ADDR_STOLEN;
+	memcpy(xeth_mux->dev_addr, lowers[0]->dev_addr, ETH_ALEN);
 	dev_put(xeth_mux);
 	return err;
 }
-
-/**
- */
 
 /**
  * xeth_create_port - create and add an upper port proxy to the xeth mux

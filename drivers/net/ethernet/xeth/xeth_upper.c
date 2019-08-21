@@ -71,6 +71,12 @@ static s64 xeth_upper_search(u32 base, u32 range)
 	return -ENOSPC;
 }
 
+static void xeth_upper_steal_mux_addr(struct net_device *nd)
+{
+	nd->addr_assign_type = NET_ADDR_STOLEN;
+	memcpy(nd->dev_addr, xeth_mux->dev_addr, ETH_ALEN);
+}
+
 static struct net_device *xeth_upper_link_rcu(u32 ifindex)
 {
 	int bkt;
@@ -117,6 +123,19 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0, XETH_IFINFO_REASON_DUMP);
 	xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flag.bits);
 	xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
+
+	if (priv->kind == XETH_DEV_KIND_BRIDGE ||
+	    priv->kind == XETH_DEV_KIND_LAG) {
+		/* FIXME send all of the lower devices */
+		struct net_device *lower;
+		struct list_head *iter;
+		netdev_for_each_lower_dev(nd, lower, iter) {
+			struct xeth_upper_priv *lower_priv =
+				netdev_priv(lower);
+			xeth_sbtx_change_upper(priv->xid, lower_priv->xid,
+					       true);
+		}
+	}
 
 	if (in_dev) {
 		struct in_ifaddr *ifa;
@@ -205,16 +224,15 @@ static netdev_tx_t xeth_upper_ndo_xmit(struct sk_buff *skb,
 
 static int xeth_upper_ndo_get_iflink(const struct net_device *nd)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-
-	/* FIXME should we show the port of vlan proxies? */
-	if (priv->xid > (1 << xeth_mux_bits())) {
-		u32 xid = priv->xid & ((1 << xeth_mux_bits()) - 1);
-		struct net_device *iflink =
-			xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
-		return iflink ? iflink->ifindex : 0;
-	}
 	return xeth_mux_ifindex();
+}
+
+static int xeth_upper_ndo_get_iflink_vlan(const struct net_device *nd)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	u32 stag = priv->xid & ((1 << xeth_mux_bits()) - 1);
+	struct net_device *iflink = xeth_upper_lookup_rcu(stag);
+	return iflink ? iflink->ifindex : 0;
 }
 
 static void xeth_upper_ndo_get_stats64(struct net_device *nd,
@@ -227,12 +245,92 @@ static void xeth_upper_ndo_get_stats64(struct net_device *nd,
 	spin_unlock(&priv->link.mutex);
 }
 
-static const struct net_device_ops xeth_upper_netdev_ops = {
+static int xeth_upper_ndo_add_slave(struct net_device *upper_nd,
+				    struct net_device *lower_nd,
+				    struct netlink_ext_ack *extack)
+{
+	struct xeth_upper_priv *upper_priv = netdev_priv(upper_nd);
+	struct xeth_upper_priv *lower_priv;
+	int err = 0;
+
+	if (upper_priv->kind != XETH_DEV_KIND_BRIDGE &&
+	    upper_priv->kind != XETH_DEV_KIND_LAG) {
+		NL_SET_ERR_MSG(extack,
+			       "This device cannot enslave another");
+		return -EOPNOTSUPP;
+	}
+	if (!xeth_upper_check(lower_nd)) {
+		NL_SET_ERR_MSG(extack,
+			       "This device may only enslave another xeth");
+		return -EOPNOTSUPP;
+	}
+	lower_priv = netdev_priv(lower_nd);
+	if (lower_priv->kind != XETH_DEV_KIND_PORT &&
+	    lower_priv->kind != XETH_DEV_KIND_VLAN) {
+		NL_SET_ERR_MSG(extack,
+			       "This device maynot be enslaved");
+		return -EOPNOTSUPP;
+	}
+	if (netdev_master_upper_dev_get(lower_nd))
+		return -EBUSY;
+
+	call_netdevice_notifiers(NETDEV_JOIN, lower_nd);
+
+	err = netdev_master_upper_dev_link(lower_nd, upper_nd, NULL, NULL, extack);
+	if (err)
+		return err;
+
+	if (upper_priv->kind == XETH_DEV_KIND_BRIDGE)
+		lower_nd->priv_flags |= IFF_BRIDGE_PORT;
+	else if (upper_priv->kind == XETH_DEV_KIND_LAG)
+		lower_nd->priv_flags |= IFF_TEAM_PORT;
+
+	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, true);
+}
+
+static int xeth_upper_ndo_del_slave(struct net_device *upper_nd,
+				    struct net_device *lower_nd)
+{
+	struct xeth_upper_priv *upper_priv = netdev_priv(upper_nd);
+	struct xeth_upper_priv *lower_priv;
+	int err = 0;
+
+	err = xeth_debug_nd_err(lower_nd,
+				!xeth_upper_check(lower_nd) ? -EINVAL : 0);
+	if (err) {
+		return err;
+	}
+	lower_priv = netdev_priv(lower_nd);
+	lower_nd->priv_flags &= ~(IFF_BRIDGE_PORT|IFF_TEAM_PORT);
+	netdev_upper_dev_unlink(lower_nd, upper_nd);
+	netdev_update_features(upper_nd);
+	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, false);
+}
+
+static const struct net_device_ops xeth_upper_ndo_port = {
 	.ndo_open = xeth_upper_ndo_open,
 	.ndo_stop = xeth_upper_ndo_stop,
 	.ndo_start_xmit = xeth_upper_ndo_xmit,
 	.ndo_get_iflink = xeth_upper_ndo_get_iflink,
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
+};
+
+static const struct net_device_ops xeth_upper_ndo_vlan = {
+	.ndo_open = xeth_upper_ndo_open,
+	.ndo_stop = xeth_upper_ndo_stop,
+	.ndo_start_xmit = xeth_upper_ndo_xmit,
+	.ndo_get_iflink = xeth_upper_ndo_get_iflink_vlan,
+	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
+};
+
+static const struct net_device_ops xeth_upper_ndo_bridge_or_lag = {
+	.ndo_open = xeth_upper_ndo_open,
+	.ndo_stop = xeth_upper_ndo_stop,
+	.ndo_start_xmit = xeth_upper_ndo_xmit,
+	.ndo_get_iflink = xeth_upper_ndo_get_iflink,
+	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
+	.ndo_add_slave = xeth_upper_ndo_add_slave,
+	.ndo_del_slave = xeth_upper_ndo_del_slave,
 };
 
 static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
@@ -435,10 +533,10 @@ static const struct ethtool_ops xeth_upper_ethtool_ops = {
 	.set_link_ksettings = xeth_upper_eto_set_link_ksettings,
 };
 
-static void xeth_upper_lnko_setup(struct net_device *nd)
+static void xeth_upper_lnko_setup_port(struct net_device *nd)
 {
 	ether_setup(nd);
-	nd->netdev_ops = &xeth_upper_netdev_ops;
+	nd->netdev_ops = &xeth_upper_ndo_port;
 	nd->ethtool_ops = &xeth_upper_ethtool_ops;
 	nd->needs_free_netdev = true;
 	nd->priv_destructor = NULL;
@@ -456,167 +554,236 @@ static void xeth_upper_lnko_setup(struct net_device *nd)
 #endif /* __FIXEME__ */
 }
 
-static int xeth_upper_lnko_validate(struct nlattr *tb[],
-				    struct nlattr *data[],
-				    struct netlink_ext_ack *extack)
+static void xeth_upper_lnko_setup_vlan(struct net_device *nd)
 {
-	u8 muxbits = xeth_mux_bits();
+	ether_setup(nd);
+	nd->netdev_ops = &xeth_upper_ndo_vlan;
+	nd->needs_free_netdev = true;
+	nd->priv_destructor = NULL;
+	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
+	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+	nd->priv_flags |= IFF_NO_QUEUE;
+	nd->priv_flags |= IFF_PHONY_HEADROOM;
+#ifdef __FIXME__
+	nd->features |= NETIF_F_LLTX;
+	nd->features |= VETH_FEATURES;
 
-	if (tb[IFLA_ADDRESS]) {
-		char *ifla_address = nla_data(tb[IFLA_ADDRESS]);
-		if (xeth_debug_err(nla_len(tb[IFLA_ADDRESS]) != ETH_ALEN))
-			return -EINVAL;
-		if (xeth_debug_err(!is_valid_ether_addr(ifla_address)))
-			return -EADDRNOTAVAIL;
+	nd->hw_features = VETH_FEATURES;
+	nd->hw_enc_features = VETH_FEATURES;
+	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
+#endif /* __FIXEME__ */
+}
+
+static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
+{
+	ether_setup(nd);
+	nd->netdev_ops = &xeth_upper_ndo_bridge_or_lag;
+	nd->needs_free_netdev = true;
+	nd->priv_destructor = NULL;
+	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
+	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+	nd->priv_flags |= IFF_NO_QUEUE;
+	nd->priv_flags |= IFF_PHONY_HEADROOM;
+#ifdef __FIXME__
+	nd->features |= NETIF_F_LLTX;
+	nd->features |= VETH_FEATURES;
+
+	nd->hw_features = VETH_FEATURES;
+	nd->hw_enc_features = VETH_FEATURES;
+	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
+#endif /* __FIXEME__ */
+}
+
+static int xeth_upper_lnko_validate_vlan(struct nlattr *tb[],
+					 struct nlattr *data[],
+					 struct netlink_ext_ack *extack)
+{
+	if (tb && tb[IFLA_ADDRESS]) {
+		NL_SET_ERR_MSG(extack, "cannot set mac addr");
+		return -EOPNOTSUPP;
 	}
-	if (!data)
-		return 0;
-	if (data[XETH_IFLA_XID]) {
-		u16 xid = nla_get_u16(data[XETH_IFLA_XID]);
-		if (xid == 0 || xid >= (1 << muxbits))
-			return -ERANGE;
-		if (xeth_debug_rcu(xeth_upper_lookup_rcu(xid)) != NULL)
-			return -EBUSY;
-	}
-	if (data[XETH_IFLA_VID]) {
-		u16 vid = nla_get_u16(data[XETH_IFLA_VID]);
-		if (vid == 0 || vid >= VLAN_N_VID)
-			return -ERANGE;
-	}
-	if (data[XETH_IFLA_KIND]) {
-		switch (nla_get_u8(data[XETH_IFLA_KIND])) {
-		case XETH_DEV_KIND_PORT:
-		case XETH_DEV_KIND_VLAN:
-		case XETH_DEV_KIND_BRIDGE:
-		case XETH_DEV_KIND_LAG:
-			break;
-		default:
+	if (data && data[XETH_VLAN_IFLA_VID]) {
+		u16 vid = nla_get_u16(data[XETH_VLAN_IFLA_VID]);
+		if (vid == 0 || vid >= VLAN_N_VID) {
+			NL_SET_ERR_MSG(extack, "out-of-range VID");
 			return -ERANGE;
 		}
 	}
 	return 0;
 }
 
+static int xeth_upper_lnko_validate_bridge_or_lag(struct nlattr *tb[],
+						  struct nlattr *data[],
+						  struct netlink_ext_ack *ack)
+{
+	if (tb && tb[IFLA_ADDRESS]) {
+		NL_SET_ERR_MSG(ack, "cannot set mac addr");
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+static int xeth_upper_nd_register(struct net_device *nd)
+{
+	int err;
+
+	xeth_debug_rcu(xeth_upper_add_rcu(nd));
+	err = xeth_debug_nd_err(nd, register_netdevice(nd));
+	if (err) {
+		struct xeth_upper_priv *priv = netdev_priv(nd);
+
+		xeth_mux_lock();
+		hlist_del_rcu(&priv->node);
+		xeth_mux_unlock();
+	}
+	return err;
+}
+
 /**
- * xeth_upper_lnko_new() - create xeth mux upper proxy of a remote netdev
+ * xeth_upper_lnko_new_vlan() - create xeth mux upper proxy of a remote netdev
  *
- * This is called from @rtnl_newlink() in service of the following iproute2
- * commands.  A platform driver may use this through @xeth_add_upper().
- *
- * Here is how to create an upper device to the xeth mux with iproute2,
- *	ip link add [[name ]IFNAME] type xeth [xid XID]
- *
- * Without XID, this searches for an unused XID starting at the @xeth_base_xid
- * module parameter (default 3000).
- *
- * Here is how to create a vlan of an existing upper device,
- *	ip link add [[name ]IFNAME] link UPPER type xeth [vid VID]
+ * Here is how to create a vlan of an existing XETH_PORT device,
+ *	ip link add [[name ]IFNAME] link XETH_PORT type xeth-vlan [vid VID]
  * or,
- *	ip link add [name ]IFNAME.VID link UPPER type xeth
+ *	ip link add [name ]IFNAME.VID link XETH_PORT type xeth
  *
- * Without VID, this searches for an unsued VID beginning with 1.
- * Without IFNAME, this assigns UPPER[.VID].
+ * Without VID, this searches for an unused VID beginning with 1.
+ * Without IFNAME, this assigns XETH_PORT[.VID].
+ *
  */
-static int xeth_upper_lnko_new(struct net *src_net, struct net_device *nd,
-			       struct nlattr *tb[], struct nlattr *data[],
-			       struct netlink_ext_ack *extack)
+static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
+				    struct nlattr *tb[], struct nlattr *data[],
+				    struct netlink_ext_ack *extack)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	u8 muxbits = xeth_mux_bits();
 	u32 xid, range = (1 << muxbits) - 1;
-	struct net_device *xnd;
+	struct net_device *xnd, *link;
+	struct xeth_upper_priv *linkpriv;
 	int err;
-	s64 x;
+	u32 li;
 
+	if (!tb || !tb[IFLA_LINK]) {
+		NL_SET_ERR_MSG(extack, "missing link");
+		return -EINVAL;
+	}
+
+	priv->kind = XETH_DEV_KIND_VLAN;
 	spin_lock_init(&priv->mutex);
 	spin_lock_init(&priv->ethtool.mutex);
 	spin_lock_init(&priv->link.mutex);
 
-	priv->xid = 0;
-	if (tb && !tb[IFLA_ADDRESS])
-		eth_hw_addr_random(nd);
-	if (tb && tb[IFLA_LINK]) {
-		u32 li = nla_get_u32(tb[IFLA_LINK]);
-		struct net_device *link;
-		struct xeth_upper_priv *linkpriv;
+	li = nla_get_u32(tb[IFLA_LINK]);
+	link = xeth_debug_rcu(xeth_upper_link_rcu(li));
+	if (IS_ERR_OR_NULL(link)) {
+		NL_SET_ERR_MSG(extack, "link must be an XETH_PORT");
+		return PTR_ERR(link);
+	}
+	linkpriv = netdev_priv(link);
+	nd->addr_assign_type = NET_ADDR_STOLEN;
+	memcpy(nd->dev_addr, link->dev_addr, ETH_ALEN);
 
-		link = xeth_debug_rcu(xeth_upper_link_rcu(li));
-		if (IS_ERR_OR_NULL(link))
-			return PTR_ERR(link);
-		linkpriv = netdev_priv(link);
-		if (data && data[XETH_IFLA_VID]) {
-			xid  = linkpriv->xid |
-				(nla_get_u16(data[XETH_IFLA_VID]) << muxbits);
-			xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
-			if (xnd)
-				return -EBUSY;
-			priv->xid = xid;
-		} else {
-			unsigned long long ull;
-			int i = 0;
-			while(true)
-				if (i >= IFNAMSIZ) {
-					x = linkpriv->xid | (1 << muxbits);
-					x = xeth_upper_search(x, range);
-					if (x < 0)
-						return (int)x;
-					priv->xid = x;
-					break;
-				} else if (nd->name[i] == '.') {
-					err = kstrtoull(nd->name+i+1, 0, &ull);
-					if (err)
-						return err;
-					if (!ull || ull > range)
-						return -ERANGE;
-					priv->xid  = linkpriv->xid |
-						(ull << muxbits);
-					break;
-				} else
-					i++;
+	if (data && data[XETH_VLAN_IFLA_VID]) {
+		xid  = linkpriv->xid |
+			(nla_get_u16(data[XETH_VLAN_IFLA_VID]) << muxbits);
+		xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
+		if (xnd) {
+			NL_SET_ERR_MSG(extack, "VID in use");
+			return -EBUSY;
 		}
-		if (!tb || !tb[IFLA_IFNAME])
-			scnprintf(nd->name, IFNAMSIZ, "%s.%u",
-				  link->name, priv->xid >> muxbits);
-		priv->kind = XETH_DEV_KIND_VLAN;
+		priv->xid = xid;
 	} else {
-		if (data) {
-			if (data[XETH_IFLA_XID]) {
-				xid = nla_get_u16(data[XETH_IFLA_XID]);
-				xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
-				if (xnd)
-					return -EBUSY;
-				priv->xid = xid;
-			} else {
-				x = xeth_upper_search(xeth_base_xid, range);
-				if (x < 0)
+		unsigned long long ull;
+		int i = 0;
+		while(true)
+			if (i >= IFNAMSIZ) {
+				u32 base = linkpriv->xid | (1 << muxbits);
+				s64 x = xeth_upper_search(base, range);
+				if (x < 0) {
+					NL_SET_ERR_MSG(extack,
+						       "no VID available");
 					return (int)x;
-				priv->xid = x;
-			}
-			priv->kind = data[XETH_IFLA_KIND] ?
-				nla_get_u8(data[XETH_IFLA_XID]) :
-				XETH_DEV_KIND_UNSPEC;
-		}
-		if (!tb || !tb[IFLA_IFNAME])
-			scnprintf(nd->name, IFNAMSIZ, "%s-%u",
-				  xeth_name, priv->xid);
+				}
+				priv->xid = (u32)x;
+				break;
+			} else if (nd->name[i] == '.') {
+				err = kstrtoull(nd->name+i+1, 0, &ull);
+				if (err)
+					return err;
+				if (!ull || ull > range) {
+					NL_SET_ERR_MSG(extack, "invalid name");
+					return -ERANGE;
+				}
+				priv->xid  = linkpriv->xid |
+					(ull << muxbits);
+				break;
+			} else
+				i++;
 	}
-	xeth_debug_rcu(xeth_upper_add_rcu(nd));
-	err = xeth_debug_nd_err(nd, register_netdevice(nd));
-	if (err) {
-		xeth_mux_lock();
-		hlist_del_rcu(&priv->node);
-		xeth_mux_unlock();
-		return err;
+	if (!tb || !tb[IFLA_IFNAME])
+		scnprintf(nd->name, IFNAMSIZ, "%s.%u",
+			  link->name, priv->xid >> muxbits);
+	return xeth_upper_nd_register(nd);
+}
+
+static int xeth_upper_new_bridge_or_lag(struct net *src_net,
+					struct net_device *nd,
+					struct nlattr *tb[],
+					struct nlattr *data[],
+					struct netlink_ext_ack *extack)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	u8 muxbits = xeth_mux_bits();
+	u32 range = (1 << muxbits) - 1;
+	s64 xid_or_err = xeth_upper_search(xeth_base_xid, range);
+
+	if (xid_or_err < 0) {
+		NL_SET_ERR_MSG(extack, "all XIDs in use");
+		return (int)xid_or_err;
 	}
-	xeth_debug_err(xeth_kstrs_init(&priv->ethtool.flag.names,
-				       &nd->dev.kobj,
-				       "ethtool-flag-names",
-				       xeth_upper_ethtool_flags));
-	xeth_debug_err(xeth_kstrs_init(&priv->ethtool.stat.names,
-				       &nd->dev.kobj,
-				       "ethtool-stat-names",
-				       xeth_upper_ethtool_stats));
-	return 0;
+	priv->xid = (u32)xid_or_err;
+	xeth_upper_steal_mux_addr(nd);
+	return xeth_upper_nd_register(nd);
+}
+
+/*
+ * Here is how to add a bridge device to the xeth mux with iproute2,
+ *	ip link add [[name ]IFNAME] type xeth-bridge
+ *
+ * Without IFNAME it's dubbed xethbr-XID.
+ */
+static int xeth_upper_lnko_new_bridge(struct net *src_net,
+				      struct net_device *nd,
+				      struct nlattr *tb[],
+				      struct nlattr *data[],
+				      struct netlink_ext_ack *extack)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+
+	priv->kind = XETH_DEV_KIND_BRIDGE;
+	if (!tb || !tb[IFLA_IFNAME])
+		scnprintf(nd->name, IFNAMSIZ, "xethbr-%u", priv->xid);
+	return xeth_upper_new_bridge_or_lag(src_net, nd, tb, data, extack);
+}
+
+/*
+ * Here is how to add a bridge device to the xeth mux with iproute2,
+ *	ip link add [[name ]IFNAME] type xeth-lag
+ *
+ * Without IFNAME it's dubbed xethlag-XID.
+ */
+static int xeth_upper_lnko_new_lag(struct net *src_net,
+				   struct net_device *nd,
+				   struct nlattr *tb[],
+				   struct nlattr *data[],
+				   struct netlink_ext_ack *extack)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+
+	priv->kind = XETH_DEV_KIND_LAG;
+	if (!tb || !tb[IFLA_IFNAME])
+		scnprintf(nd->name, IFNAMSIZ, "xethlag-%u", priv->xid);
+	return xeth_upper_new_bridge_or_lag(src_net, nd, tb, data, extack);
 }
 
 static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
@@ -640,55 +807,90 @@ static struct net *xeth_upper_lnko_get_net(const struct net_device *nd)
 	return dev_net(nd);
 }
 
-static const struct nla_policy xeth_upper_nla_policy[] = {
-	[XETH_IFLA_XID] = { .type = NLA_U16 },
-	[XETH_IFLA_VID] = { .type = NLA_U16 },
-	[XETH_IFLA_KIND] = { .type = NLA_U8 },
+static const struct nla_policy xeth_upper_nla_policy_vlan[] = {
+	[XETH_VLAN_IFLA_VID] = { .type = NLA_U16 },
 };
 
-static struct rtnl_link_ops xeth_upper_link_ops = {
-	.kind		= xeth_name,
+enum {
+	xeth_upper_nla_maxtype_vlan =
+		ARRAY_SIZE(xeth_upper_nla_policy_vlan)-1,
+
+};
+
+static struct rtnl_link_ops xeth_upper_lnko_vlan = {
+	.kind		= "xeth-vlan",
 	.priv_size	= sizeof(struct xeth_upper_priv),
-	.setup		= xeth_upper_lnko_setup,
-	.validate	= xeth_upper_lnko_validate,
-	.newlink	= xeth_upper_lnko_new,
+	.setup		= xeth_upper_lnko_setup_vlan,
+	.validate	= xeth_upper_lnko_validate_vlan,
+	.newlink	= xeth_upper_lnko_new_vlan,
 	.dellink	= xeth_upper_lnko_del,
 	.get_link_net	= xeth_upper_lnko_get_net,
-	.policy		= xeth_upper_nla_policy,
-	.maxtype	= ARRAY_SIZE(xeth_upper_nla_policy)-1,
+	.policy		= xeth_upper_nla_policy_vlan,
+	.maxtype	= xeth_upper_nla_maxtype_vlan,
+};
+
+static struct rtnl_link_ops xeth_upper_lnko_bridge = {
+	.kind		= "xeth-bridge",
+	.priv_size	= sizeof(struct xeth_upper_priv),
+	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
+	.validate	= xeth_upper_lnko_validate_bridge_or_lag,
+	.newlink	= xeth_upper_lnko_new_bridge,
+	.dellink	= xeth_upper_lnko_del,
+	.get_link_net	= xeth_upper_lnko_get_net,
+};
+
+static struct rtnl_link_ops xeth_upper_lnko_lag = {
+	.kind		= "xeth-lag",
+	.priv_size	= sizeof(struct xeth_upper_priv),
+	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
+	.validate	= xeth_upper_lnko_validate_bridge_or_lag,
+	.newlink	= xeth_upper_lnko_new_lag,
+	.dellink	= xeth_upper_lnko_del,
+	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
 bool xeth_upper_check(struct net_device *nd)
 {
-	return	nd->netdev_ops == &xeth_upper_netdev_ops &&
-		nd->ethtool_ops == &xeth_upper_ethtool_ops;
+	return	nd->netdev_ops->ndo_open == xeth_upper_ndo_open &&
+		nd->netdev_ops->ndo_stop == xeth_upper_ndo_stop;
 }
 
-static bool xeth_upper_lnko_is_registered(void)
+static bool xeth_upper_lnko_is_registered(struct rtnl_link_ops *lnko)
 {
-	return xeth_upper_link_ops.list.next || xeth_upper_link_ops.list.prev;
+	return lnko->list.next || lnko->list.prev;
 }
 
-static int xeth_upper_lnko_registered_ok(void)
+static int xeth_upper_lnko_register(struct rtnl_link_ops *lnko, int err)
 {
-	return xeth_upper_lnko_is_registered() ? 0 : -EINVAL;
+	if (err)
+		return err;
+	err = rtnl_link_register(lnko);
+	if (!err)
+		err = xeth_upper_lnko_is_registered(lnko) ? 0 : -EINVAL;
+	return err;
+}
+
+static void xeth_upper_lnko_unregister(struct rtnl_link_ops *lnko)
+{
+	if (xeth_upper_lnko_is_registered(lnko))
+		rtnl_link_unregister(lnko);
 }
 
 __init int xeth_upper_init(void)
 {
-	int err;
+	int err = 0;
 	
-	err = xeth_debug_err(rtnl_link_register(&xeth_upper_link_ops));
-	if (!err)
-		err = xeth_debug_err(xeth_upper_lnko_registered_ok());
+	err = xeth_upper_lnko_register(&xeth_upper_lnko_vlan, err);
+	err = xeth_upper_lnko_register(&xeth_upper_lnko_bridge, err);
+	err = xeth_upper_lnko_register(&xeth_upper_lnko_lag, err);
 	return err;
 }
 
 int xeth_upper_deinit(int err)
 {
-	if (xeth_upper_lnko_is_registered()) {
-		rtnl_link_unregister(&xeth_upper_link_ops);
-	}
+	xeth_upper_lnko_unregister(&xeth_upper_lnko_vlan);
+	xeth_upper_lnko_unregister(&xeth_upper_lnko_bridge);
+	xeth_upper_lnko_unregister(&xeth_upper_lnko_lag);
 	return err;
 }
 
@@ -823,7 +1025,7 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 	nd = xeth_debug_ptr_err(alloc_netdev_mqs(sizeof(*priv),
 						 name,
 						 NET_NAME_USER,
-						 xeth_upper_lnko_setup,
+						 xeth_upper_lnko_setup_port,
 						 xeth_upper_txqs,
 						 xeth_upper_rxqs));
 	if (IS_ERR(nd))
