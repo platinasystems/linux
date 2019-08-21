@@ -643,12 +643,11 @@ static int xeth_upper_nd_register(struct net_device *nd)
  * xeth_upper_lnko_new_vlan() - create xeth mux upper proxy of a remote netdev
  *
  * Here is how to create a vlan of an existing XETH_PORT device,
- *	ip link add [[name ]IFNAME] link XETH_PORT type xeth-vlan [vid VID]
- * or,
- *	ip link add [name ]IFNAME.VID link XETH_PORT type xeth
+ *	ip link add [[name ]xethPORT[-SUBPORT][.VID]] link xethPORT[-SUBPORT] \
+ *		type xeth-vlan [vid VID]
  *
  * Without VID, this searches for an unused VID beginning with 1.
- * Without IFNAME, this assigns XETH_PORT[.VID].
+ * Without IFNAME it's dubbed xethPORT[-SUBPORT].VID.
  *
  */
 static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
@@ -730,7 +729,8 @@ static int xeth_upper_new_bridge_or_lag(struct net *src_net,
 					struct net_device *nd,
 					struct nlattr *tb[],
 					struct nlattr *data[],
-					struct netlink_ext_ack *extack)
+					struct netlink_ext_ack *extack,
+					u8 kind)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	u8 muxbits = xeth_mux_bits();
@@ -742,6 +742,9 @@ static int xeth_upper_new_bridge_or_lag(struct net *src_net,
 		return (int)xid_or_err;
 	}
 	priv->xid = (u32)xid_or_err;
+	priv->kind = kind;
+	if (!tb || !tb[IFLA_IFNAME])
+		scnprintf(nd->name, IFNAMSIZ, "xeth-%u", priv->xid);
 	xeth_upper_steal_mux_addr(nd);
 	return xeth_upper_nd_register(nd);
 }
@@ -750,7 +753,7 @@ static int xeth_upper_new_bridge_or_lag(struct net *src_net,
  * Here is how to add a bridge device to the xeth mux with iproute2,
  *	ip link add [[name ]IFNAME] type xeth-bridge
  *
- * Without IFNAME it's dubbed xethbr-XID.
+ * Without an IFNAME it's dubbed xeth-XID.
  */
 static int xeth_upper_lnko_new_bridge(struct net *src_net,
 				      struct net_device *nd,
@@ -758,19 +761,15 @@ static int xeth_upper_lnko_new_bridge(struct net *src_net,
 				      struct nlattr *data[],
 				      struct netlink_ext_ack *extack)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-
-	priv->kind = XETH_DEV_KIND_BRIDGE;
-	if (!tb || !tb[IFLA_IFNAME])
-		scnprintf(nd->name, IFNAMSIZ, "xethbr-%u", priv->xid);
-	return xeth_upper_new_bridge_or_lag(src_net, nd, tb, data, extack);
+	return xeth_upper_new_bridge_or_lag(src_net, nd, tb, data, extack,
+					    XETH_DEV_KIND_BRIDGE);
 }
 
 /*
  * Here is how to add a bridge device to the xeth mux with iproute2,
  *	ip link add [[name ]IFNAME] type xeth-lag
  *
- * Without IFNAME it's dubbed xethlag-XID.
+ * Without an IFNAME it's dubbed xeth-XID.
  */
 static int xeth_upper_lnko_new_lag(struct net *src_net,
 				   struct net_device *nd,
@@ -778,12 +777,8 @@ static int xeth_upper_lnko_new_lag(struct net *src_net,
 				   struct nlattr *data[],
 				   struct netlink_ext_ack *extack)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-
-	priv->kind = XETH_DEV_KIND_LAG;
-	if (!tb || !tb[IFLA_IFNAME])
-		scnprintf(nd->name, IFNAMSIZ, "xethlag-%u", priv->xid);
-	return xeth_upper_new_bridge_or_lag(src_net, nd, tb, data, extack);
+	return xeth_upper_new_bridge_or_lag(src_net, nd, tb, data, extack,
+					    XETH_DEV_KIND_LAG);
 }
 
 static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
