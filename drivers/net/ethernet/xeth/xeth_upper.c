@@ -285,6 +285,8 @@ static int xeth_upper_ndo_add_slave(struct net_device *upper_nd,
 	else if (upper_priv->kind == XETH_DEV_KIND_LAG)
 		lower_nd->priv_flags |= IFF_TEAM_PORT;
 
+	lower_nd->flags |= IFF_SLAVE;
+
 	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, true);
 }
 
@@ -302,6 +304,7 @@ static int xeth_upper_ndo_del_slave(struct net_device *upper_nd,
 	}
 	lower_priv = netdev_priv(lower_nd);
 	lower_nd->priv_flags &= ~(IFF_BRIDGE_PORT|IFF_TEAM_PORT);
+	lower_nd->flags &= ~IFF_SLAVE;
 	netdev_upper_dev_unlink(lower_nd, upper_nd);
 	netdev_update_features(upper_nd);
 	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, false);
@@ -580,6 +583,7 @@ static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
 	nd->netdev_ops = &xeth_upper_ndo_bridge_or_lag;
 	nd->needs_free_netdev = true;
 	nd->priv_destructor = NULL;
+	nd->flags |= IFF_MASTER;
 	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
 	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	nd->priv_flags |= IFF_NO_QUEUE;
