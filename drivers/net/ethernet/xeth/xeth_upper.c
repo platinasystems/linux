@@ -245,7 +245,7 @@ static void xeth_upper_ndo_get_stats64(struct net_device *nd,
 	spin_unlock(&priv->link.mutex);
 }
 
-static int xeth_upper_ndo_add_slave(struct net_device *upper_nd,
+static int xeth_upper_ndo_add_lower(struct net_device *upper_nd,
 				    struct net_device *lower_nd,
 				    struct netlink_ext_ack *extack)
 {
@@ -253,22 +253,13 @@ static int xeth_upper_ndo_add_slave(struct net_device *upper_nd,
 	struct xeth_upper_priv *lower_priv;
 	int err = 0;
 
-	if (upper_priv->kind != XETH_DEV_KIND_BRIDGE &&
-	    upper_priv->kind != XETH_DEV_KIND_LAG) {
-		NL_SET_ERR_MSG(extack,
-			       "This device cannot enslave another");
-		return -EOPNOTSUPP;
-	}
 	if (!xeth_upper_check(lower_nd)) {
-		NL_SET_ERR_MSG(extack,
-			       "This device may only enslave another xeth");
+		NL_SET_ERR_MSG(extack, "This device may only enslave another xeth");
 		return -EOPNOTSUPP;
 	}
 	lower_priv = netdev_priv(lower_nd);
-	if (lower_priv->kind != XETH_DEV_KIND_PORT &&
-	    lower_priv->kind != XETH_DEV_KIND_VLAN) {
-		NL_SET_ERR_MSG(extack,
-			       "This device maynot be enslaved");
+	if (lower_priv->kind == XETH_DEV_KIND_BRIDGE) {
+		NL_SET_ERR_MSG(extack, "Cannot enslave a bridge");
 		return -EOPNOTSUPP;
 	}
 	if (netdev_master_upper_dev_get(lower_nd))
@@ -290,7 +281,7 @@ static int xeth_upper_ndo_add_slave(struct net_device *upper_nd,
 	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, true);
 }
 
-static int xeth_upper_ndo_del_slave(struct net_device *upper_nd,
+static int xeth_upper_ndo_del_lower(struct net_device *upper_nd,
 				    struct net_device *lower_nd)
 {
 	struct xeth_upper_priv *upper_priv = netdev_priv(upper_nd);
@@ -332,8 +323,8 @@ static const struct net_device_ops xeth_upper_ndo_bridge_or_lag = {
 	.ndo_start_xmit = xeth_upper_ndo_xmit,
 	.ndo_get_iflink = xeth_upper_ndo_get_iflink,
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
-	.ndo_add_slave = xeth_upper_ndo_add_slave,
-	.ndo_del_slave = xeth_upper_ndo_del_slave,
+	.ndo_add_slave = xeth_upper_ndo_add_lower,
+	.ndo_del_slave = xeth_upper_ndo_del_lower,
 };
 
 static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
@@ -793,10 +784,18 @@ static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 	hlist_del_rcu(&priv->node);
 	xeth_mux_unlock();
 
-	xeth_kobject_put(&priv->ethtool.flag.names.kobj);
-	xeth_kobject_put(&priv->ethtool.stat.names.kobj);
-
 	unregister_netdevice_queue(nd, q);
+}
+
+static void xeth_upper_lnko_del_bridge_or_lag(struct net_device *nd, struct list_head *q)
+{
+	struct net_device *lower;
+	struct list_head *lowers;
+
+	netdev_for_each_lower_dev(nd, lower, lowers)
+		xeth_upper_ndo_del_lower(nd, lower);
+
+	xeth_upper_lnko_del(nd, q);
 }
 
 static struct net *xeth_upper_lnko_get_net(const struct net_device *nd)
@@ -806,14 +805,8 @@ static struct net *xeth_upper_lnko_get_net(const struct net_device *nd)
 	return dev_net(nd);
 }
 
-static const struct nla_policy xeth_upper_nla_policy_vlan[] = {
+static const struct nla_policy xeth_upper_nla_policy_vlan[XETH_VLAN_N_IFLA] = {
 	[XETH_VLAN_IFLA_VID] = { .type = NLA_U16 },
-};
-
-enum {
-	xeth_upper_nla_maxtype_vlan =
-		ARRAY_SIZE(xeth_upper_nla_policy_vlan)-1,
-
 };
 
 static struct rtnl_link_ops xeth_upper_lnko_vlan = {
@@ -825,7 +818,7 @@ static struct rtnl_link_ops xeth_upper_lnko_vlan = {
 	.dellink	= xeth_upper_lnko_del,
 	.get_link_net	= xeth_upper_lnko_get_net,
 	.policy		= xeth_upper_nla_policy_vlan,
-	.maxtype	= xeth_upper_nla_maxtype_vlan,
+	.maxtype	= XETH_VLAN_N_IFLA - 1,
 };
 
 static struct rtnl_link_ops xeth_upper_lnko_bridge = {
@@ -834,7 +827,7 @@ static struct rtnl_link_ops xeth_upper_lnko_bridge = {
 	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
 	.validate	= xeth_upper_lnko_validate_bridge_or_lag,
 	.newlink	= xeth_upper_lnko_new_bridge,
-	.dellink	= xeth_upper_lnko_del,
+	.dellink	= xeth_upper_lnko_del_bridge_or_lag,
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
@@ -844,7 +837,7 @@ static struct rtnl_link_ops xeth_upper_lnko_lag = {
 	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
 	.validate	= xeth_upper_lnko_validate_bridge_or_lag,
 	.newlink	= xeth_upper_lnko_new_lag,
-	.dellink	= xeth_upper_lnko_del,
+	.dellink	= xeth_upper_lnko_del_bridge_or_lag,
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
@@ -879,17 +872,19 @@ __init int xeth_upper_init(void)
 {
 	int err = 0;
 	
-	err = xeth_upper_lnko_register(&xeth_upper_lnko_vlan, err);
 	err = xeth_upper_lnko_register(&xeth_upper_lnko_bridge, err);
 	err = xeth_upper_lnko_register(&xeth_upper_lnko_lag, err);
+	err = xeth_upper_lnko_register(&xeth_upper_lnko_vlan, err);
 	return err;
 }
 
 int xeth_upper_deinit(int err)
 {
-	xeth_upper_lnko_unregister(&xeth_upper_lnko_vlan);
+	/* WARNING must deinit the bridges and lags first so that they
+	 * release all vlan lowers before those are unregistered */
 	xeth_upper_lnko_unregister(&xeth_upper_lnko_bridge);
 	xeth_upper_lnko_unregister(&xeth_upper_lnko_lag);
+	xeth_upper_lnko_unregister(&xeth_upper_lnko_vlan);
 	return err;
 }
 
