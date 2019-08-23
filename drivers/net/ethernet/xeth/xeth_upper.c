@@ -16,20 +16,12 @@ enum {
 	xeth_upper_link_stats = sizeof(struct rtnl_link_stats64)/sizeof(__u64),
 };
 
-enum xeth_upper_rcu {
-	xeth_upper_rcu_carrier_off,
-	xeth_upper_rcu_reset_stats,
-	xeth_upper_rcu_dump_ifinfo,
-};
-
 struct xeth_upper_priv {
 	struct hlist_node __rcu	node;
 	struct spinlock mutex;
 	u32 xid;
 	u8 kind;
-	struct {
-		struct rcu_head carrier_off, dump_ifinfo, reset_stats;
-	} rcu;
+	struct rcu_head rcu;
 	struct {
 		struct spinlock mutex;
 		struct ethtool_link_ksettings settings;
@@ -107,7 +99,7 @@ static int xeth_upper_add_rcu(struct net_device *nd)
 static void xeth_upper_cb_carrier_off(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
-		container_of(rcu, struct xeth_upper_priv, rcu.carrier_off);
+		container_of(rcu, struct xeth_upper_priv, rcu);
 	struct net_device *nd = xeth_netdev(priv);
 	netif_carrier_off(nd);
 }
@@ -115,7 +107,7 @@ static void xeth_upper_cb_carrier_off(struct rcu_head *rcu)
 static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
-		container_of(rcu, struct xeth_upper_priv, rcu.dump_ifinfo);
+		container_of(rcu, struct xeth_upper_priv, rcu);
 	struct net_device *nd = xeth_netdev(priv);
 	struct in_device *in_dev = in_dev_get(nd);
 	struct inet6_dev *in6_dev = in6_dev_get(nd);
@@ -123,19 +115,6 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0, XETH_IFINFO_REASON_DUMP);
 	xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flag.bits);
 	xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
-
-	if (priv->kind == XETH_DEV_KIND_BRIDGE ||
-	    priv->kind == XETH_DEV_KIND_LAG) {
-		/* FIXME send all of the lower devices */
-		struct net_device *lower;
-		struct list_head *iter;
-		netdev_for_each_lower_dev(nd, lower, iter) {
-			struct xeth_upper_priv *lower_priv =
-				netdev_priv(lower);
-			xeth_sbtx_change_upper(priv->xid, lower_priv->xid,
-					       true);
-		}
-	}
 
 	if (in_dev) {
 		struct in_ifaddr *ifa;
@@ -156,10 +135,28 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	}
 }
 
+static void xeth_upper_cb_dump_lowers(struct rcu_head *rcu)
+{
+	struct xeth_upper_priv *priv =
+		container_of(rcu, struct xeth_upper_priv, rcu);
+	struct net_device *nd = xeth_netdev(priv);
+	struct net_device *lower;
+	struct list_head *iter;
+
+	if (priv->kind == XETH_DEV_KIND_BRIDGE ||
+	    priv->kind == XETH_DEV_KIND_BRIDGE)
+		netdev_for_each_lower_dev(nd, lower, iter) {
+			struct xeth_upper_priv *lower_priv =
+				netdev_priv(lower);
+			xeth_sbtx_change_upper(priv->xid, lower_priv->xid,
+					       true);
+		}
+}
+
 static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
-		container_of(rcu, struct xeth_upper_priv, rcu.reset_stats);
+		container_of(rcu, struct xeth_upper_priv, rcu);
 	u64 *link_stat = (u64*)&priv->link.stats;
 	int i;
 
@@ -888,53 +885,34 @@ int xeth_upper_deinit(int err)
 	return err;
 }
 
-static void xeth_upper_call_rcu_for_each_priv(enum xeth_upper_rcu t,
-					      rcu_callback_t cb)
+static void xeth_upper_call_rcu_for_each_priv(rcu_callback_t cb)
 {
 	int bkt;
-	struct rcu_head *rh = NULL;
 	struct xeth_upper_priv *priv = NULL;
 	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
 
 	rcu_read_lock();
 	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
-		hlist_for_each_entry_rcu(priv, head, node) {
-			switch (t) {
-			case xeth_upper_rcu_carrier_off:
-				rh = &priv->rcu.carrier_off;
-				break;
-			case xeth_upper_rcu_dump_ifinfo:
-				rh = &priv->rcu.dump_ifinfo;
-				break;
-			case xeth_upper_rcu_reset_stats:
-				rh = &priv->rcu.reset_stats;
-				break;
-			default:
-				rh = NULL;
-			}
-			if (rh)
-				call_rcu(rh, cb);
-		}
+		hlist_for_each_entry_rcu(priv, head, node)
+			call_rcu(&priv->rcu, cb);
 	rcu_read_unlock();
 	rcu_barrier();
 }
 
 void xeth_upper_all_carrier_off(void)
 {
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_rcu_carrier_off,
-					  xeth_upper_cb_carrier_off);
+	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_carrier_off);
 }
 
 void xeth_upper_all_dump_ifinfo(void)
 {
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_rcu_dump_ifinfo,
-					  xeth_upper_cb_dump_ifinfo);
+	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_dump_ifinfo);
+	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_dump_lowers);
 }
 
 void xeth_upper_all_reset_stats(void)
 {
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_rcu_reset_stats,
-					  xeth_upper_cb_reset_stats);
+	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_reset_stats);
 }
 
 void xeth_upper_changemtu(int mtu, int max_mtu)
