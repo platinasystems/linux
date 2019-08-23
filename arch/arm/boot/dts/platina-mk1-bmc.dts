@@ -601,7 +601,7 @@
 	};
 	QSPI_MUX_SEL@31 {
 		gpio-pin-desc;
-		output-low;
+		input;
 	};
 };
 
