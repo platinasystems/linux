@@ -143,14 +143,10 @@ static void xeth_upper_cb_dump_lowers(struct rcu_head *rcu)
 	struct net_device *lower;
 	struct list_head *iter;
 
-	if (priv->kind == XETH_DEV_KIND_BRIDGE ||
-	    priv->kind == XETH_DEV_KIND_BRIDGE)
-		netdev_for_each_lower_dev(nd, lower, iter) {
-			struct xeth_upper_priv *lower_priv =
-				netdev_priv(lower);
-			xeth_sbtx_change_upper(priv->xid, lower_priv->xid,
-					       true);
-		}
+	netdev_for_each_lower_dev(nd, lower, iter) {
+		struct xeth_upper_priv *lower_priv = netdev_priv(lower);
+		xeth_sbtx_change_upper(priv->xid, lower_priv->xid, true);
+	}
 }
 
 static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
@@ -899,6 +895,21 @@ static void xeth_upper_call_rcu_for_each_priv(rcu_callback_t cb)
 	rcu_barrier();
 }
 
+static void xeth_upper_call_rcu_for_each_priv_kind(rcu_callback_t cb, u8 kind)
+{
+	int bkt;
+	struct xeth_upper_priv *priv = NULL;
+	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
+
+	rcu_read_lock();
+	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
+		hlist_for_each_entry_rcu(priv, head, node)
+			if (priv->kind == kind)
+				call_rcu(&priv->rcu, cb);
+	rcu_read_unlock();
+	rcu_barrier();
+}
+
 void xeth_upper_all_carrier_off(void)
 {
 	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_carrier_off);
@@ -906,8 +917,24 @@ void xeth_upper_all_carrier_off(void)
 
 void xeth_upper_all_dump_ifinfo(void)
 {
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_dump_ifinfo);
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_dump_lowers);
+	/* We *must* dump in this order: ports, lags, vlans, then bridges as
+	 * the control daemon needs to know all of the ports before the vlans
+	 * that link those ports. Similar for lags that aggregate ports but may
+	 * then be muxed to vlans. And finally, bridges that may have any of
+	 * these kinds as members.
+	 */
+	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
+					       XETH_DEV_KIND_PORT);
+	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
+					       XETH_DEV_KIND_LAG);
+	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
+					       XETH_DEV_KIND_VLAN);
+	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
+					       XETH_DEV_KIND_BRIDGE);
+	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_lowers,
+					       XETH_DEV_KIND_LAG);
+	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_lowers,
+					       XETH_DEV_KIND_BRIDGE);
 }
 
 void xeth_upper_all_reset_stats(void)
