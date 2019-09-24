@@ -112,9 +112,13 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	struct in_device *in_dev = in_dev_get(nd);
 	struct inet6_dev *in6_dev = in6_dev_get(nd);
 
-	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0, XETH_IFINFO_REASON_DUMP);
-	xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flag.bits);
-	xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
+	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0,
+			 XETH_IFINFO_REASON_DUMP);
+
+	if (priv->kind == XETH_DEV_KIND_PORT) {
+		xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flag.bits);
+		xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
+	}
 
 	if (in_dev) {
 		struct in_ifaddr *ifa;
