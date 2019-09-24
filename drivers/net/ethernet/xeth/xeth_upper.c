@@ -627,6 +627,10 @@ static int xeth_upper_nd_register(struct net_device *nd)
 		xeth_mux_lock();
 		hlist_del_rcu(&priv->node);
 		xeth_mux_unlock();
+	} else {
+		struct xeth_upper_priv *priv = netdev_priv(nd);
+		err = xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0,
+				       XETH_IFINFO_REASON_NEW);
 	}
 	return err;
 }
