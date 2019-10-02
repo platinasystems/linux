@@ -195,17 +195,20 @@ static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
 
 static int xeth_upper_ndo_open(struct net_device *nd)
 {
-	/* FIXME conditioned by mux */
-	netif_carrier_on(nd);
+	struct xeth_upper_priv *priv = netdev_priv(nd);
 	xeth_debug_nd(nd, "opened");
-	return 0;
+	/* netif_carrier_on() through xeth_sbrx_carrier() */
+	return xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, nd->flags,
+				XETH_IFINFO_REASON_UP);
 }
 
 static int xeth_upper_ndo_stop(struct net_device *nd)
 {
-	netif_carrier_off(nd);
+	struct xeth_upper_priv *priv = netdev_priv(nd);
 	xeth_debug_nd(nd, "stopped");
-	return 0;
+	/* netif_carrier_off() through xeth_sbrx_carrier() */
+	return xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, nd->flags,
+				XETH_IFINFO_REASON_DOWN);
 }
 
 static netdev_tx_t xeth_upper_ndo_xmit(struct sk_buff *skb,
