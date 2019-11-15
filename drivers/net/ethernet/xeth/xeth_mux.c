@@ -200,19 +200,28 @@ static netdev_tx_t xeth_mux_xmit(struct sk_buff *skb, struct net_device *nd)
 {
 	/* FIXME can we replace this w/ a BPF LAG ? */
 	struct xeth_mux_priv *priv = netdev_priv(nd);
-	struct net_device *lower = priv->lower[xeth_mux_lower_hash(skb)];
+	struct net_device *lower;
 
 	spin_lock(&priv->link.mutex);
+	lower = priv->lower[xeth_mux_lower_hash(skb)];
 	if (lower) {
-		skb->dev = lower;
-		if (dev_queue_xmit(skb)) {
-			priv->link.stats.tx_dropped++;
+		if (lower->flags & IFF_UP) {
+			skb->dev = lower;
+			no_xeth_debug_skb(skb);
+			if (dev_queue_xmit(skb)) {
+				priv->link.stats.tx_dropped++;
+			} else {
+				priv->link.stats.tx_packets++;
+				priv->link.stats.tx_bytes += skb->len;
+			}
 		} else {
-			priv->link.stats.tx_packets++;
-			priv->link.stats.tx_bytes += skb->len;
+			priv->link.stats.tx_errors++;
+			priv->link.stats.tx_heartbeat_errors++;
+			kfree_skb(skb);
 		}
 	} else {
 		priv->link.stats.tx_errors++;
+		priv->link.stats.tx_aborted_errors++;
 		kfree_skb(skb);
 	}
 	spin_unlock(&priv->link.mutex);
@@ -231,7 +240,10 @@ static void xeth_mux_get_stats64(struct net_device *nd,
 static void xeth_mux_forward(struct net_device *to, struct sk_buff *skb)
 {
 	struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
-	int rx_result = dev_forward_skb(to, skb);
+	int rx_result;
+	
+	no_xeth_debug_skb(skb);
+	rx_result = dev_forward_skb(to, skb);
 	spin_lock(&priv->link.mutex);
 	if (rx_result == NET_RX_SUCCESS) {
 		priv->link.stats.rx_packets++;
@@ -633,8 +645,18 @@ void xeth_mux_reload_lowers(void)
 
 int xeth_mux_queue_xmit(struct sk_buff *skb)
 {
-	skb->dev = xeth_mux;
-	return dev_queue_xmit(skb);
+	if (xeth_mux->flags & IFF_UP) {
+		skb->dev = xeth_mux;
+		dev_queue_xmit(skb);
+	} else {
+		struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
+		kfree_skb_list(skb);
+		spin_lock(&priv->link.mutex);
+		priv->link.stats.tx_errors++;
+		priv->link.stats.tx_carrier_errors++;
+		spin_unlock(&priv->link.mutex);
+	}
+	return NETDEV_TX_OK;
 }
 
 struct hlist_head __rcu *xeth_mux_upper_head_hashed(u32 xid)
