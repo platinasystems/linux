@@ -77,13 +77,6 @@ static struct {
 	void	*onie;
 } *platina_mk1;
 
-static const char *const platina_mk1_flag_names[] = {
-	"copper",
-	"fec74",
-	"fec91",
-	NULL,
-};
-
 static void platina_mk1_ethtool_port_cb(struct ethtool_link_ksettings *ks)
 {
 	ks->base.speed = 0;
@@ -279,7 +272,6 @@ static int platina_mk1_create_ports(void)
 					  port + first_port,
 					  subport + first_port);
 				err = xeth_create_port(name, xid, pea,
-						       platina_mk1_flag_names,
 						       platina_mk1_ethtool_subport_cb);
 			}
 		} else {
@@ -287,7 +279,6 @@ static int platina_mk1_create_ports(void)
 			u64 pea = ea ? ea + port : 0;
 			scnprintf(name, IFNAMSIZ, "xeth%d", port + first_port);
 			err = xeth_create_port(name, xid, pea,
-					       platina_mk1_flag_names,
 					       platina_mk1_ethtool_port_cb);
 		}
 	}
