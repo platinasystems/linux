@@ -46,6 +46,14 @@ extern int xeth_encap;
 extern int xeth_base_xid;
 extern struct net_device *xeth_mux;
 
+enum {
+	xeth_n_ethtool_flags = 32,
+	xeth_n_ethtool_stats = 512,
+};
+
+extern struct xeth_kstrs xeth_ethtool_flag_names;
+extern struct xeth_kstrs xeth_ethtool_stat_names;
+
 enum xeth_encap {
 	XETH_ENCAP_VLAN = 0,
 };

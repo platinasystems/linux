@@ -112,7 +112,8 @@ static void xeth_mux_setup(struct net_device *nd)
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
 	nd->max_mtu = ETH_MAX_MTU;
-	/* FIXME netif_keep_dst(nd); */
+
+	/* FIXME should we do this? netif_keep_dst(nd); */
 }
 
 static int xeth_mux_open(struct net_device *nd)
@@ -441,7 +442,22 @@ __init int xeth_mux_init(void)
 	priv = netdev_priv(xeth_mux);
 	priv->sb = xeth_sb_start();
 
-	return IS_ERR(priv->sb) ? PTR_ERR(priv->sb) : 0;
+	if (IS_ERR(priv->sb)) {
+		err = PTR_ERR(priv->sb);
+		kfree(xeth_mux);
+		return err;
+	}
+
+	xeth_debug_err(xeth_kstrs_init(&xeth_ethtool_flag_names,
+				       &xeth_mux->dev.kobj,
+				       "ethtool-flag-names",
+				       xeth_n_ethtool_flags));
+	xeth_debug_err(xeth_kstrs_init(&xeth_ethtool_stat_names,
+				       &xeth_mux->dev.kobj,
+				       "ethtool-stat-names",
+				       xeth_n_ethtool_stats));
+
+	return 0;
 }
 
 int xeth_mux_deinit(int err)
