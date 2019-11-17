@@ -23,6 +23,9 @@ int xeth_base_xid = 3000;
 module_param(xeth_base_xid, int, 0);
 MODULE_PARM_DESC(xeth_base_xid, " of 1st dynamic interface, default 3000");
 
+struct xeth_kstrs xeth_ethtool_flag_names;
+struct xeth_kstrs xeth_ethtool_stat_names;
+
 static int xeth_main_deinit(int err)
 {
 #define xeth_main_sub_deinit(deinit, err)				\
