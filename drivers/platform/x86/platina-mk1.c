@@ -77,6 +77,13 @@ static struct {
 	void	*onie;
 } *platina_mk1;
 
+static const char *const platina_mk1_ethtool_flag_names[] = {
+	"copper",
+	"fec74",
+	"fec91",
+	NULL,
+};
+
 static void platina_mk1_ethtool_port_cb(struct ethtool_link_ksettings *ks)
 {
 	ks->base.speed = 0;
@@ -370,6 +377,9 @@ static int __init platina_mk1_init(void)
 	if (IS_ERR(platina_mk1->onie))
 		return platina_mk1_pr_egress(PTR_ERR(platina_mk1->onie),
 					     "can't parse onie eeprom");
+	err = xeth_set_ethtool_flag_names(platina_mk1_ethtool_flag_names);
+	if (err != ARRAY_SIZE(platina_mk1_ethtool_flag_names)-1)
+		return platina_mk1_pr_egress(err, "can't ethtool flag names");
 	err = platina_mk1_add_lowers();
 	if (err)
 		return platina_mk1_pr_egress(err, "can't add lower links");

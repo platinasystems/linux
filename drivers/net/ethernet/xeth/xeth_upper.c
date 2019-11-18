@@ -1080,3 +1080,16 @@ void xeth_delete_port(u32 xid)
 	unregister_netdev(nd);
 }
 EXPORT_SYMBOL(xeth_delete_port);
+
+int xeth_set_ethtool_flag_names(const char *const names[])
+{
+	return xeth_kstrs_copy(&xeth_ethtool_flag_names, names);
+}
+EXPORT_SYMBOL(xeth_set_ethtool_flag_names);
+
+int xeth_set_ethtool_stat_names(const char *const names[])
+{
+	return xeth_kstrs_copy(&xeth_ethtool_stat_names, names);
+}
+EXPORT_SYMBOL(xeth_set_ethtool_stat_names);
+
