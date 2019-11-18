@@ -57,4 +57,24 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 
 void xeth_delete_port(u32 xid);
 
+/**
+ * xeth_set_ethtool_flag_names
+ *
+ * @names:	A NULL terminated list of string constants.
+ *
+ * Returns a non-zero, negative number on error; otherwise, returns the
+ * non-zero, poistive number of strings copied.
+ */
+int xeth_set_ethtool_flag_names(const char *const names[]);
+
+/**
+ * xeth_set_ethtool_stat_names
+ *
+ * @names:	A NULL terminated list of string constants.
+ *
+ * Returns a non-zero, negative number on error; otherwise, returns the
+ * non-zero, poistive number of strings copied.
+ */
+int xeth_set_ethtool_stat_names(const char *const names[]);
+
 #endif  /* __XETH_H */
