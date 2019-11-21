@@ -128,6 +128,16 @@ do {									\
 	xeth_mux_flag_set(xeth_flag_##name);				\
 } while(0)
 
+#define xeth_supports(ks, mk)						\
+({									\
+	(ethtool_link_ksettings_test_link_mode(ks, supported, mk));	\
+})
+
+#define xeth_advertising(ks, mk)					\
+({									\
+	(ethtool_link_ksettings_test_link_mode(ks, advertising, mk));	\
+})
+
 static inline void *xeth_netdev(const void *priv)
 {
 	const size_t offset = ALIGN(sizeof(struct net_device), NETDEV_ALIGN);

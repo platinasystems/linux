@@ -108,8 +108,9 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 			 XETH_IFINFO_REASON_DUMP);
 
 	if (priv->kind == XETH_DEV_KIND_PORT) {
-		xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flags);
 		xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
+		if (priv->ethtool.flags)
+			xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flags);
 	}
 
 	if (in_dev) {
@@ -436,6 +437,37 @@ static int xeth_upper_eto_get_link_ksettings(struct net_device *nd,
 	return 0;
 }
 
+static int xeth_upper_validate_port(struct net_device *nd, u8 port)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct ethtool_link_ksettings *ks = &priv->ethtool.settings;
+	bool t = false;
+
+	switch (port) {
+	case PORT_TP:
+		t = ethtool_link_ksettings_test_link_mode(ks, supported, TP);
+		break;
+	case PORT_AUI:
+		t = ethtool_link_ksettings_test_link_mode(ks, supported, AUI);
+		break;
+	case PORT_MII:
+		t = ethtool_link_ksettings_test_link_mode(ks, supported, MII);
+		break;
+	case PORT_FIBRE:
+		t = ethtool_link_ksettings_test_link_mode(ks, supported, FIBRE);
+		break;
+	case PORT_BNC:
+		t = ethtool_link_ksettings_test_link_mode(ks, supported, BNC);
+		break;
+	case PORT_DA:
+	case PORT_NONE:
+	case PORT_OTHER:
+		t = true;
+		break;
+	}
+	return t ? 0 : -EINVAL;
+}
+
 static int xeth_upper_validate_duplex(struct net_device *nd, u8 duplex)
 {
 	return xeth_debug_nd_err(nd,
@@ -468,40 +500,155 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 	spin_lock(&priv->ethtool.mutex);
 	
 	settings = &priv->ethtool.settings;
+	if (req->base.port != settings->base.port) {
+		err = xeth_upper_validate_port(nd, req->base.port);
+		if (err)
+			goto egress;
+		settings->base.port = req->base.port;
+	}
 	if (req->base.autoneg == AUTONEG_DISABLE) {
 		err = xeth_upper_validate_speed(nd, req->base.speed);
-		if (!err)
-			err = xeth_upper_validate_duplex(nd, req->base.duplex);
-		if (!err) {
-			settings->base.autoneg = req->base.autoneg;
-			settings->base.speed = req->base.speed;
-			settings->base.duplex = req->base.duplex;
-		}
+		if (err)
+			goto egress;
+		err = xeth_upper_validate_duplex(nd, req->base.duplex);
+		if (err)
+			goto egress;
+		settings->base.autoneg = req->base.autoneg;
+		settings->base.speed = req->base.speed;
+		settings->base.duplex = req->base.duplex;
 	} else {
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(res);
-		if (bitmap_andnot(res,
-				  req->link_modes.advertising,
+		if (bitmap_andnot(res, req->link_modes.advertising,
 				  settings->link_modes.supported,
 				  __ETHTOOL_LINK_MODE_MASK_NBITS)) {
 			err = -EINVAL;
 		} else {
 			err = xeth_upper_validate_duplex(nd, req->base.duplex);
-			if (!err) {
-				bitmap_copy(settings->link_modes.advertising,
-					    req->link_modes.advertising,
-					    __ETHTOOL_LINK_MODE_MASK_NBITS);
-				settings->base.autoneg = AUTONEG_ENABLE;
-				settings->base.speed = 0;
-				settings->base.duplex = req->base.duplex;
-			}
+			if (err)
+				goto egress;
+			bitmap_copy(settings->link_modes.advertising,
+				    req->link_modes.advertising,
+				    __ETHTOOL_LINK_MODE_MASK_NBITS);
+			settings->base.autoneg = AUTONEG_ENABLE;
+			settings->base.speed = 0;
+			settings->base.duplex = req->base.duplex;
 		}
 	}
 
-	if (!err)
-		err = xeth_sbtx_ethtool_settings(priv->xid, settings);
+	err = xeth_sbtx_ethtool_settings(priv->xid, settings);
 
+egress:
 	spin_unlock(&priv->ethtool.mutex);
 	return err;
+}
+
+static int xeth_upper_eto_get_fecparam(struct net_device *nd,
+				       struct ethtool_fecparam *param)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct ethtool_link_ksettings *ks = &priv->ethtool.settings;
+	const u32 fec_both = ETHTOOL_FEC_RS | ETHTOOL_FEC_BASER;
+
+	param->fec = 0;
+	param->active_fec = 0;
+	spin_lock(&priv->ethtool.mutex);
+	if (xeth_supports(ks, FEC_NONE))
+		param->fec |= ETHTOOL_FEC_OFF;
+	if (xeth_supports(ks, FEC_RS))
+		param->fec |= ETHTOOL_FEC_RS;
+	if (xeth_supports(ks, FEC_BASER))
+		param->fec |= ETHTOOL_FEC_BASER;
+	if ((param->fec & fec_both) == fec_both)
+		param->fec |= ETHTOOL_FEC_AUTO;
+	if (!param->fec)
+		param->fec = ETHTOOL_FEC_NONE;
+	if (param->fec == ETHTOOL_FEC_NONE)
+		param->active_fec = ETHTOOL_FEC_NONE;
+	else if (xeth_advertising(ks, FEC_NONE))
+		param->active_fec = ETHTOOL_FEC_OFF;
+	else if (xeth_advertising(ks, FEC_RS))
+		param->active_fec = xeth_advertising(ks, FEC_BASER) ?
+			ETHTOOL_FEC_AUTO : ETHTOOL_FEC_RS;
+	else if (xeth_advertising(ks, FEC_BASER))
+		param->fec = ETHTOOL_FEC_BASER;
+	spin_unlock(&priv->ethtool.mutex);
+	return 0;
+}
+
+static int xeth_upper_eto_set_fecparam(struct net_device *nd,
+				       struct ethtool_fecparam *param)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct ethtool_link_ksettings *ks = &priv->ethtool.settings;
+	int err = 0;
+
+	spin_lock(&priv->ethtool.mutex);
+	switch (param->fec) {
+	case ETHTOOL_FEC_AUTO:
+		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
+							   FEC_RS) ||
+		    !ethtool_link_ksettings_test_link_mode(ks, supported,
+							   FEC_BASER)) {
+			err = -EOPNOTSUPP;
+		} else {
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_NONE);
+			ethtool_link_ksettings_add_link_mode(ks, advertising,
+							     FEC_RS);
+			ethtool_link_ksettings_add_link_mode(ks, advertising,
+							     FEC_BASER);
+			xeth_debug_nd(nd, "set fec auto");
+		}
+		break;
+	case ETHTOOL_FEC_OFF:
+		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
+							   FEC_NONE)) {
+			err = -EOPNOTSUPP;
+		} else {
+			ethtool_link_ksettings_add_link_mode(ks, advertising,
+							     FEC_NONE);
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_RS);
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_BASER);
+			xeth_debug_nd(nd, "set fec none");
+		}
+		break;
+	case ETHTOOL_FEC_RS:
+		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
+							   FEC_RS)) {
+			err = -EOPNOTSUPP;
+		} else {
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_NONE);
+			ethtool_link_ksettings_add_link_mode(ks, advertising,
+							     FEC_RS);
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_BASER);
+			xeth_debug_nd(nd, "set fec rs");
+		}
+		break;
+	case ETHTOOL_FEC_BASER:
+		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
+							   FEC_BASER)) {
+			err = -EOPNOTSUPP;
+		} else {
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_NONE);
+			ethtool_link_ksettings_del_link_mode(ks, advertising,
+							     FEC_RS);
+			ethtool_link_ksettings_add_link_mode(ks, advertising,
+							     FEC_BASER);
+			xeth_debug_nd(nd, "set fec baser");
+		}
+		break;
+	default:
+		err = -EINVAL;
+	}
+	spin_unlock(&priv->ethtool.mutex);
+	if (err)
+		return err;
+	return xeth_sbtx_ethtool_settings(priv->xid, ks);
 }
 
 static const struct ethtool_ops xeth_upper_ethtool_ops = {
@@ -514,6 +661,8 @@ static const struct ethtool_ops xeth_upper_ethtool_ops = {
 	.set_priv_flags = xeth_upper_eto_set_priv_flags,
 	.get_link_ksettings = xeth_upper_eto_get_link_ksettings,
 	.set_link_ksettings = xeth_upper_eto_set_link_ksettings,
+	.get_fecparam = xeth_upper_eto_get_fecparam,
+	.set_fecparam = xeth_upper_eto_set_fecparam,
 };
 
 static void xeth_upper_lnko_setup_port(struct net_device *nd)
