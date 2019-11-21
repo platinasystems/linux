@@ -158,9 +158,8 @@ struct xeth_msg_ethtool_settings {
 struct xeth_msg_ethtool_link_modes {
 	struct xeth_msg_header header;
 	uint32_t xid;
-	uint8_t nbytes;
-	uint8_t pad[3];
-	uint8_t modes[];
+	uint32_t reserved;
+	uint64_t modes;
 };
 
 struct xeth_next_hop {
