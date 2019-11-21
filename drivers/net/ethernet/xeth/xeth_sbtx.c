@@ -200,35 +200,38 @@ int xeth_sbtx_ethtool_flags(u32 xid, u32 flags)
 	return 0;
 }
 
-#define xeth_sbtx_ethtool_link_modes(ptr, msg_kind, mode_kind)		\
-do {									\
-	struct xeth_sbtx_entry *entry;					\
-	struct xeth_msg_ethtool_link_modes *msg;			\
-	size_t sz = sizeof(*msg) + sizeof((ptr)->link_modes.mode_kind);	\
-	entry = xeth_sbtx_alloc(sz);					\
-	if (!entry)							\
-		return -ENOMEM;						\
-	xeth_sbtx_msg_set(&entry->data[0],				\
-			  XETH_MSG_KIND_ETHTOOL_LINK_MODES_##msg_kind);	\
-	msg = (typeof(msg))&entry->data[0];				\
-	msg->xid = xid;							\
-	msg->nbytes = sizeof((ptr)->link_modes.mode_kind);		\
-	for (bit = 0; bit <= __ETHTOOL_LINK_MODE_LAST; bit++)		\
-		if (test_bit(bit, (ptr)->link_modes.mode_kind))		\
-			msg->modes[bit/8] |= 1<<(bit & (8-1));		\
-	xeth_sbtx_queue(entry);						\
-} while (0)
+static int xeth_sbtx_ethtool_link_modes(enum xeth_msg_kind kind, u32 xid,
+					const volatile unsigned long *addr)
+{
+	struct xeth_sbtx_entry *entry;
+	struct xeth_msg_ethtool_link_modes *msg;
+	int bit;
+	const unsigned bits = min(__ETHTOOL_LINK_MODE_MASK_NBITS, 64);
+
+	entry = xeth_sbtx_alloc(sizeof(*msg));
+	if (!entry)
+		return -ENOMEM;
+	xeth_sbtx_msg_set(&entry->data[0], kind);
+	msg = (typeof(msg))&entry->data[0];
+	msg->xid = xid;
+	for (bit = 0; bit < bits; bit++)
+		if (test_bit(bit, addr))
+			msg->modes |= 1ULL<<bit;
+	xeth_sbtx_queue(entry);
+	return 0;
+}
 
 /* Note, this sends speed 0 if autoneg, regardless of base.speed This is to
  * cover controller (e.g. vnet) restart where in it's earlier run it has sent
  * SPEED to note the auto-negotiated speed to ethtool user, but in subsequent
  * run, we don't want the controller to override autoneg.
  */
-int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *p)
+int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *ks)
 {
-	int bit;
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_settings *msg;
+	const enum xeth_msg_kind kadv =
+		XETH_MSG_KIND_ETHTOOL_LINK_MODES_ADVERTISING;
 
 	entry = xeth_sbtx_alloc(sizeof(*msg));
 	if (!entry)
@@ -236,19 +239,17 @@ int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *p)
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS);
 	msg = (typeof(msg))&entry->data[0];
 	msg->xid = xid;
-	msg->speed = p->base.autoneg ?  0 : p->base.speed;
-	msg->duplex = p->base.duplex;
-	msg->port = p->base.port;
-	msg->phy_address = p->base.phy_address;
-	msg->autoneg = p->base.autoneg;
-	msg->mdio_support = p->base.mdio_support;
-	msg->eth_tp_mdix = p->base.eth_tp_mdix;
-	msg->eth_tp_mdix_ctrl = p->base.eth_tp_mdix_ctrl;
+	msg->speed = ks->base.autoneg ?  0 : ks->base.speed;
+	msg->duplex = ks->base.duplex;
+	msg->port = ks->base.port;
+	msg->phy_address = ks->base.phy_address;
+	msg->autoneg = ks->base.autoneg;
+	msg->mdio_support = ks->base.mdio_support;
+	msg->eth_tp_mdix = ks->base.eth_tp_mdix;
+	msg->eth_tp_mdix_ctrl = ks->base.eth_tp_mdix_ctrl;
 	xeth_sbtx_queue(entry);
-	xeth_sbtx_ethtool_link_modes(p, SUPPORTED, supported);
-	xeth_sbtx_ethtool_link_modes(p, ADVERTISING, advertising);
-	xeth_sbtx_ethtool_link_modes(p, LP_ADVERTISING, lp_advertising);
-	return 0;
+	return xeth_sbtx_ethtool_link_modes(kadv, xid,
+					    ks->link_modes.advertising);
 }
 
 static const char * const xeth_sbtx_fib_event_names[] = {

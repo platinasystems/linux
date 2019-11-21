@@ -77,13 +77,6 @@ static struct {
 	void	*onie;
 } *platina_mk1;
 
-static const char *const platina_mk1_ethtool_flag_names[] = {
-	"copper",
-	"fec74",
-	"fec91",
-	NULL,
-};
-
 static void platina_mk1_ethtool_port_cb(struct ethtool_link_ksettings *ks)
 {
 	ks->base.speed = 0;
@@ -119,6 +112,9 @@ static void platina_mk1_ethtool_port_cb(struct ethtool_link_ksettings *ks)
 	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_BASER);
 	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
 		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+	/* disable FEC_NONE so that the vner-platina-mk1 interprets
+	 * FEC_RS|FEC_BASER as FEC_AUTO */
+	ethtool_link_ksettings_del_link_mode(ks, advertising, FEC_NONE);
 }
 
 static void platina_mk1_ethtool_subport_cb(struct ethtool_link_ksettings *ks)
@@ -377,9 +373,6 @@ static int __init platina_mk1_init(void)
 	if (IS_ERR(platina_mk1->onie))
 		return platina_mk1_pr_egress(PTR_ERR(platina_mk1->onie),
 					     "can't parse onie eeprom");
-	err = xeth_set_ethtool_flag_names(platina_mk1_ethtool_flag_names);
-	if (err != ARRAY_SIZE(platina_mk1_ethtool_flag_names)-1)
-		return platina_mk1_pr_egress(err, "can't ethtool flag names");
 	err = platina_mk1_add_lowers();
 	if (err)
 		return platina_mk1_pr_egress(err, "can't add lower links");
