@@ -294,12 +294,19 @@ static int xeth_upper_ndo_del_lower(struct net_device *upper_nd,
 	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, false);
 }
 
+static int xeth_upper_ndo_change_mtu(struct net_device *upper_nd, int mtu)
+{
+	upper_nd->mtu = mtu;
+	return 0;
+}
+
 static const struct net_device_ops xeth_upper_ndo_port = {
 	.ndo_open = xeth_upper_ndo_open,
 	.ndo_stop = xeth_upper_ndo_stop,
 	.ndo_start_xmit = xeth_upper_ndo_xmit,
 	.ndo_get_iflink = xeth_upper_ndo_get_iflink,
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
+	.ndo_change_mtu = xeth_upper_ndo_change_mtu,
 };
 
 static const struct net_device_ops xeth_upper_ndo_vlan = {
@@ -308,6 +315,7 @@ static const struct net_device_ops xeth_upper_ndo_vlan = {
 	.ndo_start_xmit = xeth_upper_ndo_xmit,
 	.ndo_get_iflink = xeth_upper_ndo_get_iflink_vlan,
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
+	.ndo_change_mtu = xeth_upper_ndo_change_mtu,
 };
 
 static const struct net_device_ops xeth_upper_ndo_bridge_or_lag = {
@@ -684,6 +692,8 @@ static void xeth_upper_lnko_setup_port(struct net_device *nd)
 	nd->hw_enc_features = VETH_FEATURES;
 	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
 #endif /* __FIXEME__ */
+	nd->min_mtu = xeth_mux->min_mtu;
+	nd->max_mtu = xeth_mux->max_mtu;
 }
 
 static void xeth_upper_lnko_setup_vlan(struct net_device *nd)

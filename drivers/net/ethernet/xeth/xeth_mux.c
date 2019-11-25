@@ -111,7 +111,9 @@ static void xeth_mux_setup(struct net_device *nd)
 	nd->priv_flags |= IFF_DONT_BRIDGE;
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->max_mtu = ETH_MAX_MTU;
+	nd->min_mtu = ETH_MIN_MTU;
+	nd->max_mtu = ETH_MAX_MTU - VLAN_HLEN;
+	nd->mtu = XETH_SIZEOF_JUMBO_FRAME - VLAN_HLEN;
 
 	/* FIXME should we do this? netif_keep_dst(nd); */
 }
@@ -136,8 +138,16 @@ static int xeth_mux_add_lower(struct net_device *upper,
 			      struct netlink_ext_ack *extack)
 {
 	struct xeth_mux_priv *priv = netdev_priv(upper);
+	int (*change_mtu_op)(struct net_device *dev, int new_mtu) =
+		lower->netdev_ops->ndo_change_mtu;
 	int err;
 
+	if (change_mtu_op) {
+		err = xeth_debug_err(change_mtu_op(lower,
+						   XETH_SIZEOF_JUMBO_FRAME));
+		if (err)
+			return err;
+	}
 	if (xeth_debug_err(lower == dev_net(upper)->loopback_dev))
 		return -EOPNOTSUPP;
 
