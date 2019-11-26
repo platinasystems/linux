@@ -36,7 +36,7 @@ static void xeth_sbrx_carrier(struct xeth_msg_carrier *msg)
 {
 	struct net_device *nd;
 	
-	nd = xeth_debug_hold_rcu(xeth_upper_lookup_rcu(msg->xid));
+	nd = xeth_debug_rcu(xeth_upper_lookup_rcu(msg->xid));
 	if (!nd)
 		xeth_counter_inc(sbrx_no_dev);
 	else
@@ -56,7 +56,7 @@ static void xeth_sbrx_ethtool_stat(struct xeth_msg_stat *msg)
 {
 	struct net_device *nd;
 	
-	nd = xeth_debug_hold_rcu(xeth_upper_lookup_rcu(msg->xid));
+	nd = xeth_debug_rcu(xeth_upper_lookup_rcu(msg->xid));
 	if (!nd)
 		xeth_counter_inc(sbrx_no_dev);
 	else
@@ -67,7 +67,7 @@ static void xeth_sbrx_link_stat(struct xeth_msg_stat *msg)
 {
 	struct net_device *nd;
 	
-	nd = xeth_debug_hold_rcu(xeth_upper_lookup_rcu(msg->xid));
+	nd = xeth_debug_rcu(xeth_upper_lookup_rcu(msg->xid));
 	if (!nd)
 		xeth_counter_inc(sbrx_no_dev);
 	else
