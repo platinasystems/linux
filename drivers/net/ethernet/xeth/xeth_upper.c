@@ -11,7 +11,8 @@
 enum {
 	xeth_upper_rxqs = 1,
 	xeth_upper_txqs = 1,
-	xeth_upper_link_stats = sizeof(struct rtnl_link_stats64)/sizeof(__u64),
+	xeth_upper_link_n_stats =
+		sizeof(struct rtnl_link_stats64)/sizeof(__u64),
 };
 
 struct xeth_upper_priv {
@@ -21,16 +22,30 @@ struct xeth_upper_priv {
 	u8 kind;
 	struct rcu_head rcu;
 	struct {
-		struct spinlock mutex;
 		struct ethtool_link_ksettings settings;
-		u64 counters[xeth_n_ethtool_stats];
-		u32 flags;
+		u32 priv_flags;
+		u16 n_priv_flags;
+		u16 n_stats;
+		u64 stats[xeth_n_ethtool_stats];
 	} ethtool;
-	struct {
-		struct spinlock mutex;
-		struct rtnl_link_stats64 stats;
-	} link;
+	struct rtnl_link_stats64 link_stats;
 };
+
+static int xeth_upper_ethtool_n_priv_flags(struct xeth_upper_priv *priv)
+{
+	if (!priv->ethtool.n_priv_flags)
+		priv->ethtool.n_priv_flags =
+			xeth_kstrs_count(&xeth_ethtool_flag_names);
+	return priv->ethtool.n_priv_flags;
+}
+
+static int xeth_upper_ethtool_n_stats(struct xeth_upper_priv *priv)
+{
+	if (!priv->ethtool.n_stats)
+		priv->ethtool.n_stats =
+			xeth_kstrs_count(&xeth_ethtool_stat_names);
+	return priv->ethtool.n_stats;
+}
 
 struct net_device *xeth_upper_lookup_rcu(u32 xid)
 {
@@ -109,8 +124,9 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 
 	if (priv->kind == XETH_DEV_KIND_PORT) {
 		xeth_sbtx_ethtool_settings(priv->xid, &priv->ethtool.settings);
-		if (priv->ethtool.flags)
-			xeth_sbtx_ethtool_flags(priv->xid, priv->ethtool.flags);
+		if (priv->ethtool.priv_flags)
+			xeth_sbtx_ethtool_flags(priv->xid,
+						priv->ethtool.priv_flags);
 	}
 
 	if (in_dev) {
@@ -150,17 +166,14 @@ static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	u64 *link_stat = (u64*)&priv->link.stats;
+	u64 *link_stat = (u64*)&priv->link_stats;
+	int ethtool_n_stats = xeth_upper_ethtool_n_stats(priv);
 	int i;
 
-	spin_lock(&priv->link.mutex);
-	for (i = 0; i < xeth_upper_link_stats; i++)
+	for (i = 0; i < xeth_upper_link_n_stats; i++)
 		link_stat[i] = 0;
-	spin_unlock(&priv->link.mutex);
-	spin_lock(&priv->ethtool.mutex);
-	for (i = 0; i < xeth_n_ethtool_stats; i++)
-		priv->ethtool.counters[i] = 0;
-	spin_unlock(&priv->ethtool.mutex);
+	for (i = 0; i < ethtool_n_stats; i++)
+		priv->ethtool.stats[i] = 0;
 }
 
 static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
@@ -233,9 +246,7 @@ static void xeth_upper_ndo_get_stats64(struct net_device *nd,
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	spin_lock(&priv->link.mutex);
-	memcpy(dst, &priv->link.stats, sizeof(*dst));
-	spin_unlock(&priv->link.mutex);
+	memcpy(dst, &priv->link_stats, sizeof(*dst));
 }
 
 static int xeth_upper_ndo_add_lower(struct net_device *upper_nd,
@@ -345,19 +356,21 @@ static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
 	else
 		scnprintf(drvinfo->bus_info, ETHTOOL_BUSINFO_LEN, "%u",
 			  priv->xid);
-	drvinfo->n_priv_flags = xeth_kstrs_count(&xeth_ethtool_flag_names);
-	drvinfo->n_stats = xeth_kstrs_count(&xeth_ethtool_stat_names);
+	drvinfo->n_priv_flags = xeth_upper_ethtool_n_priv_flags(priv);
+	drvinfo->n_stats = xeth_upper_ethtool_n_stats(priv);
 }
 
 static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
 {
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+
 	switch (sset) {
+	case ETH_SS_PRIV_FLAGS:
+		return xeth_upper_ethtool_n_priv_flags(priv);
+	case ETH_SS_STATS:
+		return xeth_upper_ethtool_n_stats(priv);
 	case ETH_SS_TEST:
 		return 0;
-	case ETH_SS_STATS:
-		return xeth_kstrs_count(&xeth_ethtool_stat_names);
-	case ETH_SS_PRIV_FLAGS:
-		return xeth_kstrs_count(&xeth_ethtool_flag_names);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -366,6 +379,7 @@ static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
 static void xeth_upper_eto_get_strings(struct net_device *nd,
 				       u32 sset, u8 *data)
 {
+	struct xeth_upper_priv *priv = netdev_priv(nd);
 	char *p = (char *)data;
 	size_t i, n;
 
@@ -373,7 +387,7 @@ static void xeth_upper_eto_get_strings(struct net_device *nd,
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		n = xeth_kstrs_count(&xeth_ethtool_stat_names);
+		n = xeth_upper_ethtool_n_stats(priv);
 		for (i = 0; i < n; i++) {
 			xeth_kstrs_string(&xeth_ethtool_stat_names, p,
 					  ETH_GSTRING_LEN, i);
@@ -381,7 +395,7 @@ static void xeth_upper_eto_get_strings(struct net_device *nd,
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		n = xeth_kstrs_count(&xeth_ethtool_flag_names);
+		n = xeth_upper_ethtool_n_priv_flags(priv);
 		for (i = 0; i < n; i++) {
 			xeth_kstrs_string(&xeth_ethtool_flag_names, p,
 					  ETH_GSTRING_LEN, i);
@@ -396,38 +410,27 @@ static void xeth_upper_eto_get_stats(struct net_device *nd,
 				     u64 *data)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	size_t sz = xeth_kstrs_count(&xeth_ethtool_stat_names) *
-		sizeof(*priv->ethtool.counters);
-
-	spin_lock(&priv->ethtool.mutex);
-	memcpy(data, &priv->ethtool.counters, sz);
-	spin_unlock(&priv->ethtool.mutex);
+	size_t sz = xeth_upper_ethtool_n_stats(priv) *
+		sizeof(*priv->ethtool.stats);
+	memcpy(data, &priv->ethtool.stats, sz);
 }
 
 static u32 xeth_upper_eto_get_priv_flags(struct net_device *nd)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	u32 flags;
 
-	spin_lock(&priv->ethtool.mutex);
-	flags = priv->ethtool.flags;
-	spin_unlock(&priv->ethtool.mutex);
-
-	return flags;
+	return priv->ethtool.priv_flags;
 }
 
 static int xeth_upper_eto_set_priv_flags(struct net_device *nd, u32 flags)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	size_t n = xeth_kstrs_count(&xeth_ethtool_flag_names);
+	size_t n = xeth_upper_ethtool_n_priv_flags(priv);
 
 	if (flags >= (1 << n))
 		return -EINVAL;
 
-	spin_lock(&priv->ethtool.mutex);
-	priv->ethtool.flags = flags;
-	spin_unlock(&priv->ethtool.mutex);
-
+	priv->ethtool.priv_flags = flags;
 	xeth_sbtx_ethtool_flags(priv->xid, flags);
 
 	return 0;
@@ -438,9 +441,7 @@ static int xeth_upper_eto_get_link_ksettings(struct net_device *nd,
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	spin_lock(&priv->ethtool.mutex);
 	memcpy(p, &priv->ethtool.settings, sizeof(*p));
-	spin_unlock(&priv->ethtool.mutex);
 
 	return 0;
 }
@@ -505,22 +506,20 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 	struct ethtool_link_ksettings *settings;
 	int err;
 
-	spin_lock(&priv->ethtool.mutex);
-	
 	settings = &priv->ethtool.settings;
 	if (req->base.port != settings->base.port) {
 		err = xeth_upper_validate_port(nd, req->base.port);
 		if (err)
-			goto egress;
+			return err;
 		settings->base.port = req->base.port;
 	}
 	if (req->base.autoneg == AUTONEG_DISABLE) {
 		err = xeth_upper_validate_speed(nd, req->base.speed);
 		if (err)
-			goto egress;
+			return err;
 		err = xeth_upper_validate_duplex(nd, req->base.duplex);
 		if (err)
-			goto egress;
+			return err;
 		settings->base.autoneg = req->base.autoneg;
 		settings->base.speed = req->base.speed;
 		settings->base.duplex = req->base.duplex;
@@ -529,11 +528,11 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 		if (bitmap_andnot(res, req->link_modes.advertising,
 				  settings->link_modes.supported,
 				  __ETHTOOL_LINK_MODE_MASK_NBITS)) {
-			err = -EINVAL;
+			return -EINVAL;
 		} else {
 			err = xeth_upper_validate_duplex(nd, req->base.duplex);
 			if (err)
-				goto egress;
+				return err;
 			bitmap_copy(settings->link_modes.advertising,
 				    req->link_modes.advertising,
 				    __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -543,11 +542,7 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 		}
 	}
 
-	err = xeth_sbtx_ethtool_settings(priv->xid, settings);
-
-egress:
-	spin_unlock(&priv->ethtool.mutex);
-	return err;
+	return xeth_sbtx_ethtool_settings(priv->xid, settings);
 }
 
 static int xeth_upper_eto_get_fecparam(struct net_device *nd,
@@ -559,7 +554,6 @@ static int xeth_upper_eto_get_fecparam(struct net_device *nd,
 
 	param->fec = 0;
 	param->active_fec = 0;
-	spin_lock(&priv->ethtool.mutex);
 	if (xeth_supports(ks, FEC_NONE))
 		param->fec |= ETHTOOL_FEC_OFF;
 	if (xeth_supports(ks, FEC_RS))
@@ -579,7 +573,6 @@ static int xeth_upper_eto_get_fecparam(struct net_device *nd,
 			ETHTOOL_FEC_AUTO : ETHTOOL_FEC_RS;
 	else if (xeth_advertising(ks, FEC_BASER))
 		param->fec = ETHTOOL_FEC_BASER;
-	spin_unlock(&priv->ethtool.mutex);
 	return 0;
 }
 
@@ -588,74 +581,65 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *ks = &priv->ethtool.settings;
-	int err = 0;
 
-	spin_lock(&priv->ethtool.mutex);
 	switch (param->fec) {
 	case ETHTOOL_FEC_AUTO:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
 							   FEC_RS) ||
 		    !ethtool_link_ksettings_test_link_mode(ks, supported,
 							   FEC_BASER)) {
-			err = -EOPNOTSUPP;
-		} else {
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_NONE);
-			ethtool_link_ksettings_add_link_mode(ks, advertising,
-							     FEC_RS);
-			ethtool_link_ksettings_add_link_mode(ks, advertising,
-							     FEC_BASER);
-			xeth_debug_nd(nd, "set fec auto");
+			return -EOPNOTSUPP;
 		}
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_NONE);
+		ethtool_link_ksettings_add_link_mode(ks, advertising,
+						     FEC_RS);
+		ethtool_link_ksettings_add_link_mode(ks, advertising,
+						     FEC_BASER);
+		xeth_debug_nd(nd, "set fec auto");
 		break;
 	case ETHTOOL_FEC_OFF:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
 							   FEC_NONE)) {
-			err = -EOPNOTSUPP;
-		} else {
-			ethtool_link_ksettings_add_link_mode(ks, advertising,
-							     FEC_NONE);
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_RS);
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_BASER);
-			xeth_debug_nd(nd, "set fec none");
+			return -EOPNOTSUPP;
 		}
+		ethtool_link_ksettings_add_link_mode(ks, advertising,
+						     FEC_NONE);
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_RS);
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_BASER);
+		xeth_debug_nd(nd, "set fec none");
 		break;
 	case ETHTOOL_FEC_RS:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
 							   FEC_RS)) {
-			err = -EOPNOTSUPP;
-		} else {
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_NONE);
-			ethtool_link_ksettings_add_link_mode(ks, advertising,
-							     FEC_RS);
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_BASER);
-			xeth_debug_nd(nd, "set fec rs");
+			return -EOPNOTSUPP;
 		}
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_NONE);
+		ethtool_link_ksettings_add_link_mode(ks, advertising,
+						     FEC_RS);
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_BASER);
+		xeth_debug_nd(nd, "set fec rs");
 		break;
 	case ETHTOOL_FEC_BASER:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
 							   FEC_BASER)) {
-			err = -EOPNOTSUPP;
-		} else {
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_NONE);
-			ethtool_link_ksettings_del_link_mode(ks, advertising,
-							     FEC_RS);
-			ethtool_link_ksettings_add_link_mode(ks, advertising,
-							     FEC_BASER);
-			xeth_debug_nd(nd, "set fec baser");
+			return -EOPNOTSUPP;
 		}
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_NONE);
+		ethtool_link_ksettings_del_link_mode(ks, advertising,
+						     FEC_RS);
+		ethtool_link_ksettings_add_link_mode(ks, advertising,
+						     FEC_BASER);
+		xeth_debug_nd(nd, "set fec baser");
 		break;
 	default:
-		err = -EINVAL;
+		return -EINVAL;
 	}
-	spin_unlock(&priv->ethtool.mutex);
-	if (err)
-		return err;
 	return xeth_sbtx_ethtool_settings(priv->xid, ks);
 }
 
@@ -816,8 +800,6 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 
 	priv->kind = XETH_DEV_KIND_VLAN;
 	spin_lock_init(&priv->mutex);
-	spin_lock_init(&priv->ethtool.mutex);
-	spin_lock_init(&priv->link.mutex);
 
 	li = nla_get_u32(tb[IFLA_LINK]);
 	link = xeth_debug_rcu(xeth_upper_link_rcu(li));
@@ -1111,39 +1093,26 @@ void xeth_upper_ethtool_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	if (index >= xeth_n_ethtool_stats) {
+	if (index < xeth_upper_ethtool_n_stats(priv))
+		priv->ethtool.stats[index] = count;
+	else
 		xeth_counter_inc(sbrx_invalid);
-		return;
-	}
-	spin_lock(&priv->ethtool.mutex);
-	priv->ethtool.counters[index] = count;
-	spin_unlock(&priv->ethtool.mutex);
 }
 
 void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	u64 *statp;
 
-	if (index >= xeth_upper_link_stats) {
+	if (index < xeth_upper_link_n_stats)
+		((u64*)&priv->link_stats)[index] = count;
+	else
 		xeth_counter_inc(sbrx_invalid);
-		return;
-	}
-	
-	statp = (u64*)&priv->link.stats + index;
-
-	spin_lock(&priv->link.mutex);
-	*statp = count;
-	spin_unlock(&priv->link.mutex);
 }
 
 void xeth_upper_speed(struct net_device *nd, u32 mbps)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-
-	spin_lock(&priv->ethtool.mutex);
 	priv->ethtool.settings.base.speed = mbps;
-	spin_unlock(&priv->ethtool.mutex);
 }
 
 void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
@@ -1191,8 +1160,6 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 	priv = netdev_priv(nd);
 
 	spin_lock_init(&priv->mutex);
-	spin_lock_init(&priv->ethtool.mutex);
-	spin_lock_init(&priv->link.mutex);
 
 	priv->xid = xid;
 	priv->kind = XETH_DEV_KIND_PORT;
