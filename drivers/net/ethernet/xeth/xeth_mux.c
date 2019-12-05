@@ -120,14 +120,31 @@ static void xeth_mux_setup(struct net_device *nd)
 
 static int xeth_mux_open(struct net_device *nd)
 {
-	/* FIXME conditioned by lower nds */
-	netif_carrier_on(nd);
+	struct net_device *lower;
+	struct list_head *lowers;
+	int err;
+
+	netdev_for_each_lower_dev(nd, lower, lowers) {
+		err = xeth_debug_nd_err(lower, dev_open(lower));
+		if (err)
+			return err;
+	}
+
+	/* FIXME condition with lowers carrier? */
+	if (!netif_carrier_ok(nd))
+		netif_carrier_on(nd);
 	return 0;
 }
 
 static int xeth_mux_stop(struct net_device *nd)
 {
-	netif_carrier_off(nd);
+	struct net_device *lower;
+	struct list_head *lowers;
+
+	if (netif_carrier_ok(nd))
+		netif_carrier_off(nd);
+	netdev_for_each_lower_dev(nd, lower, lowers)
+		dev_close(lower);
 	return 0;
 }
 
