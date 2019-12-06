@@ -205,6 +205,7 @@ static int xeth_upper_ndo_open(struct net_device *nd)
 	int err = xeth_debug_nd_err(xeth_mux, dev_open(xeth_mux));
 	if (err)
 		return err;
+	netif_carrier_off(nd);
 	return xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, nd->flags,
 				XETH_IFINFO_REASON_UP);
 }
