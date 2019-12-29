@@ -78,7 +78,7 @@ static void xeth_sbrx_speed(struct xeth_msg_speed *msg)
 {
 	struct net_device *nd;
 	
-	nd = xeth_debug_hold_rcu(xeth_upper_lookup_rcu(msg->xid));
+	nd = xeth_debug_rcu(xeth_upper_lookup_rcu(msg->xid));
 	if (!nd)
 		xeth_counter_inc(sbrx_no_dev);
 	else
