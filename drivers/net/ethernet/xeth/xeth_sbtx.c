@@ -346,7 +346,7 @@ int xeth_sbtx_fib6_entry(unsigned long event,
 		i++;
 		sibling++;
 	}
-	xeth_debug("fib6 %s %pI6c/%d w/ %d nexhop(s)",
+	no_xeth_debug("fib6 %s %pI6c/%d w/ %d nexhop(s)",
 		      xeth_sbtx_fib_event_names[event],
 		      &rt->fib6_dst.addr, rt->fib6_dst.plen,
 		      1+i);
