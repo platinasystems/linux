@@ -265,6 +265,8 @@ static int platina_mk1_create_ports(void)
 	first_port = (sz == sizeof(u8) && v[0] == 0) ? 0 : 1;
 	for (port = 0; err >= 0&& port < platina_mk1_n_ports; port++) {
 		if (platina_mk1_provision[port] > 1) {
+			void (*cb)(struct ethtool_link_ksettings *) =
+				platina_mk1_ethtool_subport_cb;
 			for (subport = 0;
 			     err >= 0 && subport < platina_mk1_provision[port];
 			     subport++) {
@@ -274,15 +276,15 @@ static int platina_mk1_create_ports(void)
 				scnprintf(name, IFNAMSIZ, "xeth%d-%d",
 					  port + first_port,
 					  subport + first_port);
-				err = xeth_create_port(name, xid, pea,
-						       platina_mk1_ethtool_subport_cb);
+				err = xeth_create_port(name, xid, pea, cb);
 			}
 		} else {
 			u32 xid = platina_mk1_top_xid - port;
 			u64 pea = ea ? ea + port : 0;
+			void (*cb)(struct ethtool_link_ksettings *) =
+				platina_mk1_ethtool_port_cb;
 			scnprintf(name, IFNAMSIZ, "xeth%d", port + first_port);
-			err = xeth_create_port(name, xid, pea,
-					       platina_mk1_ethtool_port_cb);
+			err = xeth_create_port(name, xid, pea, cb);
 		}
 	}
 	return (err < 0) ? (int)err : 0;
