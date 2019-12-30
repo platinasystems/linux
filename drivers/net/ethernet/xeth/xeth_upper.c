@@ -1138,7 +1138,7 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
 }
 
 s64 xeth_create_port(const char *name, u32 xid, u64 ea,
-		     void (*ethtool_cb) (struct ethtool_link_ksettings *))
+		     void (*cb)(struct ethtool_link_ksettings *))
 {
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
@@ -1184,8 +1184,8 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 		return x;
 	}
 
-	if (ethtool_cb)
-		ethtool_cb(&priv->ethtool.settings);
+	if (cb)
+		cb(&priv->ethtool.settings);
 
 	xeth_debug("%s xid %u mac %pM", name, xid, nd->dev_addr);
 	return xid;
