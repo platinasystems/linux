@@ -159,6 +159,10 @@ static int xeth_mux_add_lower(struct net_device *upper,
 		lower->netdev_ops->ndo_change_mtu;
 	int err;
 
+	err = xeth_debug_nd_err(lower, dev_set_promiscuity(lower, 1));
+	if (err < 0)
+		return err;
+
 	if (change_mtu_op) {
 		err = xeth_debug_err(change_mtu_op(lower,
 						   XETH_SIZEOF_JUMBO_FRAME));
@@ -209,6 +213,8 @@ static int xeth_mux_del_lower(struct net_device *upper,
 	spin_unlock(&priv->mutex);
 
 	netdev_rx_handler_unregister(lower);
+
+	dev_set_promiscuity(lower, -1);
 
 	return 0;
 }
