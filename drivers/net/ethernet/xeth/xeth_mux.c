@@ -308,7 +308,7 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 	}
 	skb->vlan_proto = 0;
 	skb->vlan_tci = 0;
-	upper = xeth_debug_hold_rcu(xeth_upper_lookup_rcu(xid));
+	upper = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
 	if (upper) {
 		skb_push(skb, ETH_HLEN);
 		skb->dev = upper;
