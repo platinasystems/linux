@@ -60,6 +60,7 @@ enum xeth_encap {
 
 enum xeth_counter {
 	xeth_counter_sb_connections,
+	xeth_counter_sbex_invalid,
 	xeth_counter_sbrx_invalid,
 	xeth_counter_sbrx_no_dev,
 	xeth_counter_sbrx_no_mem,
