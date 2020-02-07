@@ -36,6 +36,7 @@ struct xeth_mux_priv {
 	[xeth_counter_##name] = #name
 
 static const char *const xeth_mux_counter_names[] = {
+	xeth_mux_counter_name(sbex_invalid),
 	xeth_mux_counter_name(sbrx_invalid),
 	xeth_mux_counter_name(sbrx_no_dev),
 	xeth_mux_counter_name(sbrx_no_mem),
@@ -276,7 +277,6 @@ static void xeth_mux_forward(struct net_device *to, struct sk_buff *skb)
 	struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
 	int rx_result;
 	
-	no_xeth_debug_skb(skb);
 	rx_result = dev_forward_skb(to, skb);
 	spin_lock(&priv->link.mutex);
 	if (rx_result == NET_RX_SUCCESS) {
@@ -296,30 +296,30 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 	skb->priority =
 		(typeof(skb->priority))(skb->vlan_tci >> VLAN_PRIO_SHIFT);
 	xid = skb->vlan_tci & VLAN_VID_MASK;
-	if (skb->protocol == cpu_to_be16(ETH_P_8021Q)) {
-		struct vlan_hdr *v = (struct vlan_hdr *)skb->data;
-		xid |= VLAN_N_VID *
-			(be16_to_cpu(v->h_vlan_TCI) & VLAN_VID_MASK);
-		skb->protocol = v->h_vlan_encapsulated_proto;
-		skb_pull_rcsum(skb, VLAN_HLEN);
-		/* make DST, SRC address precede encapsulated protocol */
-		memmove(skb->data-ETH_HLEN, skb->data-(ETH_HLEN+VLAN_HLEN),
-			2*ETH_ALEN);
+	if (eth_type_vlan(skb->protocol)) {
+		__be16 tci = *(__be16*)(skb->data);
+		__be16 proto = *(__be16*)(skb->data+2);
+		xid |= VLAN_N_VID * (be16_to_cpu(tci) & VLAN_VID_MASK);
+		skb->protocol = proto;
+		skb_pull_inline(skb, VLAN_HLEN);
 	}
-	skb->vlan_proto = 0;
-	skb->vlan_tci = 0;
 	upper = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
 	if (upper) {
+		struct ethhdr *eth;
+		unsigned char *mac = skb_mac_header(skb);
 		skb_push(skb, ETH_HLEN);
-		skb->dev = upper;
-		xeth_debug_skb(skb);
+		memmove(skb->data, mac, 2*ETH_ALEN);
+		eth = (typeof(eth))skb->data;
+		eth->h_proto = skb->protocol;
+		skb->vlan_proto = 0;
+		skb->vlan_tci = 0;
 		xeth_mux_forward(upper, skb);
 	} else {
 		spin_lock(&priv->link.mutex);
 		priv->link.stats.rx_errors++;
-		priv->link.stats.rx_frame_errors++;
+		priv->link.stats.rx_nohandler++;
 		spin_unlock(&priv->link.mutex);
-		kfree_skb(skb);
+		dev_kfree_skb(skb);
 	}
 }
 
@@ -335,10 +335,15 @@ static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
 
 	priv = netdev_priv(xeth_mux);
 
-	if (eth_type_vlan(skb->vlan_proto))
+	if (eth_type_vlan(skb->vlan_proto)) {
 		xeth_mux_demux_vlan(skb);
-	else
-		xeth_mux_forward(xeth_mux, skb);
+	} else {
+		spin_lock(&priv->link.mutex);
+		priv->link.stats.rx_errors++;
+		priv->link.stats.rx_frame_errors++;
+		spin_unlock(&priv->link.mutex);
+		dev_kfree_skb(skb);
+	}
 
 	return RX_HANDLER_CONSUMED;
 }
@@ -598,20 +603,28 @@ void xeth_mux_counter_set(enum xeth_counter index, s64 n)
 void xeth_mux_exception(const char *buf, size_t n)
 {
 	struct sk_buff *skb;
+	struct vlan_ethhdr *veth = (struct vlan_ethhdr *)buf;
+	__be16 vlan_proto, vlan_tci, encap_proto;
 
+	if (!eth_type_vlan(veth->h_vlan_proto)) {
+		xeth_counter_inc(sbex_invalid);
+		return;
+	}
 	skb = netdev_alloc_skb(xeth_mux, n);
 	if (!skb) {
 		xeth_counter_inc(sbrx_no_mem);
 		return;
 	}
+	vlan_proto = veth->h_vlan_proto;
+	vlan_tci = veth->h_vlan_TCI;
+	encap_proto = veth->h_vlan_encapsulated_proto;
 	skb_put(skb, n);
 	memcpy(skb->data, buf, n);
-	skb->protocol = eth_type_trans(skb, xeth_mux);
-	if (eth_type_vlan(skb->protocol)) {
-		skb->vlan_proto = skb->protocol;
-		vlan_get_tag(skb, &skb->vlan_tci);
-	}
-	xeth_debug_skb(skb);
+	eth_type_trans(skb, xeth_mux);
+	skb->vlan_proto = vlan_proto;
+	skb->vlan_tci = VLAN_TAG_PRESENT | be16_to_cpu(vlan_tci);
+	skb->protocol = encap_proto;
+	skb_pull_inline(skb, VLAN_HLEN);
 	xeth_mux_demux(&skb);
 }
 
