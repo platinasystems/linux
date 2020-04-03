@@ -915,6 +915,10 @@ static int xeth_upper_lnko_new_lag(struct net *src_net,
 static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
+	u32 xid = xeth_upper_xid(nd);
+	enum xeth_dev_kind kind = xeth_upper_kind(nd);
+
+	xeth_sbtx_ifinfo(nd, xid, kind, 0, XETH_IFINFO_REASON_DEL);
 
 	xeth_mux_lock();
 	hlist_del_rcu(&priv->node);
