@@ -86,6 +86,40 @@ static void xeth_sbrx_speed(struct xeth_msg_speed *msg)
 		xeth_upper_speed(nd, msg->mbps);
 }
 
+static int xeth_sbrx_exception_vlan(const char *buf, size_t n)
+{
+	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)buf;
+	__be16 h_vlan_proto = veh->h_vlan_proto;
+	__be16 h_vlan_TCI = veh->h_vlan_TCI;
+	__be16 h_vlan_encapsulated_proto = veh->h_vlan_encapsulated_proto;
+	struct sk_buff *skb = netdev_alloc_skb(xeth_mux, n);
+	if (!skb) {
+		xeth_counter_inc(sbrx_no_mem);
+		return xeth_debug_err(-ENOMEM);
+	}
+	skb_put(skb, n);
+	memcpy(skb->data, buf, n);
+	eth_type_trans(skb, xeth_mux);
+	skb->vlan_proto = h_vlan_proto;
+	skb->vlan_tci = VLAN_TAG_PRESENT | be16_to_cpu(h_vlan_TCI);
+	skb->protocol = h_vlan_encapsulated_proto;
+	skb_pull_inline(skb, VLAN_HLEN);
+	xeth_mux_demux(&skb);
+	return 0;
+}
+
+static int xeth_sbrx_exception(const char *buf, size_t n)
+{
+	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)buf;
+
+	if (eth_type_vlan(veh->h_vlan_proto)) {
+		return xeth_sbrx_exception_vlan(buf, n);
+	}
+	xeth_counter_inc(sbex_invalid);
+	return xeth_debug_err(-EINVAL);
+}
+
+
 // return < 0 if error, 1 if sock closed, and 0 othewise
 static int xeth_sbrx_service(struct socket *conn)
 {
@@ -95,24 +129,23 @@ static int xeth_sbrx_service(struct socket *conn)
 		.iov_base = xeth_sbrx_buf,
 		.iov_len = XETH_SIZEOF_JUMBO_FRAME,
 	};
-	int err;
+	int n, err;
 
 	xeth_counter_inc(sbrx_ticks);
-	err = kernel_recvmsg(conn, &oob, &iov, 1, iov.iov_len, 0);
-	if (err == -EAGAIN) {
+	n = kernel_recvmsg(conn, &oob, &iov, 1, iov.iov_len, 0);
+	if (n == -EAGAIN) {
 		schedule();
 		return 0;
 	}
-	if (err == 0 || err == -ECONNRESET)
+	if (n == 0 || n == -ECONNRESET)
 		return 1;
-	if (err < 0)
-		return err;
+	if (n < 0)
+		return n;
 	xeth_counter_inc(sbrx_msgs);
-	if (err < sizeof(*msg))
+	if (n < sizeof(*msg))
 		return -EINVAL;
 	if (!xeth_sbrx_is_msg(msg)) {
-		xeth_mux_exception(xeth_sbrx_buf, err);
-		return 0;
+		return xeth_sbrx_exception(xeth_sbrx_buf, n);
 	}
 	err = xeth_debug_err(xeth_sbrx_msg_version_match(msg));
 	if (err)
