@@ -37,6 +37,7 @@ struct xeth_mux_priv {
 
 static const char *const xeth_mux_counter_names[] = {
 	xeth_mux_counter_name(sbex_invalid),
+	xeth_mux_counter_name(sbex_dropped),
 	xeth_mux_counter_name(sbrx_invalid),
 	xeth_mux_counter_name(sbrx_no_dev),
 	xeth_mux_counter_name(sbrx_no_mem),
@@ -148,8 +149,6 @@ static int xeth_mux_stop(struct net_device *nd)
 		dev_close(lower);
 	return 0;
 }
-
-static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb);
 
 static int xeth_mux_add_lower(struct net_device *upper,
 			      struct net_device *lower,
@@ -323,7 +322,7 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 	}
 }
 
-static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
+rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
 {
 	struct sk_buff *skb = *pskb;
 	struct xeth_mux_priv *priv;
@@ -598,34 +597,6 @@ void xeth_mux_counter_set(enum xeth_counter index, s64 n)
 	struct xeth_mux_priv *priv = xeth_mux_priv();
 	if (priv)
 		atomic64_set(&priv->counter[index], n);
-}
-
-void xeth_mux_exception(const char *buf, size_t n)
-{
-	struct sk_buff *skb;
-	struct vlan_ethhdr *veth = (struct vlan_ethhdr *)buf;
-	__be16 vlan_proto, vlan_tci, encap_proto;
-
-	if (!eth_type_vlan(veth->h_vlan_proto)) {
-		xeth_counter_inc(sbex_invalid);
-		return;
-	}
-	skb = netdev_alloc_skb(xeth_mux, n);
-	if (!skb) {
-		xeth_counter_inc(sbrx_no_mem);
-		return;
-	}
-	vlan_proto = veth->h_vlan_proto;
-	vlan_tci = veth->h_vlan_TCI;
-	encap_proto = veth->h_vlan_encapsulated_proto;
-	skb_put(skb, n);
-	memcpy(skb->data, buf, n);
-	eth_type_trans(skb, xeth_mux);
-	skb->vlan_proto = vlan_proto;
-	skb->vlan_tci = VLAN_TAG_PRESENT | be16_to_cpu(vlan_tci);
-	skb->protocol = encap_proto;
-	skb_pull_inline(skb, VLAN_HLEN);
-	xeth_mux_demux(&skb);
 }
 
 bool xeth_mux_flag(enum xeth_flag bit)

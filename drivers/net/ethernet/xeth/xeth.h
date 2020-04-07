@@ -61,6 +61,7 @@ enum xeth_encap {
 enum xeth_counter {
 	xeth_counter_sb_connections,
 	xeth_counter_sbex_invalid,
+	xeth_counter_sbex_dropped,
 	xeth_counter_sbrx_invalid,
 	xeth_counter_sbrx_no_dev,
 	xeth_counter_sbrx_no_mem,
@@ -171,7 +172,7 @@ void xeth_mux_counter_dec(enum xeth_counter cnt);
 void xeth_mux_counter_inc(enum xeth_counter cnt);
 void xeth_mux_counter_set(enum xeth_counter cnt, s64 n);
 
-void xeth_mux_exception(const char *buf, size_t n);
+rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb);
 
 bool xeth_mux_flag(enum xeth_flag bit);
 void xeth_mux_flag_clear(enum xeth_flag bit);
