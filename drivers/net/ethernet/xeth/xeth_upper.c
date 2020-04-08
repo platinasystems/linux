@@ -17,7 +17,6 @@ enum {
 
 struct xeth_upper_priv {
 	struct hlist_node __rcu	node;
-	struct spinlock mutex;
 	u32 xid;
 	u8 kind;
 	struct rcu_head rcu;
@@ -28,7 +27,7 @@ struct xeth_upper_priv {
 		u16 n_stats;
 		u64 stats[xeth_n_ethtool_stats];
 	} ethtool;
-	struct rtnl_link_stats64 link_stats;
+	struct xeth_atomic_link_stats link_stats;
 };
 
 static int xeth_upper_ethtool_n_priv_flags(struct xeth_upper_priv *priv)
@@ -94,12 +93,8 @@ static struct net_device *xeth_upper_link_rcu(u32 ifindex)
 static int xeth_upper_add_rcu(struct net_device *nd)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	struct hlist_head __rcu *head;
-	
-	head = xeth_mux_upper_head_hashed(priv->xid);
-	xeth_mux_lock();
-	hlist_add_head_rcu(&priv->node, head);
-	xeth_mux_unlock();
+	struct hlist_head __rcu *head = xeth_mux_upper_head_hashed(priv->xid);
+	xeth_mux_add_node(&priv->node, head);
 	return 0;
 }
 
@@ -166,12 +161,10 @@ static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	u64 *link_stat = (u64*)&priv->link_stats;
 	int ethtool_n_stats = xeth_upper_ethtool_n_stats(priv);
 	int i;
 
-	for (i = 0; i < xeth_upper_link_n_stats; i++)
-		link_stat[i] = 0;
+	xeth_reset_link_stats(&priv->link_stats);
 	for (i = 0; i < ethtool_n_stats; i++)
 		priv->ethtool.stats[i] = 0;
 }
@@ -247,8 +240,7 @@ static void xeth_upper_ndo_get_stats64(struct net_device *nd,
 				       struct rtnl_link_stats64 *dst)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-
-	memcpy(dst, &priv->link_stats, sizeof(*dst));
+	xeth_get_link_stats(dst, &priv->link_stats);
 }
 
 static int xeth_upper_ndo_add_lower(struct net_device *upper_nd,
@@ -760,10 +752,7 @@ static int xeth_upper_nd_register(struct net_device *nd)
 	err = xeth_debug_nd_err(nd, register_netdevice(nd));
 	if (err) {
 		struct xeth_upper_priv *priv = netdev_priv(nd);
-
-		xeth_mux_lock();
-		hlist_del_rcu(&priv->node);
-		xeth_mux_unlock();
+		xeth_mux_del_node(&priv->node);
 	} else {
 		struct xeth_upper_priv *priv = netdev_priv(nd);
 		err = xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0,
@@ -801,7 +790,6 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 	}
 
 	priv->kind = XETH_DEV_KIND_VLAN;
-	spin_lock_init(&priv->mutex);
 
 	li = nla_get_u32(tb[IFLA_LINK]);
 	link = xeth_debug_rcu(xeth_upper_link_rcu(li));
@@ -919,11 +907,7 @@ static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 	enum xeth_dev_kind kind = xeth_upper_kind(nd);
 
 	xeth_sbtx_ifinfo(nd, xid, kind, 0, XETH_IFINFO_REASON_DEL);
-
-	xeth_mux_lock();
-	hlist_del_rcu(&priv->node);
-	xeth_mux_unlock();
-
+	xeth_mux_del_node(&priv->node);
 	unregister_netdevice_queue(nd, q);
 }
 
@@ -1109,10 +1093,82 @@ void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	if (index < xeth_upper_link_n_stats)
-		((u64*)&priv->link_stats)[index] = count;
-	else
+	switch (index) {
+	case xeth_link_stat_rx_packets_index:
+		atomic64_inc(&priv->link_stats.rx_packets);
+		break;
+	case xeth_link_stat_tx_packets_index:
+		atomic64_inc(&priv->link_stats.tx_packets);
+		break;
+	case xeth_link_stat_rx_bytes_index:
+		atomic64_inc(&priv->link_stats.rx_bytes);
+		break;
+	case xeth_link_stat_tx_bytes_index:
+		atomic64_inc(&priv->link_stats.tx_bytes);
+		break;
+	case xeth_link_stat_rx_errors_index:
+		atomic64_inc(&priv->link_stats.rx_errors);
+		break;
+	case xeth_link_stat_tx_errors_index:
+		atomic64_inc(&priv->link_stats.tx_errors);
+		break;
+	case xeth_link_stat_rx_dropped_index:
+		atomic64_inc(&priv->link_stats.rx_dropped);
+		break;
+	case xeth_link_stat_tx_dropped_index:
+		atomic64_inc(&priv->link_stats.tx_dropped);
+		break;
+	case xeth_link_stat_multicast_index:
+		atomic64_inc(&priv->link_stats.multicast);
+		break;
+	case xeth_link_stat_collisions_index:
+		atomic64_inc(&priv->link_stats.collisions);
+		break;
+	case xeth_link_stat_rx_length_errors_index:
+		atomic64_inc(&priv->link_stats.rx_length_errors);
+		break;
+	case xeth_link_stat_rx_over_errors_index:
+		atomic64_inc(&priv->link_stats.rx_over_errors);
+		break;
+	case xeth_link_stat_rx_crc_errors_index:
+		atomic64_inc(&priv->link_stats.rx_crc_errors);
+		break;
+	case xeth_link_stat_rx_frame_errors_index:
+		atomic64_inc(&priv->link_stats.rx_frame_errors);
+		break;
+	case xeth_link_stat_rx_fifo_errors_index:
+		atomic64_inc(&priv->link_stats.rx_fifo_errors);
+		break;
+	case xeth_link_stat_rx_missed_errors_index:
+		atomic64_inc(&priv->link_stats.rx_missed_errors);
+		break;
+	case xeth_link_stat_tx_aborted_errors_index:
+		atomic64_inc(&priv->link_stats.tx_aborted_errors);
+		break;
+	case xeth_link_stat_tx_carrier_errors_index:
+		atomic64_inc(&priv->link_stats.tx_carrier_errors);
+		break;
+	case xeth_link_stat_tx_fifo_errors_index:
+		atomic64_inc(&priv->link_stats.tx_fifo_errors);
+		break;
+	case xeth_link_stat_tx_heartbeat_errors_index:
+		atomic64_inc(&priv->link_stats.tx_heartbeat_errors);
+		break;
+	case xeth_link_stat_tx_window_errors_index:
+		atomic64_inc(&priv->link_stats.tx_window_errors);
+		break;
+	case xeth_link_stat_rx_compressed_index:
+		atomic64_inc(&priv->link_stats.rx_compressed);
+		break;
+	case xeth_link_stat_tx_compressed_index:
+		atomic64_inc(&priv->link_stats.tx_compressed);
+		break;
+	case xeth_link_stat_rx_nohandler_index:
+		atomic64_inc(&priv->link_stats.rx_nohandler);
+		break;
+	default:
 		xeth_counter_inc(sbrx_invalid);
+	}
 }
 
 void xeth_upper_speed(struct net_device *nd, u32 mbps)
@@ -1165,8 +1221,6 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 
 	priv = netdev_priv(nd);
 
-	spin_lock_init(&priv->mutex);
-
 	priv->xid = xid;
 	priv->kind = XETH_DEV_KIND_PORT;
 	xeth_debug_rcu(xeth_upper_add_rcu(nd));
@@ -1182,9 +1236,7 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 	rtnl_unlock();
 
 	if (x < 0) {
-		xeth_mux_lock();
-		hlist_del_rcu(&priv->node);
-		xeth_mux_unlock();
+		xeth_mux_del_node(&priv->node);
 		return x;
 	}
 
@@ -1206,9 +1258,7 @@ void xeth_delete_port(u32 xid)
 		return;
 	priv = netdev_priv(nd);
 	xeth_debug("%s xid %u", nd->name, xid);
-	xeth_mux_lock();
-	hlist_del_rcu(&priv->node);
-	xeth_mux_unlock();
+	xeth_mux_del_node(&priv->node);
 	unregister_netdev(nd);
 }
 EXPORT_SYMBOL(xeth_delete_port);
