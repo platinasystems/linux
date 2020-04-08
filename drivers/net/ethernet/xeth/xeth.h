@@ -46,6 +46,117 @@ extern int xeth_encap;
 extern int xeth_base_xid;
 extern struct net_device *xeth_mux;
 
+enum xeth_link_stat_index {
+	xeth_link_stat_rx_packets_index,
+	xeth_link_stat_tx_packets_index,
+	xeth_link_stat_rx_bytes_index,
+	xeth_link_stat_tx_bytes_index,
+	xeth_link_stat_rx_errors_index,
+	xeth_link_stat_tx_errors_index,
+	xeth_link_stat_rx_dropped_index,
+	xeth_link_stat_tx_dropped_index,
+	xeth_link_stat_multicast_index,
+	xeth_link_stat_collisions_index,
+	xeth_link_stat_rx_length_errors_index,
+	xeth_link_stat_rx_over_errors_index,
+	xeth_link_stat_rx_crc_errors_index,
+	xeth_link_stat_rx_frame_errors_index,
+	xeth_link_stat_rx_fifo_errors_index,
+	xeth_link_stat_rx_missed_errors_index,
+	xeth_link_stat_tx_aborted_errors_index,
+	xeth_link_stat_tx_carrier_errors_index,
+	xeth_link_stat_tx_fifo_errors_index,
+	xeth_link_stat_tx_heartbeat_errors_index,
+	xeth_link_stat_tx_window_errors_index,
+	xeth_link_stat_rx_compressed_index,
+	xeth_link_stat_tx_compressed_index,
+	xeth_link_stat_rx_nohandler_index,
+};
+
+struct xeth_atomic_link_stats {
+	atomic64_t	rx_packets;
+	atomic64_t	tx_packets;
+	atomic64_t	rx_bytes;
+	atomic64_t	tx_bytes;
+	atomic64_t	rx_errors;
+	atomic64_t	tx_errors;
+	atomic64_t	rx_dropped;
+	atomic64_t	tx_dropped;
+	atomic64_t	multicast;
+	atomic64_t	collisions;
+	atomic64_t	rx_length_errors;
+	atomic64_t	rx_over_errors;
+	atomic64_t	rx_crc_errors;
+	atomic64_t	rx_frame_errors;
+	atomic64_t	rx_fifo_errors;
+	atomic64_t	rx_missed_errors;
+	atomic64_t	tx_aborted_errors;
+	atomic64_t	tx_carrier_errors;
+	atomic64_t	tx_fifo_errors;
+	atomic64_t	tx_heartbeat_errors;
+	atomic64_t	tx_window_errors;
+	atomic64_t	rx_compressed;
+	atomic64_t	tx_compressed;
+	atomic64_t	rx_nohandler;
+};
+
+static inline void xeth_reset_link_stats(struct xeth_atomic_link_stats *ls)
+{
+	atomic64_set(&ls->rx_packets, 0LL);
+	atomic64_set(&ls->tx_packets, 0LL);
+	atomic64_set(&ls->rx_bytes, 0LL);
+	atomic64_set(&ls->tx_bytes, 0LL);
+	atomic64_set(&ls->rx_errors, 0LL);
+	atomic64_set(&ls->tx_errors, 0LL);
+	atomic64_set(&ls->rx_dropped, 0LL);
+	atomic64_set(&ls->tx_dropped, 0LL);
+	atomic64_set(&ls->multicast, 0LL);
+	atomic64_set(&ls->collisions, 0LL);
+	atomic64_set(&ls->rx_length_errors, 0LL);
+	atomic64_set(&ls->rx_over_errors, 0LL);
+	atomic64_set(&ls->rx_crc_errors, 0LL);
+	atomic64_set(&ls->rx_frame_errors, 0LL);
+	atomic64_set(&ls->rx_fifo_errors, 0LL);
+	atomic64_set(&ls->rx_missed_errors, 0LL);
+	atomic64_set(&ls->tx_aborted_errors, 0LL);
+	atomic64_set(&ls->tx_carrier_errors, 0LL);
+	atomic64_set(&ls->tx_fifo_errors, 0LL);
+	atomic64_set(&ls->tx_heartbeat_errors, 0LL);
+	atomic64_set(&ls->tx_window_errors, 0LL);
+	atomic64_set(&ls->rx_compressed, 0LL);
+	atomic64_set(&ls->tx_compressed, 0LL);
+	atomic64_set(&ls->rx_nohandler, 0LL);
+}
+
+static inline void xeth_get_link_stats(struct rtnl_link_stats64 *dst,
+				       struct xeth_atomic_link_stats *src)
+{
+	dst->rx_packets = atomic64_read(&src->rx_packets);
+	dst->tx_packets = atomic64_read(&src->tx_packets);
+	dst->rx_bytes = atomic64_read(&src->rx_bytes);
+	dst->tx_bytes = atomic64_read(&src->tx_bytes);
+	dst->rx_errors = atomic64_read(&src->rx_errors);
+	dst->tx_errors = atomic64_read(&src->tx_errors);
+	dst->rx_dropped = atomic64_read(&src->rx_dropped);
+	dst->tx_dropped = atomic64_read(&src->tx_dropped);
+	dst->multicast = atomic64_read(&src->multicast);
+	dst->collisions = atomic64_read(&src->collisions);
+	dst->rx_length_errors = atomic64_read(&src->rx_length_errors);
+	dst->rx_over_errors = atomic64_read(&src->rx_over_errors);
+	dst->rx_crc_errors = atomic64_read(&src->rx_crc_errors);
+	dst->rx_frame_errors = atomic64_read(&src->rx_frame_errors);
+	dst->rx_fifo_errors = atomic64_read(&src->rx_fifo_errors);
+	dst->rx_missed_errors = atomic64_read(&src->rx_missed_errors);
+	dst->tx_aborted_errors = atomic64_read(&src->tx_aborted_errors);
+	dst->tx_carrier_errors = atomic64_read(&src->tx_carrier_errors);
+	dst->tx_fifo_errors = atomic64_read(&src->tx_fifo_errors);
+	dst->tx_heartbeat_errors = atomic64_read(&src->tx_heartbeat_errors);
+	dst->tx_window_errors = atomic64_read(&src->tx_window_errors);
+	dst->rx_compressed = atomic64_read(&src->rx_compressed);
+	dst->tx_compressed = atomic64_read(&src->tx_compressed);
+	dst->rx_nohandler = atomic64_read(&src->rx_nohandler);
+}
+
 enum {
 	xeth_n_ethtool_flags = 32,
 	xeth_n_ethtool_stats = 512,
@@ -162,9 +273,9 @@ int xeth_upper_deinit(int err);
 
 u8 xeth_mux_bits(void);
 
-void xeth_mux_lock(void);
-void xeth_mux_unlock(void);
-int xeth_mux_is_locked(void);
+void xeth_mux_add_node(struct hlist_node __rcu *node,
+		       struct hlist_head __rcu *head);
+void xeth_mux_del_node(struct hlist_node __rcu *node);
 
 long long xeth_mux_counter(enum xeth_counter cnt);
 void xeth_mux_counter_add(enum xeth_counter cnt, s64 n);
