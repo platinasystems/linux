@@ -21,44 +21,40 @@ struct xeth_mux_priv {
 	struct hlist_head __rcu upper[xeth_mux_upper_hash_bkts];
 	struct net_device *lower[xeth_mux_lower_hash_bkts];
 	atomic64_t counter[xeth_counters];
-	struct {
-		volatile long unsigned int bits;
-	} flag;
+	volatile long unsigned int flags;
 	struct xeth_atomic_link_stats link_stats;
 	struct task_struct *sb;
 };
 
-#define xeth_mux_counter_name(name)					\
-	[xeth_counter_##name] = #name
-
 static const char *const xeth_mux_counter_names[] = {
-	xeth_mux_counter_name(sbex_invalid),
-	xeth_mux_counter_name(sbex_dropped),
-	xeth_mux_counter_name(sbrx_invalid),
-	xeth_mux_counter_name(sbrx_no_dev),
-	xeth_mux_counter_name(sbrx_no_mem),
-	xeth_mux_counter_name(sbrx_msgs),
-	xeth_mux_counter_name(sbrx_ticks),
-	xeth_mux_counter_name(sbtx_msgs),
-	xeth_mux_counter_name(sbtx_retries),
-	xeth_mux_counter_name(sbtx_no_mem),
-	xeth_mux_counter_name(sbtx_queued),
-	xeth_mux_counter_name(sbtx_ticks),
+#define xeth_mux_name_counter(name)	[xeth_counter_##name] = #name
+	xeth_mux_name_counter(sb_connections),
+	xeth_mux_name_counter(sbex_invalid),
+	xeth_mux_name_counter(sbex_dropped),
+	xeth_mux_name_counter(sbrx_invalid),
+	xeth_mux_name_counter(sbrx_no_dev),
+	xeth_mux_name_counter(sbrx_no_mem),
+	xeth_mux_name_counter(sbrx_msgs),
+	xeth_mux_name_counter(sbrx_ticks),
+	xeth_mux_name_counter(sbtx_msgs),
+	xeth_mux_name_counter(sbtx_retries),
+	xeth_mux_name_counter(sbtx_no_mem),
+	xeth_mux_name_counter(sbtx_queued),
+	xeth_mux_name_counter(sbtx_ticks),
 	[xeth_counters] = NULL,
 };
 
-#define xeth_mux_flag_name(name)					\
-	[xeth_flag_##name] = #name
-
 static const char *const xeth_mux_flag_names[] = {
-	xeth_mux_flag_name(fib_notifier),
-	xeth_mux_flag_name(inetaddr_notifier),
-	xeth_mux_flag_name(netdevice_notifier),
-	xeth_mux_flag_name(netevent_notifier),
-	xeth_mux_flag_name(sb_task),
-	xeth_mux_flag_name(sb_listen),
-	xeth_mux_flag_name(sb_connected),
-	xeth_mux_flag_name(sbrx_task),
+#define xeth_mux_name_flag(name)	[xeth_flag_##name] = #name
+	xeth_mux_name_flag(fib_notifier),
+	xeth_mux_name_flag(inetaddr_notifier),
+	xeth_mux_name_flag(inet6addr_notifier),
+	xeth_mux_name_flag(netdevice_notifier),
+	xeth_mux_name_flag(netevent_notifier),
+	xeth_mux_name_flag(sb_task),
+	xeth_mux_name_flag(sb_listen),
+	xeth_mux_name_flag(sb_connected),
+	xeth_mux_name_flag(sbrx_task),
 	[xeth_flags] = NULL,
 };
 
@@ -66,7 +62,7 @@ static u32 xeth_mux_flags(struct xeth_mux_priv *priv)
 {
 	u32 flags;
 	barrier();
-	flags = priv->flag.bits;
+	flags = priv->flags;
 	return flags;
 }
 
@@ -393,13 +389,13 @@ static void xeth_mux_eto_get_strings(struct net_device *nd, u32 sset, u8 *data)
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		for (i = 0; i < xeth_counters; i++) {
+		for (i = 0; xeth_mux_counter_names[i]; i++) {
 			strlcpy(p, xeth_mux_counter_names[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < xeth_flags; i++) {
+		for (i = 0; xeth_mux_flag_names[i]; i++) {
 			strlcpy(p, xeth_mux_flag_names[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
@@ -582,7 +578,7 @@ bool xeth_mux_flag(enum xeth_flag bit)
 	
 	if (priv) {
 		smp_mb__before_atomic();
-		flag = variable_test_bit(bit, &priv->flag.bits);
+		flag = variable_test_bit(bit, &priv->flags);
 		smp_mb__after_atomic();
 	}
 	return flag;
@@ -593,7 +589,7 @@ void xeth_mux_flag_clear(enum xeth_flag bit)
 	struct xeth_mux_priv *priv = xeth_mux_priv();
 	if (priv) {
 		smp_mb__before_atomic();
-		clear_bit(bit, &priv->flag.bits);
+		clear_bit(bit, &priv->flags);
 		smp_mb__after_atomic();
 	}
 }
@@ -603,7 +599,7 @@ void xeth_mux_flag_set(enum xeth_flag bit)
 	struct xeth_mux_priv *priv = xeth_mux_priv();
 	if (priv) {
 		smp_mb__before_atomic();
-		set_bit(bit, &priv->flag.bits);
+		set_bit(bit, &priv->flags);
 		smp_mb__after_atomic();
 	}
 }
