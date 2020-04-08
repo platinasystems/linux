@@ -22,13 +22,9 @@ struct xeth_mux_priv {
 	struct net_device *lower[xeth_mux_lower_hash_bkts];
 	atomic64_t counter[xeth_counters];
 	struct {
-		struct spinlock mutex;
 		volatile long unsigned int bits;
 	} flag;
-	struct {
-		struct spinlock mutex;
-		struct rtnl_link_stats64 stats;
-	} link;
+	struct xeth_atomic_link_stats link_stats;
 	struct task_struct *sb;
 };
 
@@ -66,6 +62,14 @@ static const char *const xeth_mux_flag_names[] = {
 	[xeth_flags] = NULL,
 };
 
+static u32 xeth_mux_flags(struct xeth_mux_priv *priv)
+{
+	u32 flags;
+	barrier();
+	flags = priv->flag.bits;
+	return flags;
+}
+
 static const struct net_device_ops xeth_mux_netdev_ops;
 static const struct ethtool_ops xeth_mux_ethtool_ops;
 
@@ -76,14 +80,25 @@ static struct xeth_mux_priv *xeth_mux_priv(void)
 	return IS_ERR_OR_NULL(xeth_mux) ? NULL : netdev_priv(xeth_mux);
 }
 
-static void xeth_mux_flag_lock(struct xeth_mux_priv *priv)
+void xeth_mux_add_node(struct hlist_node __rcu *node,
+		       struct hlist_head __rcu *head)
 {
-	spin_lock(&priv->flag.mutex);
+	struct xeth_mux_priv *priv = xeth_mux_priv();
+	if (priv) {
+		spin_lock(&priv->mutex);
+		hlist_add_head_rcu(node, head);
+		spin_unlock(&priv->mutex);
+	}
 }
 
-static void xeth_mux_flag_unlock(struct xeth_mux_priv *priv)
+void xeth_mux_del_node(struct hlist_node __rcu *node)
 {
-	spin_unlock(&priv->flag.mutex);
+	struct xeth_mux_priv *priv = xeth_mux_priv();
+	if (priv) {
+		spin_lock(&priv->mutex);
+		hlist_del_rcu(node);
+		spin_unlock(&priv->mutex);
+	}
 }
 
 static void xeth_mux_setup(struct net_device *nd)
@@ -92,16 +107,13 @@ static void xeth_mux_setup(struct net_device *nd)
 	int i;
 
 	spin_lock_init(&priv->mutex);
-	spin_lock_init(&priv->flag.mutex);
-	spin_lock_init(&priv->link.mutex);
+	xeth_reset_link_stats(&priv->link_stats);
 
 	for (i = 0; i < xeth_mux_upper_hash_bkts; i++)
 		WRITE_ONCE(priv->upper[i].first, NULL);
 
 	for (i = 0; i < xeth_counters; i++)
 		atomic64_set(&priv->counter[i], 0LL);
-
-	spin_lock_init(&priv->link.mutex);
 
 	nd->netdev_ops = &xeth_mux_netdev_ops;
 	nd->ethtool_ops = &xeth_mux_ethtool_ops;
@@ -236,29 +248,27 @@ static netdev_tx_t xeth_mux_xmit(struct sk_buff *skb, struct net_device *nd)
 	struct xeth_mux_priv *priv = netdev_priv(nd);
 	struct net_device *lower;
 
-	spin_lock(&priv->link.mutex);
 	lower = priv->lower[xeth_mux_lower_hash(skb)];
 	if (lower) {
 		if (lower->flags & IFF_UP) {
 			skb->dev = lower;
 			no_xeth_debug_skb(skb);
 			if (dev_queue_xmit(skb)) {
-				priv->link.stats.tx_dropped++;
+				atomic64_inc(&priv->link_stats.tx_dropped);
 			} else {
-				priv->link.stats.tx_packets++;
-				priv->link.stats.tx_bytes += skb->len;
+				atomic64_inc(&priv->link_stats.tx_packets);
+				atomic64_add(skb->len, &priv->link_stats.tx_bytes);
 			}
 		} else {
-			priv->link.stats.tx_errors++;
-			priv->link.stats.tx_heartbeat_errors++;
+			atomic64_inc(&priv->link_stats.tx_errors);
+			atomic64_inc(&priv->link_stats.tx_heartbeat_errors);
 			kfree_skb(skb);
 		}
 	} else {
-		priv->link.stats.tx_errors++;
-		priv->link.stats.tx_aborted_errors++;
+		atomic64_inc(&priv->link_stats.tx_errors);
+		atomic64_inc(&priv->link_stats.tx_aborted_errors);
 		kfree_skb(skb);
 	}
-	spin_unlock(&priv->link.mutex);
 	return NETDEV_TX_OK;
 }
 
@@ -266,9 +276,7 @@ static void xeth_mux_get_stats64(struct net_device *nd,
 					 struct rtnl_link_stats64 *dst)
 {
 	struct xeth_mux_priv *priv = netdev_priv(nd);
-	spin_lock(&priv->link.mutex);
-	memcpy(dst, &priv->link.stats, sizeof(*dst));
-	spin_unlock(&priv->link.mutex);
+	xeth_get_link_stats(dst, &priv->link_stats);
 }
 
 static void xeth_mux_forward(struct net_device *to, struct sk_buff *skb)
@@ -277,13 +285,11 @@ static void xeth_mux_forward(struct net_device *to, struct sk_buff *skb)
 	int rx_result;
 	
 	rx_result = dev_forward_skb(to, skb);
-	spin_lock(&priv->link.mutex);
 	if (rx_result == NET_RX_SUCCESS) {
-		priv->link.stats.rx_packets++;
-		priv->link.stats.rx_bytes += skb->len;
+		atomic64_inc(&priv->link_stats.rx_packets);
+		atomic64_add(skb->len, &priv->link_stats.rx_bytes);
 	} else
-		priv->link.stats.rx_dropped++;
-	spin_unlock(&priv->link.mutex);
+		atomic64_inc(&priv->link_stats.rx_dropped);
 }
 
 static void xeth_mux_demux_vlan(struct sk_buff *skb)
@@ -314,10 +320,8 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 		skb->vlan_tci = 0;
 		xeth_mux_forward(upper, skb);
 	} else {
-		spin_lock(&priv->link.mutex);
-		priv->link.stats.rx_errors++;
-		priv->link.stats.rx_nohandler++;
-		spin_unlock(&priv->link.mutex);
+		atomic64_inc(&priv->link_stats.rx_errors);
+		atomic64_inc(&priv->link_stats.rx_nohandler);
 		dev_kfree_skb(skb);
 	}
 }
@@ -337,10 +341,8 @@ rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
 	if (eth_type_vlan(skb->vlan_proto)) {
 		xeth_mux_demux_vlan(skb);
 	} else {
-		spin_lock(&priv->link.mutex);
-		priv->link.stats.rx_errors++;
-		priv->link.stats.rx_frame_errors++;
-		spin_unlock(&priv->link.mutex);
+		atomic64_inc(&priv->link_stats.rx_errors);
+		atomic64_inc(&priv->link_stats.rx_frame_errors);
 		dev_kfree_skb(skb);
 	}
 
@@ -418,14 +420,7 @@ static void xeth_mux_eto_get_stats(struct net_device *nd,
 
 static u32 xeth_mux_eto_get_priv_flags(struct net_device *nd)
 {
-	struct xeth_mux_priv *priv = netdev_priv(nd);
-	u32 flags = 0;
-	if (priv) {
-		xeth_mux_flag_lock(priv);
-		flags = priv->flag.bits;
-		xeth_mux_flag_unlock(priv);
-	}
-	return flags;
+	return xeth_mux_flags(netdev_priv(nd));
 }
 
 static const struct ethtool_ops xeth_mux_ethtool_ops = {
@@ -528,6 +523,7 @@ int xeth_mux_deinit(int err)
 	unregister_netdevice_many(&q);
 
 	rtnl_unlock();
+
 	rcu_barrier();
 
 	unregister_netdev(xeth_mux);
@@ -543,26 +539,6 @@ u8 xeth_mux_bits(void)
 		return 12;
 	}
 	return 0;
-}
-
-void xeth_mux_lock(void)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv)
-		spin_lock(&priv->mutex);
-}
-
-void xeth_mux_unlock(void)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv)
-		spin_unlock(&priv->mutex);
-}
-
-int xeth_mux_is_locked(void)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	return priv ? spin_is_locked(&priv->mutex) : 0;
 }
 
 long long xeth_mux_counter(enum xeth_counter index)
@@ -605,9 +581,9 @@ bool xeth_mux_flag(enum xeth_flag bit)
 	bool flag = false;
 	
 	if (priv) {
-		xeth_mux_flag_lock(priv);
+		smp_mb__before_atomic();
 		flag = variable_test_bit(bit, &priv->flag.bits);
-		xeth_mux_flag_unlock(priv);
+		smp_mb__after_atomic();
 	}
 	return flag;
 }
@@ -616,9 +592,9 @@ void xeth_mux_flag_clear(enum xeth_flag bit)
 {
 	struct xeth_mux_priv *priv = xeth_mux_priv();
 	if (priv) {
-		xeth_mux_flag_lock(priv);
+		smp_mb__before_atomic();
 		clear_bit(bit, &priv->flag.bits);
-		xeth_mux_flag_unlock(priv);
+		smp_mb__after_atomic();
 	}
 }
 
@@ -626,9 +602,9 @@ void xeth_mux_flag_set(enum xeth_flag bit)
 {
 	struct xeth_mux_priv *priv = xeth_mux_priv();
 	if (priv) {
-		xeth_mux_flag_lock(priv);
+		smp_mb__before_atomic();
 		set_bit(bit, &priv->flag.bits);
-		xeth_mux_flag_unlock(priv);
+		smp_mb__after_atomic();
 	}
 }
 
@@ -684,10 +660,8 @@ int xeth_mux_queue_xmit(struct sk_buff *skb)
 	} else {
 		struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
 		kfree_skb_list(skb);
-		spin_lock(&priv->link.mutex);
-		priv->link.stats.tx_errors++;
-		priv->link.stats.tx_carrier_errors++;
-		spin_unlock(&priv->link.mutex);
+		atomic64_inc(&priv->link_stats.tx_errors);
+		atomic64_inc(&priv->link_stats.tx_carrier_errors);
 	}
 	return NETDEV_TX_OK;
 }
