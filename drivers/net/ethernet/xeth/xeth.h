@@ -170,6 +170,8 @@ enum xeth_encap {
 };
 
 enum xeth_counter {
+	xeth_counter_ex_frames,
+	xeth_counter_ex_bytes,
 	xeth_counter_sb_connections,
 	xeth_counter_sbex_invalid,
 	xeth_counter_sbex_dropped,
