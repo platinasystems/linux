@@ -28,6 +28,8 @@ struct xeth_mux_priv {
 
 static const char *const xeth_mux_counter_names[] = {
 #define xeth_mux_name_counter(name)	[xeth_counter_##name] = #name
+	xeth_mux_name_counter(ex_frames),
+	xeth_mux_name_counter(ex_bytes),
 	xeth_mux_name_counter(sb_connections),
 	xeth_mux_name_counter(sbex_invalid),
 	xeth_mux_name_counter(sbex_dropped),
@@ -238,12 +240,44 @@ static int xeth_mux_lower_hash(struct sk_buff *skb)
 	return vlan_get_tag(skb, &tci) ? 0 : tci & 1;
 }
 
+static void xeth_mux_vlan_exception(struct sk_buff *skb)
+{
+	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)skb->data;
+	__be16 h_vlan_proto = veh->h_vlan_proto;
+	u16 tci = be16_to_cpu(veh->h_vlan_TCI);
+	__be16 h_vlan_encapsulated_proto =
+		veh->h_vlan_encapsulated_proto;
+	xeth_counter_inc(ex_frames);
+	xeth_counter_add(ex_bytes, skb->len);
+	eth_type_trans(skb, xeth_mux);
+	skb->vlan_proto = h_vlan_proto;
+	skb->vlan_tci = tci & VLAN_PRIO_MASK;
+	skb->protocol = h_vlan_encapsulated_proto;
+	skb_pull_inline(skb, VLAN_HLEN);
+	xeth_mux_demux(&skb);
+}
+
+static bool xeth_mux_was_exception(struct sk_buff *skb)
+{
+	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)skb->data;
+	if (eth_type_vlan(veh->h_vlan_proto)) {
+		u16 tci = be16_to_cpu(veh->h_vlan_TCI);
+		const u16 exmk = 7 << VLAN_PRIO_SHIFT;
+		if ((tci & VLAN_PRIO_MASK) == exmk) {
+			xeth_mux_vlan_exception(skb);
+			return true;
+		}
+	}
+	return false;
+}
+
 static netdev_tx_t xeth_mux_xmit(struct sk_buff *skb, struct net_device *nd)
 {
-	/* FIXME can we replace this w/ a BPF LAG ? */
 	struct xeth_mux_priv *priv = netdev_priv(nd);
 	struct net_device *lower;
 
+	if (xeth_mux_was_exception(skb))
+		return NETDEV_TX_OK;
 	lower = priv->lower[xeth_mux_lower_hash(skb)];
 	if (lower) {
 		if (lower->flags & IFF_UP) {
