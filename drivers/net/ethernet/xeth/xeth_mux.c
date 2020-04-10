@@ -251,7 +251,7 @@ static void xeth_mux_vlan_exception(struct sk_buff *skb)
 	xeth_counter_add(ex_bytes, skb->len);
 	eth_type_trans(skb, xeth_mux);
 	skb->vlan_proto = h_vlan_proto;
-	skb->vlan_tci = tci & VLAN_PRIO_MASK;
+	skb->vlan_tci = tci & ~VLAN_PRIO_MASK;
 	skb->protocol = h_vlan_encapsulated_proto;
 	skb_pull_inline(skb, VLAN_HLEN);
 	xeth_mux_demux(&skb);
@@ -259,11 +259,10 @@ static void xeth_mux_vlan_exception(struct sk_buff *skb)
 
 static bool xeth_mux_was_exception(struct sk_buff *skb)
 {
+	const u16 expri = 7 << VLAN_PRIO_SHIFT;
 	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)skb->data;
 	if (eth_type_vlan(veh->h_vlan_proto)) {
-		u16 tci = be16_to_cpu(veh->h_vlan_TCI);
-		const u16 exmk = 7 << VLAN_PRIO_SHIFT;
-		if ((tci & VLAN_PRIO_MASK) == exmk) {
+		if ((be16_to_cpu(veh->h_vlan_TCI) & VLAN_PRIO_MASK) == expri) {
 			xeth_mux_vlan_exception(skb);
 			return true;
 		}
@@ -350,6 +349,8 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 		skb->vlan_tci = 0;
 		xeth_mux_forward(upper, skb);
 	} else {
+		no_xeth_debug("no upper for xid %d; tci 0x%x",
+			xid, skb->vlan_tci);
 		atomic64_inc(&priv->link_stats.rx_errors);
 		atomic64_inc(&priv->link_stats.rx_nohandler);
 		dev_kfree_skb(skb);
