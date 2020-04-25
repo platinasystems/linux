@@ -24,6 +24,11 @@
 		reg = <0x80000000 0x40000000>;
 	};
 
+	onie {
+	      compatible = "linux,onie";
+	      nvmem-cells = <&onie_raw>;
+	      nvmem-cell-names = "onie-raw";
+	};
 };
 
 &fec1 {
@@ -408,9 +413,13 @@
 	status = "okay";
 
 	eeprom: at24@55 {
-                compatible = "at24,24c32";
+                compatible = "at24,24c128";
                 pagesize = <32>;
                 reg = <0x55>;
+
+		onie_raw: raw@0 {
+			  reg = <0x0 0x4000>;
+		};			 
         };
 };
 
