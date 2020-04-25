@@ -12,6 +12,9 @@
 #include <linux/crc32.h>
 #include <asm/unaligned.h>
 #include <linux/onie.h>
+#include <linux/of_device.h>
+#include <linux/platform_device.h>
+#include <linux/nvmem-consumer.h>
 
 #define onie_pr_debug(format, args...)					\
 	pr_debug(format "\n", ##args);
@@ -277,15 +280,72 @@ ssize_t onie_value(struct kobject *onie, enum onie_type t, size_t sz, u8 *v)
 
 EXPORT_SYMBOL(onie_value);
 
+static int onie_probe(struct platform_device *pdev) {
+	struct device *dev = &pdev->dev;
+	struct nvmem_cell *cell;
+	u8 *buf;
+	size_t len;
+	ssize_t sz;
+	struct kobject *onie;
+	
+	cell = nvmem_cell_get(dev, "onie-raw");
+	if (IS_ERR(cell)) {
+		return PTR_ERR(cell);
+	}
+
+	buf = (u8 *)nvmem_cell_read(cell, &len);
+
+	nvmem_cell_put(cell);
+
+	if (IS_ERR(buf)) {
+		return PTR_ERR(buf);
+	}
+
+	sz = onie_validate(buf, len);
+	if (sz < 0) {
+		return sz;
+	}
+
+	onie = onie_create(&dev->kobj, buf, NULL);
+	if (IS_ERR(onie)) {
+		return PTR_ERR(onie);
+	}
+			
+	platform_set_drvdata(pdev, onie);
+		
+	return 0;
+}
+
+static int onie_remove(struct platform_device *pdev) {
+	struct kobject *onie = platform_get_drvdata(pdev);
+
+	onie_delete(onie);
+	return 0;
+}
+
+static const struct of_device_id onie_of_match[] = {
+	{ .compatible = "linux,onie", },
+    	{ /* END OF LIST */ },
+};
+MODULE_DEVICE_TABLE(of, onie_of_match);
+
+static struct platform_driver onie_device_driver = {
+	.probe = onie_probe,
+	.remove = onie_remove,
+	.driver = {
+		.name = "onie-driver",
+		.of_match_table = onie_of_match
+	}
+};
+
 static int __init onie_init(void)
 {
-	onie_pr_debug("ok");
-	return 0;
+	return platform_driver_register(&onie_device_driver);
 }
 
 static void __exit onie_exit(void)
 {
-	onie_pr_debug("ok");
+	return platform_driver_unregister(&onie_device_driver);
 }
 
 static void onie_reset_header(struct onie_header *h)
