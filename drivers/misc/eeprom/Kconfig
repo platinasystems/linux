@@ -112,7 +112,7 @@ config EEPROM_IDT_89HPESX
 	  will be called idt_89hpesx.
 
 config EEPROM_ONIE
-	tristate
+	tristate "ONIE format EEPROM reader/writer"
 	default n
 	help
 	  Make /sys interface files for an ONIE format EEPROM.  See,
