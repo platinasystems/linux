@@ -130,7 +130,7 @@ config EEPROM_EE1004
 	  will be called ee1004.
 
 config EEPROM_ONIE
-	tristate
+	tristate "ONIE format EEPROM reader/writer"
 	default n
 	help
 	  Make /sys interface files for an ONIE format EEPROM.  See,
