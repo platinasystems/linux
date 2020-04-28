@@ -203,7 +203,7 @@ struct kobject *onie_create(struct kobject *parent, u8 *data,
 	struct onie_priv *priv;
 	int i, err;
 	ssize_t fullsz;
-	
+
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL | __GFP_RETRY_MAYFAIL);
 	if (!priv)
 		return ERR_PTR(-ENOMEM);
@@ -287,7 +287,7 @@ static int onie_probe(struct platform_device *pdev) {
 	size_t len;
 	ssize_t sz;
 	struct kobject *onie;
-	
+
 	cell = nvmem_cell_get(dev, "onie-raw");
 	if (IS_ERR(cell)) {
 		return PTR_ERR(cell);
@@ -310,9 +310,9 @@ static int onie_probe(struct platform_device *pdev) {
 	if (IS_ERR(onie)) {
 		return PTR_ERR(onie);
 	}
-			
+
 	platform_set_drvdata(pdev, onie);
-		
+
 	return 0;
 }
 
@@ -325,7 +325,7 @@ static int onie_remove(struct platform_device *pdev) {
 
 static const struct of_device_id onie_of_match[] = {
 	{ .compatible = "linux,onie", },
-    	{ /* END OF LIST */ },
+	{ /* END OF LIST */ },
 };
 MODULE_DEVICE_TABLE(of, onie_of_match);
 
