@@ -419,7 +419,7 @@
 		reg = <0x55>;
 
 		onie_data: data@0 {
-			  reg = <0x0 0x4000>;
+			  reg = <0x0 0x800>;
 		};
 	};
 };
