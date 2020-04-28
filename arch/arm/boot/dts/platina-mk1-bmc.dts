@@ -26,8 +26,8 @@
 
 	onie {
 	      compatible = "linux,onie";
-	      nvmem-cells = <&onie_raw>;
-	      nvmem-cell-names = "onie-raw";
+	      nvmem-cells = <&onie_data>;
+	      nvmem-cell-names = "onie-data";
 	};
 };
 
@@ -418,7 +418,7 @@
 		pagesize = <32>;
 		reg = <0x55>;
 
-		onie_raw: raw@0 {
+		onie_data: data@0 {
 			  reg = <0x0 0x4000>;
 		};
 	};
