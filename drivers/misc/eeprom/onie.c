@@ -288,7 +288,7 @@ static int onie_probe(struct platform_device *pdev) {
 	ssize_t sz;
 	struct kobject *onie;
 
-	cell = nvmem_cell_get(dev, "onie-raw");
+	cell = nvmem_cell_get(dev, "onie-data");
 	if (IS_ERR(cell)) {
 		return PTR_ERR(cell);
 	}
