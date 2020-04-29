@@ -23,6 +23,7 @@
 #include <linux/nvmem-consumer.h>
 #include <linux/nvmem-provider.h>
 #include <linux/of.h>
+#include <linux/property.h>
 #include <linux/slab.h>
 
 struct nvmem_device {
@@ -262,19 +263,19 @@ static struct bus_type nvmem_bus_type = {
 	.name		= "nvmem",
 };
 
-static int of_nvmem_match(struct device *dev, void *nvmem_np)
+static int fwnode_nvmem_match(struct device *dev, void *fwnode)
 {
-	return dev->of_node == nvmem_np;
+	return dev_fwnode(dev) == fwnode;
 }
 
-static struct nvmem_device *of_nvmem_find(struct device_node *nvmem_np)
+static struct nvmem_device *fwnode_nvmem_find(struct fwnode_handle *fwnode)
 {
 	struct device *d;
 
-	if (!nvmem_np)
+	if (!fwnode)
 		return NULL;
 
-	d = bus_find_device(&nvmem_bus_type, NULL, nvmem_np, of_nvmem_match);
+	d = bus_find_device(&nvmem_bus_type, NULL, fwnode, fwnode_nvmem_match);
 
 	if (!d)
 		return NULL;
@@ -488,6 +489,7 @@ struct nvmem_device *nvmem_register(const struct nvmem_config *config)
 	nvmem->reg_read = config->reg_read;
 	nvmem->reg_write = config->reg_write;
 	nvmem->dev.of_node = config->dev->of_node;
+	nvmem->dev.fwnode = config->dev->fwnode;
 
 	if (config->id == -1 && config->name) {
 		dev_set_name(&nvmem->dev, "%s", config->name);
@@ -631,7 +633,7 @@ int devm_nvmem_unregister(struct device *dev, struct nvmem_device *nvmem)
 EXPORT_SYMBOL(devm_nvmem_unregister);
 
 
-static struct nvmem_device *__nvmem_device_get(struct device_node *np,
+static struct nvmem_device *__nvmem_device_get(struct fwnode_handle *fwnode,
 					       struct nvmem_cell **cellp,
 					       const char *cell_id)
 {
@@ -639,8 +641,8 @@ static struct nvmem_device *__nvmem_device_get(struct device_node *np,
 
 	mutex_lock(&nvmem_mutex);
 
-	if (np) {
-		nvmem = of_nvmem_find(np);
+	if (fwnode) {
+		nvmem = fwnode_nvmem_find(fwnode);
 		if (!nvmem) {
 			mutex_unlock(&nvmem_mutex);
 			return ERR_PTR(-EPROBE_DEFER);
@@ -697,32 +699,36 @@ static struct nvmem_device *nvmem_find(const char *name)
 	return to_nvmem_device(d);
 }
 
-#if IS_ENABLED(CONFIG_OF)
 /**
- * of_nvmem_device_get() - Get nvmem device from a given id
+ * fwnode_nvmem_device_get() - Get nvmem device from a given id
  *
- * @np: Device tree node that uses the nvmem device.
+ * @fwnode: Firmware node that uses the nvmem device.
  * @id: nvmem name from nvmem-names property.
  *
  * Return: ERR_PTR() on error or a valid pointer to a struct nvmem_device
  * on success.
  */
-struct nvmem_device *of_nvmem_device_get(struct device_node *np, const char *id)
+struct nvmem_device *fwnode_nvmem_device_get(struct fwnode_handle *fwnode, const char *id)
 {
 
-	struct device_node *nvmem_np;
+	struct fwnode_handle *nvmem_fwnode;
 	int index;
 
-	index = of_property_match_string(np, "nvmem-names", id);
+	index = fwnode_property_match_string(fwnode, "nvmem-names", id);
 
-	nvmem_np = of_parse_phandle(np, "nvmem", index);
-	if (!nvmem_np)
-		return ERR_PTR(-EINVAL);
+	if (is_of_node(fwnode)) {
+		struct device_node *nvmem_np = of_parse_phandle(to_of_node(fwnode),
+								"nvmem", index);
+		if (!nvmem_np)
+			return ERR_PTR(-EINVAL);
+		nvmem_fwnode = &nvmem_np->fwnode;
+	} else {
+		return ERR_PTR(-ENXIO);
+	}
 
-	return __nvmem_device_get(nvmem_np, NULL, NULL);
+	return __nvmem_device_get(nvmem_fwnode, NULL, NULL);
 }
-EXPORT_SYMBOL_GPL(of_nvmem_device_get);
-#endif
+EXPORT_SYMBOL_GPL(fwnode_nvmem_device_get);
 
 /**
  * nvmem_device_get() - Get nvmem device from a given id
@@ -735,10 +741,11 @@ EXPORT_SYMBOL_GPL(of_nvmem_device_get);
  */
 struct nvmem_device *nvmem_device_get(struct device *dev, const char *dev_name)
 {
-	if (dev->of_node) { /* try dt first */
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
+	if (fwnode) { /* try firmware tree first */
 		struct nvmem_device *nvmem;
 
-		nvmem = of_nvmem_device_get(dev->of_node, dev_name);
+		nvmem = fwnode_nvmem_device_get(fwnode, dev_name);
 
 		if (!IS_ERR(nvmem) || PTR_ERR(nvmem) == -EPROBE_DEFER)
 			return nvmem;
@@ -835,11 +842,10 @@ static struct nvmem_cell *nvmem_cell_get_from_list(const char *cell_id)
 	return cell;
 }
 
-#if IS_ENABLED(CONFIG_OF)
 /**
- * of_nvmem_cell_get() - Get a nvmem cell from given device node and cell id
+ * fwnode_nvmem_cell_get() - Get a nvmem cell from given firmwar node and cell id
  *
- * @np: Device tree node that uses the nvmem cell.
+ * @fwnode: Firmware node that uses the nvmem cell.
  * @name: nvmem cell name from nvmem-cell-names property, or NULL
  *	  for the cell at index 0 (the lone cell with no accompanying
  *	  nvmem-cell-names property).
@@ -848,37 +854,51 @@ static struct nvmem_cell *nvmem_cell_get_from_list(const char *cell_id)
  * to a struct nvmem_cell.  The nvmem_cell will be freed by the
  * nvmem_cell_put().
  */
-struct nvmem_cell *of_nvmem_cell_get(struct device_node *np,
+struct nvmem_cell *fwnode_nvmem_cell_get(struct fwnode_handle *fwnode,
 					    const char *name)
 {
-	struct device_node *cell_np, *nvmem_np;
+	const char *cell_name;
+	struct fwnode_handle *nvmem_fwnode, *cell_fwnode;
 	struct nvmem_cell *cell;
 	struct nvmem_device *nvmem;
-	const __be32 *addr;
-	int rval, len;
+	u32 vals[2];
+	int rval;
 	int index = 0;
 
 	/* if cell name exists, find index to the name */
-	if (name)
-		index = of_property_match_string(np, "nvmem-cell-names", name);
+	if (name) {
+		index = fwnode_property_match_string(fwnode, "nvmem-cell-names", name);
+		if (index < 0)
+			return ERR_PTR(index);
+	}
 
-	cell_np = of_parse_phandle(np, "nvmem-cells", index);
-	if (!cell_np)
+
+	if (is_of_node(fwnode)) {
+		struct device_node *np = to_of_node(fwnode);
+		struct device_node *cell_np = of_parse_phandle(np, "nvmem-cells", index);
+		if (!cell_np)
+			return ERR_PTR(-EINVAL);
+		cell_fwnode = &cell_np->fwnode;
+		cell_name = cell_np->name;
+	} else {
+		return ERR_PTR(-ENXIO);
+	}
+
+	nvmem_fwnode = fwnode_get_next_parent(cell_fwnode);
+	if (!nvmem_fwnode) {
 		return ERR_PTR(-EINVAL);
-
-	nvmem_np = of_get_next_parent(cell_np);
-	if (!nvmem_np)
-		return ERR_PTR(-EINVAL);
-
-	nvmem = __nvmem_device_get(nvmem_np, NULL, NULL);
-	of_node_put(nvmem_np);
-	if (IS_ERR(nvmem))
+	}
+	
+	nvmem = __nvmem_device_get(nvmem_fwnode, NULL, NULL);
+	fwnode_handle_put(nvmem_fwnode);
+	if (IS_ERR(nvmem)) {
 		return ERR_CAST(nvmem);
-
-	addr = of_get_property(cell_np, "reg", &len);
-	if (!addr || (len < 2 * sizeof(u32))) {
-		dev_err(&nvmem->dev, "nvmem: invalid reg on %pOF\n",
-			cell_np);
+	}
+	
+	rval = fwnode_property_read_u32_array(cell_fwnode, "reg", vals, 2);
+	if (rval < 0) {
+		dev_err(&nvmem->dev, "nvmem: invalid reg on %pfw\n",
+			cell_fwnode);
 		rval  = -EINVAL;
 		goto err_mem;
 	}
@@ -890,14 +910,20 @@ struct nvmem_cell *of_nvmem_cell_get(struct device_node *np,
 	}
 
 	cell->nvmem = nvmem;
-	cell->offset = be32_to_cpup(addr++);
-	cell->bytes = be32_to_cpup(addr);
-	cell->name = cell_np->name;
+	cell->offset = vals[0];
+	cell->bytes = vals[1];
+	cell->name = cell_name;
 
-	addr = of_get_property(cell_np, "bits", &len);
-	if (addr && len == (2 * sizeof(u32))) {
-		cell->bit_offset = be32_to_cpup(addr++);
-		cell->nbits = be32_to_cpup(addr);
+	rval = fwnode_property_read_u32_array(cell_fwnode, "bits", vals, 2);
+	if (rval < 0) {
+		if (rval != -EINVAL) {
+			dev_err(&nvmem->dev, "nvmem: invalid bits on %pfw - %d\n",
+				cell_fwnode, rval);
+			goto err_sanity;
+		}
+	} else {
+		cell->bit_offset = vals[0];
+		cell->nbits = vals[1];
 	}
 
 	if (cell->nbits)
@@ -924,8 +950,7 @@ err_mem:
 
 	return ERR_PTR(rval);
 }
-EXPORT_SYMBOL_GPL(of_nvmem_cell_get);
-#endif
+EXPORT_SYMBOL_GPL(fwnode_nvmem_cell_get);
 
 /**
  * nvmem_cell_get() - Get nvmem cell of device form a given cell name
@@ -940,14 +965,15 @@ EXPORT_SYMBOL_GPL(of_nvmem_cell_get);
 struct nvmem_cell *nvmem_cell_get(struct device *dev, const char *cell_id)
 {
 	struct nvmem_cell *cell;
-
-	if (dev->of_node) { /* try dt first */
-		cell = of_nvmem_cell_get(dev->of_node, cell_id);
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
+	
+	if (fwnode) { /* try firmware tree first */
+		cell = fwnode_nvmem_cell_get(fwnode, cell_id);
 		if (!IS_ERR(cell) || PTR_ERR(cell) == -EPROBE_DEFER)
 			return cell;
 	}
 
-	/* NULL cell_id only allowed for device tree; invalid otherwise */
+	/* NULL cell_id only allowed for firmware tree; invalid otherwise */
 	if (!cell_id)
 		return ERR_PTR(-EINVAL);
 

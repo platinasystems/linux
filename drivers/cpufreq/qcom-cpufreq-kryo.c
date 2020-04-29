@@ -106,7 +106,7 @@ static int qcom_cpufreq_kryo_probe(struct platform_device *pdev)
 		return -ENOENT;
 	}
 
-	speedbin_nvmem = of_nvmem_cell_get(np, NULL);
+	speedbin_nvmem = fwnode_nvmem_cell_get(of_fwnode_handle(np), NULL);
 	of_node_put(np);
 	if (IS_ERR(speedbin_nvmem)) {
 		if (PTR_ERR(speedbin_nvmem) != -EPROBE_DEFER)

@@ -97,7 +97,7 @@ int of_get_nvmem_mac_address(struct device_node *np, void *addr)
 	size_t len;
 	int ret;
 
-	cell = of_nvmem_cell_get(np, "mac-address");
+	cell = fwnode_nvmem_cell_get(of_fwnode_handle(np), "mac-address");
 	if (IS_ERR(cell))
 		return PTR_ERR(cell);
 
