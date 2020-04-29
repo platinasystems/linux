@@ -18,6 +18,7 @@ struct device_node;
 /* consumer cookie */
 struct nvmem_cell;
 struct nvmem_device;
+struct fwnode_handle;
 
 struct nvmem_cell_info {
 	const char		*name;
@@ -89,6 +90,10 @@ void nvmem_del_cell_lookups(struct nvmem_cell_lookup *entries,
 int nvmem_register_notifier(struct notifier_block *nb);
 int nvmem_unregister_notifier(struct notifier_block *nb);
 
+struct nvmem_cell *fwnode_nvmem_cell_get(struct fwnode_handle *np,
+					 const char *name);
+struct nvmem_device *fwnode_nvmem_device_get(struct fwnode_handle *np,
+					     const char *name);
 #else
 
 static inline struct nvmem_cell *nvmem_cell_get(struct device *dev,
@@ -204,25 +209,18 @@ static inline int nvmem_unregister_notifier(struct notifier_block *nb)
 	return -EOPNOTSUPP;
 }
 
-#endif /* CONFIG_NVMEM */
-
-#if IS_ENABLED(CONFIG_NVMEM) && IS_ENABLED(CONFIG_OF)
-struct nvmem_cell *of_nvmem_cell_get(struct device_node *np,
-				     const char *id);
-struct nvmem_device *of_nvmem_device_get(struct device_node *np,
-					 const char *name);
-#else
-static inline struct nvmem_cell *of_nvmem_cell_get(struct device_node *np,
-						   const char *id)
-{
-	return ERR_PTR(-EOPNOTSUPP);
-}
-
-static inline struct nvmem_device *of_nvmem_device_get(struct device_node *np,
+static inline struct nvmem_cell *fwnode_nvmem_cell_get(struct fwnode_handle *np,
 						       const char *name)
 {
 	return ERR_PTR(-EOPNOTSUPP);
 }
-#endif /* CONFIG_NVMEM && CONFIG_OF */
 
+static inline struct nvmem_device *fwnode_nvmem_device_get(struct fwnode_handle *np,
+							   const char *name)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+
+#endif /* CONFIG_NVMEM */
+ 
 #endif  /* ifndef _LINUX_NVMEM_CONSUMER_H */
