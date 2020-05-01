@@ -14,6 +14,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/export.h>
 #include <linux/fs.h>
@@ -722,6 +723,14 @@ struct nvmem_device *fwnode_nvmem_device_get(struct fwnode_handle *fwnode, const
 		if (!nvmem_np)
 			return ERR_PTR(-EINVAL);
 		nvmem_fwnode = &nvmem_np->fwnode;
+	} else if (is_acpi_device_node(fwnode)) {
+		struct acpi_reference_args args;
+		int rval = acpi_node_get_property_reference(fwnode,
+							    "nvmem", index, &args);
+		if (rval) {
+			return ERR_PTR(rval);
+		}
+		nvmem_fwnode = acpi_fwnode_handle(args.adev);
 	} else {
 		return ERR_PTR(-ENXIO);
 	}
@@ -880,6 +889,21 @@ struct nvmem_cell *fwnode_nvmem_cell_get(struct fwnode_handle *fwnode,
 			return ERR_PTR(-EINVAL);
 		cell_fwnode = &cell_np->fwnode;
 		cell_name = cell_np->name;
+	} else if (is_acpi_device_node(fwnode)) {
+		struct acpi_reference_args args;
+		struct fwnode_handle *dev_fwnode;
+		
+		rval = acpi_node_get_property_reference(fwnode,
+						       "nvmem-cells", index, &args);
+		if (rval) {
+			return ERR_PTR(rval);
+		}
+		dev_fwnode = acpi_fwnode_handle(args.adev);
+		cell_name = acpi_device_bid(args.adev);
+		cell_fwnode = fwnode_get_named_child_node(dev_fwnode,
+							  name ? name : "nvmem");
+		if (!cell_fwnode)
+			return ERR_PTR(-EINVAL);
 	} else {
 		return ERR_PTR(-ENXIO);
 	}
