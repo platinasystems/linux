@@ -723,6 +723,7 @@ struct nvmem_device *fwnode_nvmem_device_get(struct fwnode_handle *fwnode, const
 		if (!nvmem_np)
 			return ERR_PTR(-EINVAL);
 		nvmem_fwnode = &nvmem_np->fwnode;
+#ifdef CONFIG_ACPI
 	} else if (is_acpi_device_node(fwnode)) {
 		struct acpi_reference_args args;
 		int rval = acpi_node_get_property_reference(fwnode,
@@ -731,6 +732,7 @@ struct nvmem_device *fwnode_nvmem_device_get(struct fwnode_handle *fwnode, const
 			return ERR_PTR(rval);
 		}
 		nvmem_fwnode = acpi_fwnode_handle(args.adev);
+#endif /* CONFIG_ACPI */
 	} else {
 		return ERR_PTR(-ENXIO);
 	}
@@ -889,6 +891,7 @@ struct nvmem_cell *fwnode_nvmem_cell_get(struct fwnode_handle *fwnode,
 			return ERR_PTR(-EINVAL);
 		cell_fwnode = &cell_np->fwnode;
 		cell_name = cell_np->name;
+#ifdef CONFIG_ACPI
 	} else if (is_acpi_device_node(fwnode)) {
 		struct acpi_reference_args args;
 		struct fwnode_handle *dev_fwnode;
@@ -904,6 +907,7 @@ struct nvmem_cell *fwnode_nvmem_cell_get(struct fwnode_handle *fwnode,
 							  name ? name : "nvmem");
 		if (!cell_fwnode)
 			return ERR_PTR(-EINVAL);
+#endif /* CONFIG_ACPI */
 	} else {
 		return ERR_PTR(-ENXIO);
 	}
