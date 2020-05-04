@@ -153,14 +153,4 @@ config SAMPLE_STATX
 	help
 	  Build example userspace program to use the new extended-stat syscall.
 
-config SAMPLE_ONIE
-	tristate "Build sample-onie platform example -- loadable modules only"
-	depends on m
-	select EEPROM_ONIE
-	help
-	  The sample-onie platform driver demonstrates how to use the
-	  misc/eeprom/onie module to make /sys interface files for an ONIE
-	  format EEPROM. This driver includes parameters to configure EEPROM
-	  type and address with these respective defaults: "24c04", 0X51.
-
 endif # SAMPLES
