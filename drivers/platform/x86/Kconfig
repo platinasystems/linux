@@ -1243,15 +1243,6 @@ config INTEL_ATOMISP2_PM
 	  To compile this driver as a module, choose M here: the module
 	  will be called intel_atomisp2_pm.
 
-config PLATINA_MK1
-	tristate "Platina MK1 top of rack ethernet switch"
-	select SENSORS_LM75
-	select EEPROM_AT24
-	select EEPROM_ONIE
-	select NET_XETH
-	---help---
-	  Use only with a Platina MK1 top of rack switch.
-
 endif # X86_PLATFORM_DEVICES
 
 config PMC_ATOM
