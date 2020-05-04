@@ -129,13 +129,4 @@ config EEPROM_EE1004
 	  This driver can also be built as a module.  If so, the module
 	  will be called ee1004.
 
-config EEPROM_ONIE
-	tristate "ONIE format EEPROM reader/writer"
-	default n
-	help
-	  Make /sys interface files for an ONIE format EEPROM.  See,
-	  <https://opencomputeproject.github.io/onie/design-spec/hw_requirements.html>
-
-	  If unsure, say N.
-
 endmenu
