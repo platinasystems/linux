@@ -192,4 +192,15 @@ config SC27XX_EFUSE
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem-sc27xx-efuse.
 
+config NVMEM_ONIE
+	tristate "Platform driver for ONIE format NVMEM"
+	default n
+	help
+	  This platform driver is an NVMEM client that makes
+	  /sys/devices/platform/onie/data interface files
+	  for an ONIE format NVMEM device or cell.  See,
+	  <https://opencomputeproject.github.io/onie/design-spec/hw_requirements.html>
+
+	  If unsure, say N.
+
 endif
