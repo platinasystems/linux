@@ -268,8 +268,6 @@ static int onie_cache_flush(struct onie_priv *priv)
 		n = nvmem_device_write(priv->nvmem_dev, 0, n, priv->cache.data);
 	else
 		n = -ENODEV;
-	if (n < 0)
-		pr_debug("err: %ld\n", n);
 	return n;
 }
 
