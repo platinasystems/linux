@@ -1,0 +1,60 @@
+What:		/sys/devices/platform/onie/data/...
+Date:		May 2020
+KernelVersion:  TBD
+Contact:	Tom Grennan <tgrennan@platinasystems.com>
+Description:
+	These files provide an interface for the respective TLV of an
+	ONIE format NVMEM device or cell:
+ 
+	    country_code    mac_base*         part_number    vendor
+	    crc*            manufacture_date  platform_name  vendor_extension*
+	    device_version* manufacturer      product_name
+	    diag_version    num_macs*         serial_number
+	    label_revision  onie_version      service_tag
+ 
+	See,
+	<https://opencomputeproject.github.io/onie/design-spec/hw_requirements.html>
+
+	Each file has formatted text values of the respective type.  With
+	except those marked, this is simple text with the trailing newline
+	trimmed on write.
+
+	    mac_base
+		A network link address in 00:01:02:03:04:05 format.
+
+	    num_macs
+		A decimal, unsigned integer representing the be16_to_cpu() value.
+
+	    device_version
+		A decimal, unsigned integer representing the 1-byte value.
+ 
+	    vendor_extension
+		A binary concatenated contents of all such TLVs.
+ 
+	    crc
+		A hexadecimal, unsigned integer in 0x%08x format representing
+		the be32_to_cpu() value.  A write to any other file only
+		updates the cached value. Any crc write results in
+		recalculation of the trailing CRC followed by an NVMEM	update.
+
+	A file read of a missing respective NVMEM TLV results in ENOMSG.  With
+	an unformatted NVMEM, all files return ENOMSG.
+
+	The ONIE platform device may be instantiated by the device tree or
+	ACPI. It may also be created by the driver if through its "nvmem"
+	module parameter. A period (".") results in the driver by-passing NVMEM
+	load to use the initially empty cache. Any other non-empty value
+	results in the driver attempting to load the named NVMEM device.
+	Otherwise, the empty "nvmem" parameter results in the attempted load of
+	the NVMEM cell named "onie-data" created by through device-tree or ACPI
+	configuration.
+
+	The driver also provides these files for NVMEM diagnostics.
+
+	    nvmem_name
+		Name of the loaded cell or device. A write results in load
+		of the named device and subsequent write-back triggered through
+		any write of the "crc" file.
+
+	    nvmem_cache
+		A read-only, binary view of the current data.
