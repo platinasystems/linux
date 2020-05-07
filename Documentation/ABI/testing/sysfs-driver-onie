@@ -1,10 +1,11 @@
-What:		/sys/devices/platform/onie/data/...
+What:		/sys/bus/platform/drivers/onie/tlv/...
 Date:		May 2020
 KernelVersion:  TBD
 Contact:	Tom Grennan <tgrennan@platinasystems.com>
 Description:
-	These files provide an interface for the respective TLV of an
-	ONIE format NVMEM device or cell:
+	The onie platform driver is an NVMEM consumer that provides these
+	interface files for the respective TLVs of an ONIE format NVMEM device
+	or cell:
  
 	    country_code    mac_base*         part_number    vendor
 	    crc*            manufacture_date  platform_name  vendor_extension*
@@ -23,38 +24,41 @@ Description:
 		A network link address in 00:01:02:03:04:05 format.
 
 	    num_macs
-		A decimal, unsigned integer representing the be16_to_cpu() value.
+		A decimal, unsigned integer representing the be16_to_cpu().
 
 	    device_version
 		A decimal, unsigned integer representing the 1-byte value.
  
 	    vendor_extension
-		A binary concatenated contents of all such TLVs.
+		A binary concatenation of all such TLVs.
  
 	    crc
 		A hexadecimal, unsigned integer in 0x%08x format representing
 		the be32_to_cpu() value.  A write to any other file only
-		updates the cached value. Any crc write results in
-		recalculation of the trailing CRC followed by an NVMEM	update.
+		updates the data cached but anything writen to crc results in
+		recalculation of the trailing CRC followed by an NVMEM update.
 
 	A file read of a missing respective NVMEM TLV results in ENOMSG.  With
 	an unformatted NVMEM, all files return ENOMSG.
 
-	The ONIE platform device may be instantiated by the device tree or
-	ACPI. It may also be created by the driver if through its "nvmem"
-	module parameter. A period (".") results in the driver by-passing NVMEM
-	load to use the initially empty cache. Any other non-empty value
-	results in the driver attempting to load the named NVMEM device.
-	Otherwise, the empty "nvmem" parameter results in the attempted load of
-	the NVMEM cell named "onie-data" created by through device-tree or ACPI
-	configuration.
+	The ONIE platform device must be instantiated by the device tree or
+	ACPI. If such device is unavailable, the platform driver only provides
+	access to the initially blank cache. By default, the driver associates
+	with the nvmem cell named "onie-data". This may be overriden with the
+	"nvmem" module parameter.  A period (".") parameter results in the
+	driver by-passing NVMEM load. A "cell:CELL" prefaced parameter results
+	in the driver loading the trailling CELL instead of the default,
+	"onie-data". Anything else results in the driver loading the named
+	NVMEM device.
 
 	The driver also provides these files for NVMEM diagnostics.
 
-	    nvmem_name
+	    nvmem
 		Name of the loaded cell or device. A write results in load
 		of the named device and subsequent write-back triggered through
 		any write of the "crc" file.
 
-	    nvmem_cache
-		A read-only, binary view of the current data.
+	    cache
+		A binary view of the cached data. A write updates the cache but
+		the above files will all return -ENOMSG unless the contents are
+		a valid ONIE format with a correct crc.
