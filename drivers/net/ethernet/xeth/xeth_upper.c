@@ -992,7 +992,7 @@ static void xeth_upper_lnko_unregister(struct rtnl_link_ops *lnko)
 		rtnl_link_unregister(lnko);
 }
 
-__init int xeth_upper_init(void)
+int xeth_upper_init(struct platform_device *pdev)
 {
 	int err = 0;
 	
@@ -1197,8 +1197,21 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
 	return priv->kind;
 }
 
-s64 xeth_create_port(const char *name, u32 xid, u64 ea,
-		     void (*cb)(struct ethtool_link_ksettings *))
+/**
+ * xeth_upper_make - create and add an upper port proxy to the xeth mux
+ *
+ * @name:	IFNAMSIZ buffer
+ * @xid:	A unique and immutable xeth device identifier; if zero,
+ *		the device is assigned the next available xid
+ * @ea:		Ethernet Address, if zero, it's assigned a random address
+ * @ethtool_cb
+ *		An initialization call-back
+ *
+ * Returns a non-zero, negative number on error; otherwise, returns the
+ * non-zero, poistive xid.
+ */
+s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
+		    void (*cb)(struct ethtool_link_ksettings *))
 {
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
@@ -1246,9 +1259,8 @@ s64 xeth_create_port(const char *name, u32 xid, u64 ea,
 	xeth_debug("%s xid %u mac %pM", name, xid, nd->dev_addr);
 	return xid;
 }
-EXPORT_SYMBOL(xeth_create_port);
 
-void xeth_delete_port(u32 xid)
+void xeth_upper_delete_port(u32 xid)
 {
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
@@ -1261,17 +1273,29 @@ void xeth_delete_port(u32 xid)
 	xeth_mux_del_node(&priv->node);
 	unregister_netdev(nd);
 }
-EXPORT_SYMBOL(xeth_delete_port);
 
-int xeth_set_ethtool_flag_names(const char *const names[])
+/**
+ * xeth_upper_set_ethtool_flag_names
+ *
+ * @names:	A NULL terminated list of string constants.
+ *
+ * Returns a non-zero, negative number on error; otherwise, returns the
+ * non-zero, poistive number of strings copied.
+ */
+int xeth_upper_set_ethtool_flag_names(const char *const names[])
 {
 	return xeth_kstrs_copy(&xeth_ethtool_flag_names, names);
 }
-EXPORT_SYMBOL(xeth_set_ethtool_flag_names);
 
-int xeth_set_ethtool_stat_names(const char *const names[])
+/**
+ * xeth_upper_set_ethtool_stat_names
+ *
+ * @names:	A NULL terminated list of string constants.
+ *
+ * Returns a non-zero, negative number on error; otherwise, returns the
+ * non-zero, poistive number of strings copied.
+ */
+int xeth_upper_set_ethtool_stat_names(const char *const names[])
 {
 	return xeth_kstrs_copy(&xeth_ethtool_stat_names, names);
 }
-EXPORT_SYMBOL(xeth_set_ethtool_stat_names);
-
