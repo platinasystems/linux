@@ -183,22 +183,14 @@ static int onie_cache_fill_device(struct platform_device *pdev)
 	struct onie_priv *priv = dev_get_drvdata(&pdev->dev);
 	int err;
 
-#if 0
-	do {
-		struct fwnode_handle *fwnode = dev_fwnode(&pdev->dev);
-		pr_debug("dev_fwnode(dev) is%s null\n ",
-			 fwnode ? " not" : "");
-		priv->nvmem_dev = fwnode_nvmem_device_get(fwnode, onie_nvmem_name);
-	} while (0);
-#endif
 	priv->nvmem_dev = nvmem_device_get(&pdev->dev, onie_nvmem_name);
 	if (IS_ERR(priv->nvmem_dev)) {
 		err = PTR_ERR(priv->nvmem_dev);
 		priv->nvmem_dev = NULL;
-		pr_err("get %s err: %d\n", onie_nvmem_name, err);
+		pr_err("%s get %s: %d\n", pdev->name, onie_nvmem_name, err);
 		return err;
 	} else if (!priv->nvmem_dev) {
-		pr_err("%s is null\n", onie_nvmem_name);
+		pr_err("%s got null %s\n", pdev->name, onie_nvmem_name);
 		return -ENODEV;
 	}
 	err = nvmem_device_read(priv->nvmem_dev, 0, onie_max_data,
@@ -206,68 +198,51 @@ static int onie_cache_fill_device(struct platform_device *pdev)
 	if (err < 0) {
 		nvmem_device_put(priv->nvmem_dev);
 		priv->nvmem_dev = NULL;
-		pr_debug("read %s err: %d\n", onie_nvmem_name, err);
+		pr_debug("%s read %s: %d\n", pdev->name, onie_nvmem_name, err);
 		return err;
 	}
 	onie_pdev = pdev;
 	strlcpy(priv->nvmem_name, onie_nvmem_name, onie_nvmem_name_sz);
-	pr_debug("read %s ok", priv->nvmem_name);
+	pr_debug("%s read %s ok", pdev->name, priv->nvmem_name);
 	return 0;
 }
 
 static int onie_cache_fill_cell(struct platform_device *pdev)
 {
-	static const char * const onie_cell_names[] = {
-		ONIE_NVMEM_CELL,
-		"onie_data",
-		"onie-raw",
-		"onie_raw",
-		NULL,
-	};
 	struct onie_priv *priv = dev_get_drvdata(&pdev->dev);
 	size_t n;
 	void *data;
-	int i, err;
+	int err;
 
-	for (i = 0; onie_cell_names[i]; i++) {
-		priv->nvmem_cell = nvmem_cell_get(&pdev->dev,
-						  onie_cell_names[i]);
-		if (IS_ERR(priv->nvmem_cell)) {
-			err = PTR_ERR(priv->nvmem_cell);
-			priv->nvmem_cell = NULL;
-			pr_err("get %s/%s err: %d\n",
-			       pdev->name, onie_cell_names[i], err);
-		} else if (!priv->nvmem_cell) {
-			pr_err("%s/%s is nil\n",
-			       pdev->name, onie_cell_names[i]);
-			err = -ENODEV;
-		} else {
-			err = 0;
-			break;
-		}
-	}
-	if (err)
+	priv->nvmem_cell = nvmem_cell_get(&pdev->dev, ONIE_NVMEM_CELL);
+	if (IS_ERR(priv->nvmem_cell)) {
+		err = PTR_ERR(priv->nvmem_cell);
+		priv->nvmem_cell = NULL;
+		pr_err("%s get "ONIE_NVMEM_CELL ": %d\n", pdev->name, err);
 		return err;
+	} else if (!priv->nvmem_cell) {
+		pr_err("%s got nil " ONIE_NVMEM_CELL "\n", pdev->name);
+		return -ENODEV;
+	}
 	data = nvmem_cell_read(priv->nvmem_cell, &n);
 	if (IS_ERR(data)) {
 		nvmem_cell_put(priv->nvmem_cell);
 		err = PTR_ERR(data);
-		pr_err("%s read err: %d\n", ONIE_NVMEM_CELL, err);
+		pr_err("%s read " ONIE_NVMEM_CELL ": %d\n", pdev->name, err);
 		return err;
 	}
 	if (!data) {
 		nvmem_cell_put(priv->nvmem_cell);
-		pr_err("%s nil data\n", ONIE_NVMEM_CELL);
+		pr_err("%s read " ONIE_NVMEM_CELL ": nil\n", pdev->name);
 		return -EINVAL;
 	}
 	if (n > 0) {
 		memcpy(priv->cache.data, data, n);
 		kfree(data);
-		strlcpy(priv->nvmem_name, "cell:"ONIE_NVMEM_CELL,
-			onie_nvmem_name_sz);
+		strcpy(priv->nvmem_name, "cell:"ONIE_NVMEM_CELL);
 	}
 	onie_pdev = pdev;
-	pr_debug("read %s ok", priv->nvmem_name);
+	pr_debug("%s read " ONIE_NVMEM_CELL " ok", pdev->name);
 	return 0;
 }
 
