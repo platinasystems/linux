@@ -174,20 +174,19 @@ static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	u16 tpid = cpu_to_be16(ETH_P_8021Q);
-	u16 pcp = (u16)(skb->priority) << VLAN_PRIO_SHIFT;
 	const u16 vidmask = (1 << 12) - 1;
 
 	if (priv->kind == XETH_DEV_KIND_VLAN) {
 		u16 vid = (u16)(priv->xid / VLAN_N_VID) & vidmask;
-		skb = vlan_insert_tag_set_proto(skb, tpid, pcp | vid);
+		skb = vlan_insert_tag_set_proto(skb, tpid, vid);
 		if (skb) {
 			tpid = cpu_to_be16(ETH_P_8021AD);
 			vid = (u16)(priv->xid) & vidmask;
-			skb = vlan_insert_tag_set_proto(skb, tpid, pcp | vid);
+			skb = vlan_insert_tag_set_proto(skb, tpid, vid);
 		}
 	} else {
 		u16 vid = (u16)(priv->xid) & vidmask;
-		skb = vlan_insert_tag_set_proto(skb, tpid, pcp | vid);
+		skb = vlan_insert_tag_set_proto(skb, tpid, vid);
 	}
 	return skb ? xeth_mux_queue_xmit(skb) : NETDEV_TX_OK;
 }
