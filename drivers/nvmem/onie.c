@@ -18,24 +18,23 @@
 #include <linux/nvmem-consumer.h>
 #include <linux/nvmem-provider.h>
 
-static int onie_init(void);
-static void onie_exit(void);
-
-module_init(onie_init);
-module_exit(onie_exit);
+static struct platform_driver onie_platform_driver;
+module_platform_driver(onie_platform_driver);
 
 enum onie_param_ {
 	onie_nvmem_name_sz = 64,
 };
 
-static char onie_param_nvmem[onie_nvmem_name_sz] __initdata;
-module_param_string(nvmem, onie_param_nvmem, onie_nvmem_name_sz, 0);
+static char onie_nvmem_name[onie_nvmem_name_sz];
+module_param_string(nvmem, onie_nvmem_name, onie_nvmem_name_sz, 0);
 MODULE_PARM_DESC(nvmem, " use named device or empty data if \".\"; "
 		 "otherwise, use \"onie-data\" cell");
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_DESCRIPTION("a /sys interface for ONIE format NVMEM");
+
+static struct platform_device *onie_pdev;
 
 #define ONIE_HEADER_ID	"TlvInfo"
 
@@ -77,8 +76,7 @@ struct __attribute__((packed)) onie {
 	struct onie_tlv tlv;
 };
 
-static struct {
-	struct	platform_device *pdev;
+struct onie_priv {
 	struct	nvmem_cell	*nvmem_cell;
 	struct	nvmem_device	*nvmem_dev;
 	char	nvmem_name[onie_nvmem_name_sz];
@@ -90,7 +88,7 @@ static struct {
 		struct	mutex mutex;
 		u8	data[onie_max_data];
 	} writeback;
-} *onie_priv;
+};
 
 static struct attribute *onie_attributes[];
 
@@ -110,64 +108,23 @@ static const struct of_device_id onie_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, onie_of_match);
 
-static const struct acpi_device_id onie_acpi_ids[] = {
-	{ .id = "ONIE", },
-	{ /* END OF LIST */ },
-};
-MODULE_DEVICE_TABLE(acpi, onie_acpi_ids);
-
-static const struct platform_device_id onie_platform_ids[] = {
-	{ .name = "onie", },
-	{ .name = "PRP0001:01", },
-	{ /* END OF LIST */ },
-};
-MODULE_DEVICE_TABLE(platform, onie_platform_ids);
-
 static int onie_probe(struct platform_device *pdev);
 static int onie_remove(struct platform_device *pdev);
 
 static struct platform_driver onie_platform_driver = {
 	.driver = {
 		.name = "onie",
-		.of_match_table = of_match_ptr(onie_of_match),
-		.acpi_match_table = ACPI_PTR(onie_acpi_ids),
+		.of_match_table = onie_of_match,
 		.groups = onie_attribute_groups,
 	},
-	.id_table = onie_platform_ids,
 	.probe = onie_probe,
 	.remove = onie_remove,
 };
 
-static int __init onie_init(void)
-{
-	int err;
+static int onie_cache_fill(struct platform_device *pdev);
 
-	onie_priv = kzalloc(sizeof(*onie_priv), GFP_KERNEL);
-	if (!onie_priv)
-		return -ENOMEM;
-
-	if (onie_param_nvmem[0])
-		strncpy(onie_priv->nvmem_name, onie_param_nvmem,
-			onie_nvmem_name_sz);
-
-	err = platform_driver_register(&onie_platform_driver);
-	if (err)
-		kfree(onie_priv);
-	return err;
-}
-
-static void __exit onie_exit(void)
-{
-	platform_driver_unregister(&onie_platform_driver);
-	if (onie_priv) {
-		kfree(onie_priv);
-		onie_priv = NULL;
-	}
-}
-
-static int onie_cache_fill(void);
-
-static int onie_tlv_set(enum onie_type, size_t, const u8 *);
+static int onie_tlv_set(struct device *dev,
+			enum onie_type, size_t, const u8 *);
 static struct onie_tlv *onie_tlv_insert(struct onie_tlv *, enum onie_type,
 					size_t, const u8 *, size_t *, u8 *);
 
@@ -184,110 +141,157 @@ static void onie_append_crc(u8 *data, size_t sz);
 
 static int onie_probe(struct platform_device *pdev)
 {
-	pr_debug("%s\n", pdev->name);
-	if (onie_priv->pdev)
+	if (onie_pdev) {
+		pr_err("ignoring %s, already using %s\n",
+		       pdev->name, onie_pdev->name);
 		return -EEXIST;
-	onie_priv->pdev = pdev;
-	onie_cache_fill();
-	return 0;
+	}
+	return onie_cache_fill(pdev);
 }
 
 static int onie_remove(struct platform_device *pdev)
 {
 	pr_debug("%s\n", pdev->name);
-	onie_priv->pdev = NULL;
+	dev_set_drvdata(&pdev->dev, NULL);
+	onie_pdev = NULL;
 	return 0;
 }
 
-static int onie_cache_check_header_id(void)
-{
-	return strcmp(onie_header_id, onie_priv->cache.data) ? -EIDRM : 0;
-}
+static ssize_t onie_validate(void*);
 
-static ssize_t onie_cache_validate(void);
-
-static int onie_cache_flush(void)
+static int onie_cache_flush(struct device *dev)
 {
+	struct onie_priv *priv = dev_get_drvdata(dev);
 	ssize_t n;
 	
-	n = onie_cache_validate();
+	n = onie_validate(priv->cache.data);
 	if (n <= 0)
 		return n;
-	if (onie_priv->nvmem_cell)
-		n = nvmem_cell_write(onie_priv->nvmem_cell,
-				     onie_priv->cache.data, n);
-	else if (onie_priv->nvmem_dev)
-		n = nvmem_device_write(onie_priv->nvmem_dev, 0, n,
-				       onie_priv->cache.data);
+	if (priv->nvmem_cell)
+		n = nvmem_cell_write(priv->nvmem_cell,
+				     priv->cache.data, n);
+	else if (priv->nvmem_dev)
+		n = nvmem_device_write(priv->nvmem_dev, 0, n,
+				       priv->cache.data);
 	else
 		n = -ENODEV;
 	return n;
 }
 
-static int onie_cache_fill()
+static int onie_cache_fill_device(struct platform_device *pdev)
 {
-	int err = 0;
+	struct onie_priv *priv = dev_get_drvdata(&pdev->dev);
+	int err;
 
-	if (!strcmp(onie_priv->nvmem_name, ".") || !onie_priv->pdev)
-		return 0;
-	if (onie_priv->nvmem_name[0]) {
-		onie_priv->nvmem_dev = nvmem_device_get(&onie_priv->pdev->dev,
-							onie_priv->nvmem_name);
-		if (IS_ERR(onie_priv->nvmem_dev)) {
-			onie_priv->nvmem_dev = NULL;
-			err = PTR_ERR(onie_priv->nvmem_dev);
-			pr_debug("%s get err: %d\n",
-				 onie_priv->nvmem_name, err);
-		} else if (!onie_priv->nvmem_dev) {
-			err = -ENODEV;
-			pr_debug("%s is null\n", onie_priv->nvmem_name);
-		} else {
-			err = nvmem_device_read(onie_priv->nvmem_dev, 0,
-						onie_max_data,
-						onie_priv->cache.data);
-			if (err < 0) {
-				nvmem_device_put(onie_priv->nvmem_dev);
-				onie_priv->nvmem_dev = NULL;
-				pr_debug("%s read err: %d\n",
-					 onie_priv->nvmem_name, err);
-			} else
-				err = 0;
-		}
+#if 0
+	do {
+		struct fwnode_handle *fwnode = dev_fwnode(&pdev->dev);
+		pr_debug("dev_fwnode(dev) is%s null\n ",
+			 fwnode ? " not" : "");
+		priv->nvmem_dev = fwnode_nvmem_device_get(fwnode, onie_nvmem_name);
+	} while (0);
+#endif
+	priv->nvmem_dev = nvmem_device_get(&pdev->dev, onie_nvmem_name);
+	if (IS_ERR(priv->nvmem_dev)) {
+		err = PTR_ERR(priv->nvmem_dev);
+		priv->nvmem_dev = NULL;
+		pr_err("get %s err: %d\n", onie_nvmem_name, err);
+		return err;
+	} else if (!priv->nvmem_dev) {
+		pr_err("%s is null\n", onie_nvmem_name);
+		return -ENODEV;
+	}
+	err = nvmem_device_read(priv->nvmem_dev, 0, onie_max_data,
+				priv->cache.data);
+	if (err < 0) {
+		nvmem_device_put(priv->nvmem_dev);
+		priv->nvmem_dev = NULL;
+		pr_debug("read %s err: %d\n", onie_nvmem_name, err);
 		return err;
 	}
-	onie_priv->nvmem_cell = nvmem_cell_get(&onie_priv->pdev->dev,
-					       ONIE_NVMEM_CELL);
-	if (IS_ERR(onie_priv->nvmem_cell)) {
-		err = PTR_ERR(onie_priv->nvmem_cell);
-		onie_priv->nvmem_cell = NULL;
-		pr_debug("%s get err: %d\n", ONIE_NVMEM_CELL, err);
-	} else if (!onie_priv->nvmem_cell) {
-		err = -ENODEV;
-		pr_debug("%s is null\n", ONIE_NVMEM_CELL);
-	} else {
-		size_t n;
-		void *data = nvmem_cell_read(onie_priv->nvmem_cell, &n);
-		if (IS_ERR(data)) {
-			nvmem_cell_put(onie_priv->nvmem_cell);
-			err = PTR_ERR(data);
-			pr_debug("%s read err: %d\n", ONIE_NVMEM_CELL, err);
-		} else if (!data) {
-			err = -EINVAL;
-			pr_debug("%s read nil\n", ONIE_NVMEM_CELL);
-		} else if (n > 0) {
-			memcpy(onie_priv->cache.data, data, n);
-			kfree(data);
-			strncpy(onie_priv->nvmem_name,
-				"cell:" ONIE_NVMEM_CELL,
-				onie_nvmem_name_sz);
+	onie_pdev = pdev;
+	strlcpy(priv->nvmem_name, onie_nvmem_name, onie_nvmem_name_sz);
+	pr_debug("read %s ok", priv->nvmem_name);
+	return 0;
+}
+
+static int onie_cache_fill_cell(struct platform_device *pdev)
+{
+	static const char * const onie_cell_names[] = {
+		ONIE_NVMEM_CELL,
+		"onie_data",
+		"onie-raw",
+		"onie_raw",
+		NULL,
+	};
+	struct onie_priv *priv = dev_get_drvdata(&pdev->dev);
+	size_t n;
+	void *data;
+	int i, err;
+
+	for (i = 0; onie_cell_names[i]; i++) {
+		priv->nvmem_cell = nvmem_cell_get(&pdev->dev,
+						  onie_cell_names[i]);
+		if (IS_ERR(priv->nvmem_cell)) {
+			err = PTR_ERR(priv->nvmem_cell);
+			priv->nvmem_cell = NULL;
+			pr_err("get %s/%s err: %d\n",
+			       pdev->name, onie_cell_names[i], err);
+		} else if (!priv->nvmem_cell) {
+			pr_err("%s/%s is nil\n",
+			       pdev->name, onie_cell_names[i]);
+			err = -ENODEV;
+		} else {
 			err = 0;
+			break;
 		}
 	}
-	return err;
+	if (err)
+		return err;
+	data = nvmem_cell_read(priv->nvmem_cell, &n);
+	if (IS_ERR(data)) {
+		nvmem_cell_put(priv->nvmem_cell);
+		err = PTR_ERR(data);
+		pr_err("%s read err: %d\n", ONIE_NVMEM_CELL, err);
+		return err;
+	}
+	if (!data) {
+		nvmem_cell_put(priv->nvmem_cell);
+		pr_err("%s nil data\n", ONIE_NVMEM_CELL);
+		return -EINVAL;
+	}
+	if (n > 0) {
+		memcpy(priv->cache.data, data, n);
+		kfree(data);
+		strlcpy(priv->nvmem_name, "cell:"ONIE_NVMEM_CELL,
+			onie_nvmem_name_sz);
+	}
+	onie_pdev = pdev;
+	pr_debug("read %s ok", priv->nvmem_name);
+	return 0;
+}
+
+static int onie_cache_fill(struct platform_device *pdev)
+{
+	struct onie_priv *priv;
+
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+	dev_set_drvdata(&pdev->dev, priv);
+
+	if (!strcmp(onie_nvmem_name, ".")) {
+		strcpy(priv->nvmem_name, onie_nvmem_name);
+		onie_pdev = pdev;
+		return 0;
+	}
+	return onie_nvmem_name[0] ?
+		onie_cache_fill_device(pdev) :
+		onie_cache_fill_cell(pdev);
 }
 
 /**
- * onie_cache_validate() - verify ONIE ID, Version, and CRC.
+ * onie_validate() - verify ONIE ID, Version, and CRC.
  *
  * Return:
  * * -EBADR	- sz && sz < onie_min_data
@@ -297,17 +301,14 @@ static int onie_cache_fill()
  * * -EBADF	- CRC mismatch
  * * >0		- total ONIE data length
  */
-static ssize_t onie_cache_validate(void)
+static ssize_t onie_validate(void *data)
 {
-	void *data = onie_priv->cache.data;
 	struct onie_header *h = data;
 	size_t tlvsz, fullsz, crcsz;
 	u32 crc_read, crc_calc;
-	int err;
 
-	err = onie_cache_check_header_id();
-	if (err)
-		return err;
+	if (strcmp(onie_header_id, data))
+		return -EIDRM;
 	if (h->version != onie_header_version)
 		return -EINVAL;
 	tlvsz = onie_u16(h->length);
@@ -379,7 +380,10 @@ static ssize_t onie_show_cache(struct device *dev,
 			       struct device_attribute *kda,
 			       char *buf)
 {
-	memcpy(buf, onie_priv->cache.data, onie_max_data);
+	struct onie_priv *priv = dev_get_drvdata(dev);
+	mutex_lock(&priv->cache.mutex);
+	memcpy(buf, priv->cache.data, onie_max_data);
+	mutex_unlock(&priv->cache.mutex);
 	return onie_max_data;
 }
 
@@ -387,7 +391,8 @@ static ssize_t onie_show_nvmem(struct device *dev,
 			       struct device_attribute *kda,
 			       char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%s", onie_priv->nvmem_name);
+	struct onie_priv *priv = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "%s", priv->nvmem_name);
 }
 
 static ssize_t onie_show_mac_base(struct device *dev,
@@ -440,10 +445,11 @@ static ssize_t onie_show_crc(struct device *dev,
 	return n;
 }
 
-static ssize_t onie_store_default(u8 t, size_t sz, const char *buf)
+static ssize_t onie_store_default(struct device *dev,
+				  u8 t, size_t sz, const char *buf)
 {
 	ssize_t l = (sz > 0 && buf[sz-1] == '\n') ? sz-1 : sz;
-	int err = onie_tlv_set(t, l, buf);
+	int err = onie_tlv_set(dev, t, l, buf);
 	return err ? err : sz;
 }
 
@@ -452,7 +458,7 @@ static ssize_t onie_store_##NAME(struct device *dev,			\
 				 struct device_attribute *kda,		\
 				 const char *buf, size_t sz)		\
 {									\
-	return onie_store_default(onie_type_##NAME, sz, buf);		\
+	return onie_store_default(dev, onie_type_##NAME, sz, buf);	\
 }
 
 new_onie_store(product_name)
@@ -473,9 +479,12 @@ static ssize_t onie_store_cache(struct device *dev,
 				struct device_attribute *kda,
 				const char *buf, size_t sz)
 {
+	struct onie_priv *priv = dev_get_drvdata(dev);
 	if (sz >= onie_max_data)
 		return -ERANGE;
-	memcpy(onie_priv->cache.data, buf, sz);
+	mutex_lock(&priv->cache.mutex);
+	memcpy(priv->cache.data, buf, sz);
+	mutex_unlock(&priv->cache.mutex);
 	return sz;
 }
 
@@ -483,18 +492,7 @@ static ssize_t onie_store_nvmem(struct device *dev,
 				struct device_attribute *kda,
 				const char *buf, size_t sz)
 {
-	if (sz >= onie_nvmem_name_sz)
-		return -EINVAL;
-	if (onie_priv->nvmem_cell) {
-		nvmem_cell_put(onie_priv->nvmem_cell);
-		onie_priv->nvmem_cell = NULL;
-	} else if (onie_priv->nvmem_cell) {
-		nvmem_device_put(onie_priv->nvmem_dev);
-		onie_priv->nvmem_dev = NULL;
-	}
-	strncpy(onie_priv->nvmem_name, buf, sz);
-	onie_cache_fill();
-	return sz;
+	return -ENOSYS;
 }
 
 static ssize_t onie_store_mac_base(struct device *dev,
@@ -513,7 +511,7 @@ static ssize_t onie_store_mac_base(struct device *dev,
 		return -EINVAL;
 	for (i = 0; i < onie_sz_mac; i++)
 		v[i] = uv[i] & U8_MAX;
-	err = onie_tlv_set(onie_type_mac_base, onie_sz_mac, v);
+	err = onie_tlv_set(dev, onie_type_mac_base, onie_sz_mac, v);
 	return err ? err : sz;
 }
 
@@ -531,7 +529,7 @@ static ssize_t onie_store_num_macs(struct device *dev,
 	if (uv > U16_MAX)
 		return -ERANGE;
 	*(u16*)v = cpu_to_be16((u16)uv);
-	err = onie_tlv_set(onie_type_num_macs, sizeof(u16), v);
+	err = onie_tlv_set(dev, onie_type_num_macs, sizeof(u16), v);
 	return err ? err : sz;
 }
 
@@ -549,7 +547,7 @@ static ssize_t onie_store_device_version(struct device *dev,
 	if (uv > U8_MAX)
 		return -ERANGE;
 	v[0] = uv & U8_MAX;
-	err = onie_tlv_set(onie_type_device_version, sizeof(u8), v);
+	err = onie_tlv_set(dev, onie_type_device_version, sizeof(u8), v);
 	return err ? err : sz;
 }
 
@@ -557,8 +555,8 @@ static ssize_t onie_store_crc(struct device *dev,
 			      struct device_attribute *kda,
 			      const char *buf, size_t sz)
 {
-	int err = onie_cache_flush();
-	return err ? err : sz;
+	int err = onie_cache_flush(dev);
+	return (err < 0) ? err : sz;
 }
 
 #define new_onie_devattr(NAME)						\
@@ -649,25 +647,27 @@ static void onie_append_crc(u8 *data, size_t sz)
 
 ssize_t onie_tlv_get(enum onie_type t, size_t sz, u8 *v)
 {
-	struct onie *o = (struct onie *)onie_priv->cache.data;
+	struct onie_priv *priv;
+	struct onie *o;
 	struct onie_tlv *tlv;
 	ssize_t n;
 	u16 hl;
 	u8 *end;
 
-	mutex_lock(&onie_priv->cache.mutex);
-	n = onie_cache_validate();
-	if (n < 0) {
-		n = onie_cache_fill();
-		if (n < 0)
-			goto onie_tlv_get_exit;
-	}
+	if (!onie_pdev)
+		return -ENODEV;
+	priv = dev_get_drvdata(&onie_pdev->dev);
+	o = (struct onie *)priv->cache.data;
+	mutex_lock(&priv->cache.mutex);
+	n = onie_validate(priv->cache.data);
+	if (n < 0)
+		goto onie_tlv_get_exit;
 	n = -ENOMSG;
 	hl = onie_u16(o->header.length);
 	if (!hl) {
 		goto onie_tlv_get_exit;
 	}
-	end = onie_priv->cache.data + sizeof(o->header) + hl;
+	end = priv->cache.data + sizeof(o->header) + hl;
 	for (tlv = &o->tlv; (u8*)tlv < end; tlv = onie_next(tlv))
 		if (tlv->t == t) {
 			if (n < 0)
@@ -686,26 +686,26 @@ ssize_t onie_tlv_get(enum onie_type t, size_t sz, u8 *v)
 				goto onie_tlv_get_exit;
 		}
 onie_tlv_get_exit:
-	mutex_unlock(&onie_priv->cache.mutex);
+	mutex_unlock(&priv->cache.mutex);
 	return n;
 }
 EXPORT_SYMBOL_GPL(onie_tlv_get);
 
-static int onie_tlv_set(enum onie_type t, size_t l, const u8 *v)
+static int onie_tlv_set(struct device *dev,
+			enum onie_type t, size_t l, const u8 *v)
 {
-	struct onie_header *cache_h =
-		(struct onie_header *)onie_priv->cache.data;
-	struct onie_header *wb_h =
-		(struct onie_header *)onie_priv->writeback.data;
+	struct onie_priv *priv = dev_get_drvdata(dev);
+	struct onie_header *cache_h = (struct onie_header *)priv->cache.data;
+	struct onie_header *wb_h = (struct onie_header *)priv->writeback.data;
 	struct onie_tlv *cache_tlv =
-		(struct onie_tlv *)(onie_priv->cache.data + sizeof(*cache_h));
+		(struct onie_tlv *)(priv->cache.data + sizeof(*cache_h));
 	struct onie_tlv *wb_tlv =
-		(struct onie_tlv *)(onie_priv->writeback.data + sizeof(*wb_h));
-	u8 *over = onie_priv->writeback.data + onie_max_data;
+		(struct onie_tlv *)(priv->writeback.data + sizeof(*wb_h));
+	u8 *over = priv->writeback.data + onie_max_data;
 	size_t tl, hl = 0;
 
-	mutex_lock(&onie_priv->cache.mutex);
-	mutex_lock(&onie_priv->writeback.mutex);
+	mutex_lock(&priv->cache.mutex);
+	mutex_lock(&priv->writeback.mutex);
 	onie_reset_header(wb_h);
 	if (onie_u16(cache_h->length) != 0)
 		until_onie_type_crc(cache_tlv) {
@@ -718,8 +718,8 @@ static int onie_tlv_set(enum onie_type t, size_t l, const u8 *v)
 			}
 			wb_tlv = onie_tlv_insert(wb_tlv, t, l, v, &hl, over);
 			if (!wb_tlv) {
-				mutex_unlock(&onie_priv->writeback.mutex);
-				mutex_unlock(&onie_priv->cache.mutex);
+				mutex_unlock(&priv->writeback.mutex);
+				mutex_unlock(&priv->cache.mutex);
 				return -EINVAL;
 			} else
 				l = 0;
@@ -727,8 +727,8 @@ static int onie_tlv_set(enum onie_type t, size_t l, const u8 *v)
 	if (l) {
 		wb_tlv = onie_tlv_insert(wb_tlv, t, l, v, &hl, over);
 		if (!wb_tlv) {
-			mutex_unlock(&onie_priv->writeback.mutex);
-			mutex_unlock(&onie_priv->cache.mutex);
+			mutex_unlock(&priv->writeback.mutex);
+			mutex_unlock(&priv->cache.mutex);
 			return -EINVAL;
 		}
 	}
@@ -736,10 +736,10 @@ static int onie_tlv_set(enum onie_type t, size_t l, const u8 *v)
 	hl += sizeof(*wb_tlv) + onie_sz_crc;
 	onie_set_u16(hl, wb_h->length);
 	tl = sizeof(*wb_h) + hl;
-	onie_append_crc(onie_priv->writeback.data, tl - onie_sz_crc);
-	memcpy(onie_priv->cache.data, onie_priv->writeback.data, tl);
-	mutex_unlock(&onie_priv->cache.mutex);
-	mutex_unlock(&onie_priv->writeback.mutex);
+	onie_append_crc(priv->writeback.data, tl - onie_sz_crc);
+	memcpy(priv->cache.data, priv->writeback.data, tl);
+	mutex_unlock(&priv->cache.mutex);
+	mutex_unlock(&priv->writeback.mutex);
 	return 0;
 }
 
