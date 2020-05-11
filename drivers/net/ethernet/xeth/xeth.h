@@ -1,6 +1,6 @@
 /**
  * SPDX-License-Identifier: GPL-2.0
- * Copyright(c) 2018-2019 Platina Systems, Inc.
+ * Copyright(c) 2018-2020 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -17,9 +17,9 @@
 #include <linux/inetdevice.h>
 #include <linux/if_vlan.h>
 #include <linux/platform_device.h>
-#include <linux/if_vlan.h>
+#include <linux/of_device.h>
+#include <linux/acpi.h>
 #include <linux/kthread.h>
-#include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
 #include <net/sock.h>
@@ -265,9 +265,9 @@ static inline void xeth_kobject_put(struct kobject *kobj)
 		kobject_put(kobj);
 }
 
-int xeth_mux_init(void);
+int xeth_mux_init(struct platform_device *);
 int xeth_sbrx_init(void);
-int xeth_upper_init(void);
+int xeth_upper_init(struct platform_device *);
 
 int xeth_mux_deinit(int err);
 int xeth_sbrx_deinit(int err);
@@ -275,6 +275,7 @@ int xeth_upper_deinit(int err);
 
 u8 xeth_mux_bits(void);
 
+int xeth_mux_add_lowers(struct net_device *lowers[]);
 void xeth_mux_add_node(struct hlist_node __rcu *node,
 		       struct hlist_head __rcu *head);
 void xeth_mux_del_node(struct hlist_node __rcu *node);
@@ -310,7 +311,24 @@ void xeth_nb_stop_inetaddr(void);
 void xeth_nb_stop_netdevice(void);
 void xeth_nb_stop_netevent(void);
 
-struct task_struct __init *xeth_sb_start(void);
+char *xeth_onie_product_name(void);
+char *xeth_onie_part_number(void);
+char *xeth_onie_serial_number(void);
+char *xeth_onie_manufacture_date(void);
+char *xeth_onie_label_revision(void);
+char *xeth_onie_platform_name(void);
+char *xeth_onie_onie_version(void);
+char *xeth_onie_manufacturer(void);
+char *xeth_onie_country_code(void);
+char *xeth_onie_vendor(void);
+char *xeth_onie_diag_version(void);
+char *xeth_onie_service_tag(void);
+
+u64 xeth_onie_mac_base(void);
+u16 xeth_onie_num_macs(void);
+u8 xeth_onie_device_version(void);
+
+struct task_struct *xeth_sb_start(void);
 
 struct task_struct *xeth_sbrx_fork(struct socket *conn);
 
@@ -329,7 +347,6 @@ int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason);
 int xeth_sbtx_neigh_update(struct neighbour *neigh);
 
-
 struct net_device *xeth_upper_lookup_rcu(u32 xid);
 void xeth_upper_all_carrier_off(void);
 void xeth_upper_all_dump_ifinfo(void);
@@ -343,5 +360,14 @@ void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
 void xeth_upper_speed(struct net_device *nd, u32 mbps);
 u32 xeth_upper_xid(struct net_device *nd);
 enum xeth_dev_kind xeth_upper_kind(struct net_device *nd);
+s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
+		     void (*ethtool_cb) (struct ethtool_link_ksettings *));
+void xeth_upper_delete_port(u32 xid);
+int xeth_upper_set_ethtool_flag_names(const char *const names[]);
+int xeth_upper_set_ethtool_stat_names(const char *const names[]);
+
+int xeth_vendor_probe(struct platform_device *);
+extern int (*xeth_vendor_remove)(struct platform_device *);
+extern int (*xeth_vendor_init)(struct platform_device *);
 
 #endif  /* __NET_ETHERNET_XETH_H */

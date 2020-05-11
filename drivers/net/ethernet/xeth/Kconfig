@@ -1,10 +1,16 @@
-config NET_XETH
-	tristate
+menuconfig NET_XETH
+	tristate "XETH ethernet switch proxy"
 	default n
 	depends on ETHERNET && NET_SWITCHDEV && VLAN_8021Q
 	---help---
-	  This platform driver provides network device proxy of remote or
-	  integrated ethernet switch ports and bridges.
+	  This virtual mux device proxy's an ethernet switch.
 
-	  This must be selected by a parent platform driver.
-	  See drivers/platform/x86/platina-mk1
+if NET_XETH
+
+config NET_XETH_VENDOR_PLATINA
+	bool "Platina Systems"
+	default n
+	help
+	  This includes ONIE probed configuration of Platina's Switches.
+
+endif

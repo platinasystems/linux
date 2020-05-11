@@ -82,7 +82,7 @@ xeth_sb_task_egress:
 	return err;
 }
 
-struct task_struct __init *xeth_sb_start(void)
+struct task_struct *xeth_sb_start(void)
 {
 	return xeth_debug_ptr_err(kthread_run(xeth_sb_task, NULL,
 					      "%s", xeth_name));

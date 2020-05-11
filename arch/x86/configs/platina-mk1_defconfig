@@ -3125,7 +3125,6 @@ CONFIG_X86_PLATFORM_DEVICES=y
 # CONFIG_MLX_PLATFORM is not set
 # CONFIG_INTEL_TURBO_MAX_3 is not set
 # CONFIG_I2C_MULTI_INSTANTIATE is not set
-CONFIG_PLATINA_MK1=m
 
 #
 # Intel Speed Select Technology interface support

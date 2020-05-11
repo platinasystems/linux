@@ -1,6 +1,6 @@
 /**
  * SPDX-License-Identifier: GPL-2.0
- * Copyright(c) 2018-2019 Platina Systems, Inc.
+ * Copyright(c) 2018-2020 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
@@ -76,6 +76,32 @@ struct net_device *xeth_mux;
 static struct xeth_mux_priv *xeth_mux_priv(void)
 {
 	return IS_ERR_OR_NULL(xeth_mux) ? NULL : netdev_priv(xeth_mux);
+}
+
+/**
+ * xeth_add_lowers - add a NULL terminated list of lower netdevs to xeth mux
+ *
+ * Returns ENODEV if the xeth mux is unavailable; otherwise, returns non-zero
+ * status of its ndo_add_slave or zero if all were added successfully. Also
+ * returns zero if all are already lowers of xeth mux.
+ */
+int xeth_mux_add_lowers(struct net_device *lowers[])
+{
+	struct net_device *xeth_mux = dev_get_by_name(&init_net, "xeth");
+	int (*ndo_add_slave)(struct net_device *upper,
+			    struct net_device *lower,
+			    struct netlink_ext_ack *extack);
+	int i, err = 0;
+
+	if (IS_ERR_OR_NULL(xeth_mux))
+		return -ENODEV;
+	ndo_add_slave = xeth_mux->netdev_ops->ndo_add_slave;
+	for (i = 0; !err && lowers[i]; i++)
+		err = ndo_add_slave(xeth_mux, lowers[i], NULL);
+	xeth_mux->addr_assign_type = NET_ADDR_STOLEN;
+	memcpy(xeth_mux->dev_addr, lowers[0]->dev_addr, ETH_ALEN);
+	dev_put(xeth_mux);
+	return err;
 }
 
 void xeth_mux_add_node(struct hlist_node __rcu *node,
@@ -476,7 +502,7 @@ static const struct ethtool_ops xeth_mux_ethtool_ops = {
  * See @xeth_upper_init() for how to create the proxy netdevs multiplexed by
  * this device.
  */
-__init int xeth_mux_init(void)
+int xeth_mux_init(struct platform_device *pdev)
 {
 	struct xeth_mux_priv *priv;
 	int err;

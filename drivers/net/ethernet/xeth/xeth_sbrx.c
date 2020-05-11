@@ -223,7 +223,7 @@ struct task_struct *xeth_sbrx_fork(struct socket *conn)
 	return t;
 }
 
-__init int xeth_sbrx_init(void)
+int xeth_sbrx_init(void)
 {
 	xeth_sbrx_buf = xeth_debug_ptr_err(kzalloc(XETH_SIZEOF_JUMBO_FRAME,
 						   GFP_KERNEL));
