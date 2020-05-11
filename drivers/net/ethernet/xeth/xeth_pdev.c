@@ -22,18 +22,18 @@ static struct platform_device xeth_pdev = {
 	},
 };
 
-static int __init onie_init(void)
+static int __init xeth_init(void)
 {
 	return platform_device_register(&xeth_pdev);
 }
 
-static void __exit onie_exit(void)
+static void __exit xeth_exit(void)
 {
 	platform_device_unregister(&xeth_pdev);
 }
 
-module_init(onie_init);
-module_exit(onie_exit);
+module_init(xeth_init);
+module_exit(xeth_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
