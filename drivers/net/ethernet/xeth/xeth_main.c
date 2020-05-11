@@ -20,9 +20,7 @@ MODULE_DESCRIPTION("mux proxy netdevs with a remote switch;\n"
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_VERSION(xeth_version);
-#if 0
 MODULE_SOFTDEP("pre: nvmem-onie");
-#endif
 
 int xeth_encap = XETH_ENCAP_VLAN;
 int xeth_base_xid = 3000;
@@ -53,11 +51,11 @@ MODULE_DEVICE_TABLE(platform, xeth_platform_ids);
 
 static struct platform_driver xeth_platform_driver = {
 	.driver = {
-		.name = "onie",
+		.name = "xeth",
 		.of_match_table = of_match_ptr(xeth_of_match),
 		.acpi_match_table = ACPI_PTR(xeth_acpi_ids),
 #if 0	/* FIXME move flag and stat names to driver attributes */
-		.groups = xeth_attribute_groups */
+		.groups = xeth_attribute_groups,
 #endif
 	},
 	.id_table = xeth_platform_ids,
@@ -75,7 +73,7 @@ static int xeth_main_deinit(int err)
 })
 
 	if (!xeth_mux_is_registered())
-		return -ENODEV;
+		return err ? err : -ENODEV;
 
 	err = xeth_main_sub_deinit(xeth_upper_deinit, err);
 	err = xeth_main_sub_deinit(xeth_mux_deinit, err);
@@ -85,7 +83,9 @@ static int xeth_main_deinit(int err)
 
 static int xeth_main_probe(struct platform_device *pdev)
 {
-	int err = 0;
+	int err;
+
+	pr_debug("%s", pdev->name);
 
 	err = xeth_vendor_probe(pdev);
 	if (err)
@@ -104,5 +104,6 @@ static int xeth_main_probe(struct platform_device *pdev)
 
 static int xeth_main_remove(struct platform_device *pdev)
 {
+	pr_debug("%s", pdev->name);
 	return xeth_main_deinit(xeth_vendor_remove(pdev));
 }

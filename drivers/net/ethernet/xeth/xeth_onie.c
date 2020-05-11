@@ -10,22 +10,13 @@
 
 #include <linux/onie.h>
 
-#if 0
-# define xeth_onie_get	onie_tlv_get
-#else
-static ssize_t xeth_onie_get(enum onie_type t, size_t l, u8 *v)
-{
-	return 0;
-}
-#endif
-
 #define new_xeth_onie_str(NAME)						\
 static char _xeth_onie_##NAME[onie_max_tlv];				\
 									\
 char *xeth_onie_##NAME(void)						\
 {									\
 	if (!_xeth_onie_##NAME[0]) {					\
-		ssize_t sz = xeth_onie_get(onie_type_##NAME,		\
+		ssize_t sz = onie_tlv_get(onie_type_##NAME,		\
 					  onie_max_tlv,			\
 					  _xeth_onie_##NAME);		\
 		if (sz < 0)						\
@@ -97,7 +88,7 @@ u64 xeth_onie_mac_base(void)
 		}
 	} else {
 		ssize_t sz = 0;
-		sz = xeth_onie_get(onie_type_mac_base, ETH_ALEN, v);
+		sz = onie_tlv_get(onie_type_mac_base, ETH_ALEN, v);
 		if (sz != ETH_ALEN)
 			eth_random_addr(v);
 		_xeth_onie_mac_base = ether_addr_to_u64(v);
@@ -112,7 +103,7 @@ u16 xeth_onie_num_macs(void)
 {
 	if (!_xeth_onie_num_macs) {
 		u8 v[2];
-		ssize_t sz = xeth_onie_get(onie_type_num_macs, sizeof(u16), v);
+		ssize_t sz = onie_tlv_get(onie_type_num_macs, sizeof(u16), v);
 		if (sz == sizeof(u16))
 			_xeth_onie_num_macs = (v[0] << 8) | v[1];
 	}
@@ -126,7 +117,7 @@ u8 xeth_onie_device_version(void)
 {
 	if (!_xeth_onie_device_version) {
 		u8 v[1];
-		ssize_t sz = xeth_onie_get(onie_type_device_version,
+		ssize_t sz = onie_tlv_get(onie_type_device_version,
 					   sizeof(u8), v);
 		if (sz == sizeof(u8))
 			_xeth_onie_device_version = v[0];
