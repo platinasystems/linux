@@ -1,4 +1,4 @@
-What:		/sys/bus/platform/drivers/onie/tlv/...
+What:		/sys/bus/platform/drivers/onie/...
 Date:		May 2020
 KernelVersion:  TBD
 Contact:	Tom Grennan <tgrennan@platinasystems.com>
@@ -35,8 +35,8 @@ Description:
 	    crc
 		A hexadecimal, unsigned integer in 0x%08x format representing
 		the be32_to_cpu() value.  A write to any other file only
-		updates the data cached but anything writen to crc results in
-		recalculation of the trailing CRC followed by an NVMEM update.
+		updates the cached data but anything writen to crc results in
+		recalculation of the trailing CRC followed by NVMEM update.
 
 	A file read of a missing respective NVMEM TLV results in ENOMSG.  With
 	an unformatted NVMEM, all files return ENOMSG.
@@ -54,9 +54,7 @@ Description:
 	The driver also provides these files for NVMEM diagnostics.
 
 	    nvmem
-		Name of the loaded cell or device. A write results in load
-		of the named device and subsequent write-back triggered through
-		any write of the "crc" file.
+		The read-only name of the loaded cell or device.
 
 	    cache
 		A binary view of the cached data. A write updates the cache but

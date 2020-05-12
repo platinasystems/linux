@@ -90,17 +90,9 @@ struct onie_priv {
 	} writeback;
 };
 
-static struct attribute *onie_attributes[];
+static struct attribute *onie_attrs[];
 
-static const struct attribute_group onie_attribute_group = {
-	.name = "tlv",
-	.attrs = onie_attributes,
-};
-
-static const struct attribute_group *onie_attribute_groups[] = {
-	&onie_attribute_group,
-	NULL,
-};
+ATTRIBUTE_GROUPS(onie);
 
 static const struct of_device_id onie_of_match[] = {
 	{ .compatible = "linux,onie", },
@@ -115,7 +107,7 @@ static struct platform_driver onie_platform_driver = {
 	.driver = {
 		.name = "onie",
 		.of_match_table = onie_of_match,
-		.groups = onie_attribute_groups,
+		.groups = onie_groups,
 	},
 	.probe = onie_probe,
 	.remove = onie_remove,
@@ -160,9 +152,9 @@ static int onie_remove(struct platform_device *pdev)
 
 static ssize_t onie_validate(void*);
 
-static int onie_cache_flush(struct device *dev)
+static int onie_cache_flush(void)
 {
-	struct onie_priv *priv = dev_get_drvdata(dev);
+	struct onie_priv *priv = dev_get_drvdata(&onie_pdev->dev);
 	ssize_t n;
 	
 	n = onie_validate(priv->cache.data);
@@ -319,7 +311,7 @@ static void onie_reset_crc(struct onie_tlv *tlv)
 	memset(tlv->v, 0, onie_sz_crc);
 }
 
-static ssize_t onie_show_default(struct device *dev, u8 t, char *buf)
+static ssize_t default_show(enum onie_type t, char *buf)
 {
 	ssize_t n = onie_tlv_get(t, PAGE_SIZE, buf);
 	if (n == 1 && buf[0] == '\0')
@@ -327,50 +319,42 @@ static ssize_t onie_show_default(struct device *dev, u8 t, char *buf)
 	return n;
 }
 
-#define new_onie_show(NAME)						\
-static ssize_t onie_show_##NAME(struct device *dev,			\
-				struct device_attribute *kda,		\
-				char *buf)				\
+#define onie_new_show(NAME)						\
+static ssize_t NAME##_show(struct device_driver *drv, char *buf)	\
 {									\
-	return onie_show_default(dev, onie_type_##NAME, buf);		\
+	return default_show(onie_type_##NAME, buf);			\
 }
 
-new_onie_show(product_name)
-new_onie_show(part_number)
-new_onie_show(serial_number)
-new_onie_show(manufacture_date)
-new_onie_show(label_revision)
-new_onie_show(platform_name)
-new_onie_show(onie_version)
-new_onie_show(manufacturer)
-new_onie_show(country_code)
-new_onie_show(vendor)
-new_onie_show(diag_version)
-new_onie_show(service_tag)
-new_onie_show(vendor_extension)
+onie_new_show(product_name)
+onie_new_show(part_number)
+onie_new_show(serial_number)
+onie_new_show(manufacture_date)
+onie_new_show(label_revision)
+onie_new_show(platform_name)
+onie_new_show(onie_version)
+onie_new_show(manufacturer)
+onie_new_show(country_code)
+onie_new_show(vendor)
+onie_new_show(diag_version)
+onie_new_show(service_tag)
+onie_new_show(vendor_extension)
 
-static ssize_t onie_show_cache(struct device *dev,
-			       struct device_attribute *kda,
-			       char *buf)
+static ssize_t cache_show(struct device_driver *drv, char *buf)
 {
-	struct onie_priv *priv = dev_get_drvdata(dev);
+	struct onie_priv *priv = dev_get_drvdata(&onie_pdev->dev);
 	mutex_lock(&priv->cache.mutex);
 	memcpy(buf, priv->cache.data, onie_max_data);
 	mutex_unlock(&priv->cache.mutex);
 	return onie_max_data;
 }
 
-static ssize_t onie_show_nvmem(struct device *dev,
-			       struct device_attribute *kda,
-			       char *buf)
+static ssize_t nvmem_show(struct device_driver *drv, char *buf)
 {
-	struct onie_priv *priv = dev_get_drvdata(dev);
+	struct onie_priv *priv = dev_get_drvdata(&onie_pdev->dev);
 	return scnprintf(buf, PAGE_SIZE, "%s", priv->nvmem_name);
 }
 
-static ssize_t onie_show_mac_base(struct device *dev,
-				  struct device_attribute *kda,
-				  char *buf)
+static ssize_t mac_base_show(struct device_driver *drv, char *buf)
 {
 	u8 v[onie_sz_mac];
 	ssize_t n = onie_tlv_get(onie_type_mac_base, onie_sz_mac, v);
@@ -381,9 +365,7 @@ static ssize_t onie_show_mac_base(struct device *dev,
 	return n;
 }
 
-static ssize_t onie_show_device_version(struct device *dev,
-					struct device_attribute *kda,
-					char *buf)
+static ssize_t device_version_show(struct device_driver *drv, char *buf)
 {
 	ssize_t n = onie_tlv_get(onie_type_device_version, sizeof(u8), buf);
 	if (n == sizeof(u8))
@@ -393,9 +375,7 @@ static ssize_t onie_show_device_version(struct device *dev,
 	return n;
 }
 
-static ssize_t onie_show_num_macs(struct device *dev,
-				  struct device_attribute *kda,
-				  char *buf)
+static ssize_t num_macs_show(struct device_driver *drv, char *buf)
 {
 	ssize_t n = onie_tlv_get(onie_type_num_macs, sizeof(u16), buf);
 	if (n == sizeof(u16))
@@ -405,9 +385,7 @@ static ssize_t onie_show_num_macs(struct device *dev,
 	return n;
 }
 
-static ssize_t onie_show_crc(struct device *dev,
-			     struct device_attribute *kda,
-			     char *buf)
+static ssize_t crc_show(struct device_driver *drv, char *buf)
 {
 	ssize_t n = onie_tlv_get(onie_type_crc, onie_sz_crc, buf);
 	if (n == onie_sz_crc)
@@ -418,41 +396,38 @@ static ssize_t onie_show_crc(struct device *dev,
 	return n;
 }
 
-static ssize_t onie_store_default(struct device *dev,
-				  u8 t, size_t sz, const char *buf)
+static ssize_t default_store(enum onie_type t, size_t sz, const char *buf)
 {
 	ssize_t l = (sz > 0 && buf[sz-1] == '\n') ? sz-1 : sz;
 	int err = onie_tlv_set(t, l, buf);
 	return err ? err : sz;
 }
 
-#define new_onie_store(NAME)						\
-static ssize_t onie_store_##NAME(struct device *dev,			\
-				 struct device_attribute *kda,		\
-				 const char *buf, size_t sz)		\
+#define onie_new_store(NAME)						\
+static ssize_t NAME##_store(struct device_driver *drv,			\
+			    const char *buf, size_t sz)			\
 {									\
-	return onie_store_default(dev, onie_type_##NAME, sz, buf);	\
+	return default_store(onie_type_##NAME, sz, buf);		\
 }
 
-new_onie_store(product_name)
-new_onie_store(part_number)
-new_onie_store(serial_number)
-new_onie_store(manufacture_date)
-new_onie_store(label_revision)
-new_onie_store(platform_name)
-new_onie_store(onie_version)
-new_onie_store(manufacturer)
-new_onie_store(country_code)
-new_onie_store(vendor)
-new_onie_store(diag_version)
-new_onie_store(service_tag)
-new_onie_store(vendor_extension)
+onie_new_store(product_name)
+onie_new_store(part_number)
+onie_new_store(serial_number)
+onie_new_store(manufacture_date)
+onie_new_store(label_revision)
+onie_new_store(platform_name)
+onie_new_store(onie_version)
+onie_new_store(manufacturer)
+onie_new_store(country_code)
+onie_new_store(vendor)
+onie_new_store(diag_version)
+onie_new_store(service_tag)
+onie_new_store(vendor_extension)
 
-static ssize_t onie_store_cache(struct device *dev,
-				struct device_attribute *kda,
-				const char *buf, size_t sz)
+static ssize_t cache_store(struct device_driver *drv,
+			   const char *buf, size_t sz)
 {
-	struct onie_priv *priv = dev_get_drvdata(dev);
+	struct onie_priv *priv = dev_get_drvdata(&onie_pdev->dev);
 	if (sz >= onie_max_data)
 		return -ERANGE;
 	mutex_lock(&priv->cache.mutex);
@@ -461,16 +436,8 @@ static ssize_t onie_store_cache(struct device *dev,
 	return sz;
 }
 
-static ssize_t onie_store_nvmem(struct device *dev,
-				struct device_attribute *kda,
-				const char *buf, size_t sz)
-{
-	return -ENOSYS;
-}
-
-static ssize_t onie_store_mac_base(struct device *dev,
-				   struct device_attribute *kda,
-				   const char *buf, size_t sz)
+static ssize_t mac_base_store(struct device_driver *drv,
+			      const char *buf, size_t sz)
 {
 	unsigned int uv[onie_sz_mac];
 	u8 v[onie_sz_mac];
@@ -488,9 +455,8 @@ static ssize_t onie_store_mac_base(struct device *dev,
 	return err ? err : sz;
 }
 
-static ssize_t onie_store_num_macs(struct device *dev,
-				   struct device_attribute *kda,
-				   const char *buf, size_t sz)
+static ssize_t num_macs_store(struct device_driver *drv,
+			      const char *buf, size_t sz)
 {
 	unsigned int uv;
 	u8 v[sizeof(u16)];
@@ -506,9 +472,8 @@ static ssize_t onie_store_num_macs(struct device *dev,
 	return err ? err : sz;
 }
 
-static ssize_t onie_store_device_version(struct device *dev,
-					 struct device_attribute *kda,
-					 const char *buf, size_t sz)
+static ssize_t device_version_store(struct device_driver *drv,
+				    const char *buf, size_t sz)
 {
 	unsigned int uv;
 	u8 v[sizeof(u8)];
@@ -524,62 +489,53 @@ static ssize_t onie_store_device_version(struct device *dev,
 	return err ? err : sz;
 }
 
-static ssize_t onie_store_crc(struct device *dev,
-			      struct device_attribute *kda,
-			      const char *buf, size_t sz)
+static ssize_t crc_store(struct device_driver *drv,
+			 const char *buf, size_t sz)
 {
-	int err = onie_cache_flush(dev);
+	int err = onie_cache_flush();
 	return (err < 0) ? err : sz;
 }
 
-#define new_onie_devattr(NAME)						\
-static struct device_attribute onie_devattr_##NAME = {			\
-	.attr.name = __stringify(NAME),					\
-	.attr.mode = (S_IWUSR|S_IRUGO),					\
-	.show = onie_show_##NAME,					\
-	.store = onie_store_##NAME,					\
-};
+static DRIVER_ATTR_RW(cache);
+static DRIVER_ATTR_RO(nvmem);
+static DRIVER_ATTR_RW(product_name);
+static DRIVER_ATTR_RW(part_number);
+static DRIVER_ATTR_RW(serial_number);
+static DRIVER_ATTR_RW(mac_base);
+static DRIVER_ATTR_RW(manufacture_date);
+static DRIVER_ATTR_RW(device_version);
+static DRIVER_ATTR_RW(label_revision);
+static DRIVER_ATTR_RW(platform_name);
+static DRIVER_ATTR_RW(onie_version);
+static DRIVER_ATTR_RW(num_macs);
+static DRIVER_ATTR_RW(manufacturer);
+static DRIVER_ATTR_RW(country_code);
+static DRIVER_ATTR_RW(vendor);
+static DRIVER_ATTR_RW(diag_version);
+static DRIVER_ATTR_RW(service_tag);
+static DRIVER_ATTR_RW(vendor_extension);
+static DRIVER_ATTR_RW(crc);
 
-new_onie_devattr(cache)
-new_onie_devattr(nvmem)
-new_onie_devattr(product_name)
-new_onie_devattr(part_number)
-new_onie_devattr(serial_number)
-new_onie_devattr(mac_base)
-new_onie_devattr(manufacture_date)
-new_onie_devattr(device_version)
-new_onie_devattr(label_revision)
-new_onie_devattr(platform_name)
-new_onie_devattr(onie_version)
-new_onie_devattr(num_macs)
-new_onie_devattr(manufacturer)
-new_onie_devattr(country_code)
-new_onie_devattr(vendor)
-new_onie_devattr(diag_version)
-new_onie_devattr(service_tag)
-new_onie_devattr(vendor_extension)
-new_onie_devattr(crc)
-
-static struct attribute *onie_attributes[] = {
-	&onie_devattr_cache.attr,
-	&onie_devattr_nvmem.attr,
-	&onie_devattr_product_name.attr,
-	&onie_devattr_part_number.attr,
-	&onie_devattr_serial_number.attr,
-	&onie_devattr_mac_base.attr,
-	&onie_devattr_manufacture_date.attr,
-	&onie_devattr_device_version.attr,
-	&onie_devattr_label_revision.attr,
-	&onie_devattr_platform_name.attr,
-	&onie_devattr_onie_version.attr,
-	&onie_devattr_num_macs.attr,
-	&onie_devattr_manufacturer.attr,
-	&onie_devattr_country_code.attr,
-	&onie_devattr_vendor.attr,
-	&onie_devattr_diag_version.attr,
-	&onie_devattr_service_tag.attr,
-	&onie_devattr_vendor_extension.attr,
-	&onie_devattr_crc.attr,
+static struct attribute *onie_attrs[] = {
+	&driver_attr_cache.attr,
+	&driver_attr_nvmem.attr,
+	&driver_attr_product_name.attr,
+	&driver_attr_part_number.attr,
+	&driver_attr_serial_number.attr,
+	&driver_attr_mac_base.attr,
+	&driver_attr_manufacture_date.attr,
+	&driver_attr_device_version.attr,
+	&driver_attr_label_revision.attr,
+	&driver_attr_platform_name.attr,
+	&driver_attr_onie_version.attr,
+	&driver_attr_num_macs.attr,
+	&driver_attr_manufacturer.attr,
+	&driver_attr_country_code.attr,
+	&driver_attr_vendor.attr,
+	&driver_attr_diag_version.attr,
+	&driver_attr_service_tag.attr,
+	&driver_attr_vendor_extension.attr,
+	&driver_attr_crc.attr,
 	NULL,
 };
 
