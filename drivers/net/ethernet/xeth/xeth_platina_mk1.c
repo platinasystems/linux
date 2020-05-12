@@ -33,8 +33,12 @@ static int xeth_platina_mk1_make_uppers(void);
 static void xeth_platina_mk1_et_port_cb(struct ethtool_link_ksettings *ks);
 static void xeth_platina_mk1_et_subport_cb(struct ethtool_link_ksettings *ks);
 
-static const char * const xeth_platina_mk1_ethtool_flags[];
-static const char * const xeth_platina_mk1_ethtool_stats[];
+static const char * const xeth_platina_mk1_ethtool_flag_names[] = {
+	"copper",
+	"fec75",
+	"fec91",
+	NULL,
+};
 
 int xeth_platina_mk1_probe(struct platform_device *pdev)
 {
@@ -50,8 +54,7 @@ int xeth_platina_mk1_probe(struct platform_device *pdev)
 		}
 	xeth_vendor_remove = xeth_platina_mk1_remove;
 	xeth_vendor_init = xeth_platina_mk1_init;
-	xeth_upper_set_ethtool_flag_names(xeth_platina_mk1_ethtool_flags);
-	xeth_upper_set_ethtool_stat_names(xeth_platina_mk1_ethtool_stats);
+	xeth_upper_set_ethtool_flag_names(xeth_platina_mk1_ethtool_flag_names);
 	return 0;
 }
 
@@ -221,14 +224,3 @@ static void xeth_platina_mk1_et_subport_cb(struct ethtool_link_ksettings *ks)
 	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
 		    __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
-
-static const char * const xeth_platina_mk1_ethtool_flags[] = {
-	"copper",
-	"fec75",
-	"fec91",
-	NULL,
-};
-
-static const char * const xeth_platina_mk1_ethtool_stats[] = {
-	NULL,
-};
