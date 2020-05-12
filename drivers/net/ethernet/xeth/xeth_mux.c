@@ -537,15 +537,6 @@ int xeth_mux_init(struct platform_device *pdev)
 		return err;
 	}
 
-	xeth_debug_err(xeth_kstrs_init(&xeth_ethtool_flag_names,
-				       &xeth_mux->dev.kobj,
-				       "ethtool-flag-names",
-				       xeth_n_ethtool_flags));
-	xeth_debug_err(xeth_kstrs_init(&xeth_ethtool_stat_names,
-				       &xeth_mux->dev.kobj,
-				       "ethtool-stat-names",
-				       xeth_n_ethtool_stats));
-
 	return 0;
 }
 

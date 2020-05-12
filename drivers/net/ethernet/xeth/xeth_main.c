@@ -25,11 +25,30 @@ MODULE_SOFTDEP("pre: nvmem-onie");
 int xeth_encap = XETH_ENCAP_VLAN;
 int xeth_base_xid = 3000;
 
+static int xeth_main_stat_index;
+
 static int xeth_main_probe(struct platform_device *pdev);
 static int xeth_main_remove(struct platform_device *pdev);
 static int xeth_main_deinit(int err);
-struct xeth_kstrs xeth_ethtool_flag_names;
-struct xeth_kstrs xeth_ethtool_stat_names;
+
+static ssize_t stat_index_show(struct device_driver *, char *);
+static ssize_t stat_name_show(struct device_driver *, char *);
+
+static ssize_t stat_index_store(struct device_driver *, const char *buf,
+				size_t sz);
+static ssize_t stat_name_store(struct device_driver *, const char *buf,
+			       size_t sz);
+
+static DRIVER_ATTR_RW(stat_index);
+static DRIVER_ATTR_RW(stat_name);
+
+static struct attribute *stat_attrs[] = {
+	&driver_attr_stat_index.attr,
+	&driver_attr_stat_name.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(stat);
 
 static const struct of_device_id xeth_of_match[] = {
 	{ .compatible = "linux,xeth", },
@@ -54,9 +73,7 @@ static struct platform_driver xeth_platform_driver = {
 		.name = "xeth",
 		.of_match_table = of_match_ptr(xeth_of_match),
 		.acpi_match_table = ACPI_PTR(xeth_acpi_ids),
-#if 0	/* FIXME move flag and stat names to driver attributes */
-		.groups = xeth_attribute_groups,
-#endif
+		.groups = stat_groups,
 	},
 	.id_table = xeth_platform_ids,
 	.probe = xeth_main_probe,
@@ -87,12 +104,21 @@ static int xeth_main_probe(struct platform_device *pdev)
 
 	pr_debug("%s", pdev->name);
 
+	xeth_upper_ethtool_flag_names =
+		devm_kzalloc(&pdev->dev, xeth_ethtool_flag_names_sz,
+			     GFP_KERNEL);
+	if (!xeth_upper_ethtool_flag_names)
+		return -ENOMEM;
+
+	xeth_upper_ethtool_stat_names =
+		devm_kzalloc(&pdev->dev, xeth_ethtool_stat_names_sz,
+			     GFP_KERNEL);
+	if (!xeth_upper_ethtool_stat_names)
+		return -ENOMEM;
+
 	err = xeth_vendor_probe(pdev);
 	if (err)
 		return err;
-
-	if (false)
-		xeth_debug_test();
 
 	err = xeth_mux_init(pdev);
 	if (!err)
@@ -106,4 +132,36 @@ static int xeth_main_remove(struct platform_device *pdev)
 {
 	pr_debug("%s", pdev->name);
 	return xeth_main_deinit(xeth_vendor_remove(pdev));
+}
+
+static ssize_t stat_index_show(struct device_driver *drv, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%u", xeth_main_stat_index);
+}
+
+static ssize_t stat_index_store(struct device_driver *drv,
+					  const char *buf,
+					  size_t sz)
+{
+	int err = kstrtouint(buf, 10, &xeth_main_stat_index);
+	if (xeth_main_stat_index > xeth_n_ethtool_stats)
+		err = -ERANGE;
+	if (err)
+		xeth_main_stat_index = 0;
+	return sz;
+}
+
+static ssize_t stat_name_show(struct device_driver *drv, char *buf)
+{
+	return strlcpy(buf, xeth_upper_ethtool_stat_names +
+		       (xeth_main_stat_index * ETH_GSTRING_LEN),
+		       ETH_GSTRING_LEN);
+}
+
+static ssize_t stat_name_store(struct device_driver *drv, const char *buf,
+			       size_t sz)
+{
+	return strlcpy(xeth_upper_ethtool_stat_names +
+		       (xeth_main_stat_index * ETH_GSTRING_LEN),
+		       buf, ETH_GSTRING_LEN);
 }
