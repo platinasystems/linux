@@ -40,7 +40,6 @@
 #define xeth_version "2.0"
 
 #include <xeth_debug.h>
-#include <xeth_kstrs.h>
 
 extern int xeth_encap;
 extern int xeth_base_xid;
@@ -162,8 +161,13 @@ enum {
 	xeth_n_ethtool_stats = 512,
 };
 
-extern struct xeth_kstrs xeth_ethtool_flag_names;
-extern struct xeth_kstrs xeth_ethtool_stat_names;
+enum {
+	xeth_ethtool_flag_names_sz = xeth_n_ethtool_flags * ETH_GSTRING_LEN,
+	xeth_ethtool_stat_names_sz = xeth_n_ethtool_stats * ETH_GSTRING_LEN,
+};
+
+extern char *xeth_upper_ethtool_flag_names;
+extern char *xeth_upper_ethtool_stat_names;
 
 enum xeth_encap {
 	XETH_ENCAP_VLAN = 0,
@@ -363,8 +367,9 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd);
 s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 		     void (*ethtool_cb) (struct ethtool_link_ksettings *));
 void xeth_upper_delete_port(u32 xid);
-int xeth_upper_set_ethtool_flag_names(const char *const names[]);
-int xeth_upper_set_ethtool_stat_names(const char *const names[]);
+
+void xeth_upper_set_ethtool_flag_names(const char * const names[]);
+void xeth_upper_set_ethtool_stat_names(const char * const names[]);
 
 int xeth_vendor_probe(struct platform_device *);
 extern int (*xeth_vendor_remove)(struct platform_device *);

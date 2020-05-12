@@ -23,27 +23,54 @@ struct xeth_upper_priv {
 	struct {
 		struct ethtool_link_ksettings settings;
 		u32 priv_flags;
-		u16 n_priv_flags;
-		u16 n_stats;
 		u64 stats[xeth_n_ethtool_stats];
 	} ethtool;
 	struct xeth_atomic_link_stats link_stats;
 };
 
+char *xeth_upper_ethtool_flag_names;
+char *xeth_upper_ethtool_stat_names;
+
+/* @names - a NULL terminated list */
+void xeth_upper_set_ethtool_flag_names(const char * const names[])
+{
+	int i;
+
+	for (i = 0; names[i] && i < xeth_n_ethtool_flags; i++)
+		strlcpy(xeth_upper_ethtool_flag_names + (i * ETH_GSTRING_LEN),
+			names[i], ETH_GSTRING_LEN);
+}
+
+/* @names - a NULL terminated list */
+void xeth_upper_set_ethtool_stat_names(const  char * const names[])
+{
+	int i;
+
+	for (i = 0; names[i] && i < xeth_n_ethtool_stats; i++)
+		strlcpy(xeth_upper_ethtool_stat_names + (i * ETH_GSTRING_LEN),
+			names[i], ETH_GSTRING_LEN);
+}
+
 static int xeth_upper_ethtool_n_priv_flags(struct xeth_upper_priv *priv)
 {
-	if (!priv->ethtool.n_priv_flags)
-		priv->ethtool.n_priv_flags =
-			xeth_kstrs_count(&xeth_ethtool_flag_names);
-	return priv->ethtool.n_priv_flags;
+	int i;
+
+	if (!xeth_upper_ethtool_flag_names)
+		return 0;
+	for (i = 0; i < xeth_n_ethtool_flags &&
+	     xeth_upper_ethtool_flag_names[i * ETH_GSTRING_LEN]; i++);
+	return i;
 }
 
 static int xeth_upper_ethtool_n_stats(struct xeth_upper_priv *priv)
 {
-	if (!priv->ethtool.n_stats)
-		priv->ethtool.n_stats =
-			xeth_kstrs_count(&xeth_ethtool_stat_names);
-	return priv->ethtool.n_stats;
+	int i;
+
+	if (!xeth_upper_ethtool_stat_names)
+		return 0;
+	for (i = 0; i < xeth_n_ethtool_stats &&
+	     xeth_upper_ethtool_stat_names[i * ETH_GSTRING_LEN]; i++);
+	return i;
 }
 
 struct net_device *xeth_upper_lookup_rcu(u32 xid)
@@ -357,6 +384,8 @@ static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
+	if (priv->kind != XETH_DEV_KIND_PORT)
+		return 0;
 	switch (sset) {
 	case ETH_SS_PRIV_FLAGS:
 		return xeth_upper_ethtool_n_priv_flags(priv);
@@ -364,9 +393,8 @@ static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
 		return xeth_upper_ethtool_n_stats(priv);
 	case ETH_SS_TEST:
 		return 0;
-	default:
-		return -EOPNOTSUPP;
 	}
+	return -EOPNOTSUPP;
 }
 
 static void xeth_upper_eto_get_strings(struct net_device *nd,
@@ -374,24 +402,30 @@ static void xeth_upper_eto_get_strings(struct net_device *nd,
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	char *p = (char *)data;
-	size_t i, n;
+	int i;
 
+	if (priv->kind != XETH_DEV_KIND_PORT)
+		return;
 	switch (sset) {
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		n = xeth_upper_ethtool_n_stats(priv);
-		for (i = 0; i < n; i++) {
-			xeth_kstrs_string(&xeth_ethtool_stat_names, p,
-					  ETH_GSTRING_LEN, i);
+		if (!xeth_upper_ethtool_stat_names)
+			break;
+		for (i = 0; i < xeth_n_ethtool_stats &&
+		     xeth_upper_ethtool_stat_names[i * ETH_GSTRING_LEN]; i++) {
+			strlcpy(p, xeth_upper_ethtool_stat_names +
+				(i * ETH_GSTRING_LEN), ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		n = xeth_upper_ethtool_n_priv_flags(priv);
-		for (i = 0; i < n; i++) {
-			xeth_kstrs_string(&xeth_ethtool_flag_names, p,
-					  ETH_GSTRING_LEN, i);
+		if (!xeth_upper_ethtool_flag_names)
+			break;
+		for (i = 0; i < xeth_n_ethtool_flags &&
+		     xeth_upper_ethtool_flag_names[i * ETH_GSTRING_LEN]; i++) {
+			strlcpy(p, xeth_upper_ethtool_flag_names +
+				(i * ETH_GSTRING_LEN), ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
@@ -1271,30 +1305,4 @@ void xeth_upper_delete_port(u32 xid)
 	xeth_debug("%s xid %u", nd->name, xid);
 	xeth_mux_del_node(&priv->node);
 	unregister_netdev(nd);
-}
-
-/**
- * xeth_upper_set_ethtool_flag_names
- *
- * @names:	A NULL terminated list of string constants.
- *
- * Returns a non-zero, negative number on error; otherwise, returns the
- * non-zero, poistive number of strings copied.
- */
-int xeth_upper_set_ethtool_flag_names(const char *const names[])
-{
-	return xeth_kstrs_copy(&xeth_ethtool_flag_names, names);
-}
-
-/**
- * xeth_upper_set_ethtool_stat_names
- *
- * @names:	A NULL terminated list of string constants.
- *
- * Returns a non-zero, negative number on error; otherwise, returns the
- * non-zero, poistive number of strings copied.
- */
-int xeth_upper_set_ethtool_stat_names(const char *const names[])
-{
-	return xeth_kstrs_copy(&xeth_ethtool_stat_names, names);
 }

@@ -2,7 +2,6 @@ obj-$(CONFIG_NET_XETH) += xeth.o
 obj-$(CONFIG_NET_XETH) += xeth-pdev.o
 
 xeth-y := xeth_main.o
-xeth-y += xeth_kstrs.o
 xeth-y += xeth_mux.o
 xeth-y += xeth_nb.o
 xeth-y += xeth_onie.o
