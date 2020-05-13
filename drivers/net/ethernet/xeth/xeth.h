@@ -16,9 +16,7 @@
 #include <linux/hashtable.h>
 #include <linux/inetdevice.h>
 #include <linux/if_vlan.h>
-#include <linux/platform_device.h>
-#include <linux/of_device.h>
-#include <linux/acpi.h>
+#include <linux/pci.h>
 #include <linux/kthread.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
@@ -269,9 +267,9 @@ static inline void xeth_kobject_put(struct kobject *kobj)
 		kobject_put(kobj);
 }
 
-int xeth_mux_init(struct platform_device *);
+int xeth_mux_init(struct pci_dev *);
 int xeth_sbrx_init(void);
-int xeth_upper_init(struct platform_device *);
+int xeth_upper_init(struct pci_dev *);
 
 int xeth_mux_deinit(int err);
 int xeth_sbrx_deinit(int err);
@@ -371,8 +369,8 @@ void xeth_upper_delete_port(u32 xid);
 void xeth_upper_set_ethtool_flag_names(const char * const names[]);
 void xeth_upper_set_ethtool_stat_names(const char * const names[]);
 
-int xeth_vendor_probe(struct platform_device *);
-extern int (*xeth_vendor_remove)(struct platform_device *);
-extern int (*xeth_vendor_init)(struct platform_device *);
+int xeth_vendor_probe(struct pci_dev *, const struct pci_device_id *);
+extern int (*xeth_vendor_remove)(struct pci_dev *);
+extern int (*xeth_vendor_init)(struct pci_dev *);
 
 #endif  /* __NET_ETHERNET_XETH_H */
