@@ -22,17 +22,12 @@ static const struct {
 	{ },
 };
 
-static int _xeth_vendor_remove(struct pci_dev *pci_dev)
+static void _xeth_vendor_remove(struct pci_dev *pci_dev)
 {
-	return -ENOSYS;
+	do {} while(0);
 }
 
-static int _xeth_vendor_init(struct pci_dev *pci_dev) {
-	return -ENOSYS;
-}
-
-int (*xeth_vendor_remove)(struct pci_dev *) = _xeth_vendor_remove;
-int (*xeth_vendor_init)(struct pci_dev *) = _xeth_vendor_init;
+void (*xeth_vendor_remove)(struct pci_dev *) = _xeth_vendor_remove;
 
 int xeth_vendor_probe(struct pci_dev *pci_dev, const struct pci_device_id *id)
 {

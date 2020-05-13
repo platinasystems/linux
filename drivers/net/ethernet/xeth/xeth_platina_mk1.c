@@ -26,8 +26,7 @@ module_param_array_named(platina_mk1_provision,
 MODULE_PARM_DESC(platina_mk1_provision,
 		 "*1, 2, or 4 subports per port");
 
-static int xeth_platina_mk1_remove(struct pci_dev *);
-static int xeth_platina_mk1_init(struct pci_dev *);
+static void xeth_platina_mk1_remove(struct pci_dev *);
 static int xeth_platina_mk1_add_lowers(void);
 static int xeth_platina_mk1_make_uppers(void);
 static void xeth_platina_mk1_et_port_cb(struct ethtool_link_ksettings *ks);
@@ -40,10 +39,14 @@ static const char * const xeth_platina_mk1_ethtool_flag_names[] = {
 	NULL,
 };
 
+/*
+ * If successful, this returns -EBUSY so that the pci subsystem will
+ * release the device for use through vfio.
+ */
 int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		       const struct pci_device_id *id)
 {
-	int i;
+	int i, err;
 
 	for (i = 0; i < ARRAY_SIZE(xeth_platina_mk1_provision); i++)
 		if (i >= xeth_platina_mk1_n_provision) {
@@ -54,12 +57,14 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 				return -EINVAL;
 		}
 	xeth_vendor_remove = xeth_platina_mk1_remove;
-	xeth_vendor_init = xeth_platina_mk1_init;
 	xeth_upper_set_ethtool_flag_names(xeth_platina_mk1_ethtool_flag_names);
-	return 0;
+	err = xeth_platina_mk1_add_lowers();
+	if (!err)
+		err = xeth_platina_mk1_make_uppers();
+	return err ? err : -EBUSY;
 }
 
-static int xeth_platina_mk1_remove(struct pci_dev *pci_dev)
+static void xeth_platina_mk1_remove(struct pci_dev *pci_dev)
 {
 	int port, subport;
 
@@ -74,13 +79,6 @@ static int xeth_platina_mk1_remove(struct pci_dev *pci_dev)
 			}
 		} else
 			xeth_upper_delete_port(xeth_platina_mk1_top_xid - port);
-	return 0;
-}
-
-static int xeth_platina_mk1_init(struct pci_dev *pci_dev)
-{
-	int err = xeth_platina_mk1_add_lowers();
-	return err ? err : xeth_platina_mk1_make_uppers();
 }
 
 static int xeth_platina_mk1_add_lowers(void)

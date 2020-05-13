@@ -267,9 +267,9 @@ static inline void xeth_kobject_put(struct kobject *kobj)
 		kobject_put(kobj);
 }
 
-int xeth_mux_init(struct pci_dev *);
+int xeth_mux_init(void);
 int xeth_sbrx_init(void);
-int xeth_upper_init(struct pci_dev *);
+int xeth_upper_init(void);
 
 int xeth_mux_deinit(int err);
 int xeth_sbrx_deinit(int err);
@@ -370,7 +370,6 @@ void xeth_upper_set_ethtool_flag_names(const char * const names[]);
 void xeth_upper_set_ethtool_stat_names(const char * const names[]);
 
 int xeth_vendor_probe(struct pci_dev *, const struct pci_device_id *);
-extern int (*xeth_vendor_remove)(struct pci_dev *);
-extern int (*xeth_vendor_init)(struct pci_dev *);
+extern void (*xeth_vendor_remove)(struct pci_dev *);
 
 #endif  /* __NET_ETHERNET_XETH_H */

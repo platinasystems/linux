@@ -12,10 +12,6 @@
 
 #include <linux/module.h>
 
-static struct pci_driver xeth_main_pci_driver;
-
-module_pci_driver(xeth_main_pci_driver);
-
 MODULE_DESCRIPTION("mux proxy netdevs with a remote switch;\n"
 		   "\t\teach non-empty or non-zero \"onie_*\" parameter takes\n"
 		   "\t\tprecedence to the respective TLV of the probed NVMEM");
@@ -74,44 +70,52 @@ static struct pci_driver xeth_main_pci_driver = {
 	.groups = stat_groups,
 };
 
-static int xeth_main_probe(struct pci_dev *pci_dev,
-			   const struct pci_device_id *id)
+static int __init xeth_main_init(void)
 {
 	int err;
 
-	pr_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
-
-	if (xeth_mux_is_registered())
-		return -EEXIST;
-
-	xeth_upper_ethtool_flag_names =
-		devm_kzalloc(&pci_dev->dev, xeth_ethtool_flag_names_sz,
-			     GFP_KERNEL);
+	xeth_upper_ethtool_flag_names = kzalloc(xeth_ethtool_flag_names_sz,
+						GFP_KERNEL);
 	if (!xeth_upper_ethtool_flag_names)
-		return -ENOMEM;
+		return xeth_main_deinit(-ENOMEM);
 
-	xeth_upper_ethtool_stat_names =
-		devm_kzalloc(&pci_dev->dev, xeth_ethtool_stat_names_sz,
-			     GFP_KERNEL);
+	xeth_upper_ethtool_stat_names = kzalloc(xeth_ethtool_stat_names_sz,
+						GFP_KERNEL);
 	if (!xeth_upper_ethtool_stat_names)
-		return -ENOMEM;
+		return xeth_main_deinit(-ENOMEM);
 
-	err = xeth_vendor_probe(pci_dev, id);
+	err = xeth_mux_init();
 	if (err)
-		return err;
+		return xeth_main_deinit(err);
+	err = xeth_upper_init();
+	if (err)
+		return xeth_main_deinit(err);
+	err = pci_register_driver(&xeth_main_pci_driver);
+	if (err)
+		return xeth_main_deinit(err);
+	pr_debug("ready");
+	return 0;
+}
+module_init(xeth_main_init)
 
-	err = xeth_mux_init(pci_dev);
-	if (!err)
-		err = xeth_upper_init(pci_dev);
-	if (!err)
-		err = xeth_vendor_init(pci_dev);
-	return err ? xeth_main_deinit(err) : 0;
+static void __exit xeth_main_exit(void)
+{
+	xeth_main_deinit(0);
+	pr_debug("done");
+}
+module_exit(xeth_main_exit);
+
+static int xeth_main_probe(struct pci_dev *pci_dev,
+			   const struct pci_device_id *id)
+{
+	pr_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
+	return xeth_vendor_probe(pci_dev, id);
 }
 
 static void xeth_main_remove(struct pci_dev *pci_dev)
 {
 	pr_debug("vendor 0x%x, device 0x%x", pci_dev->vendor, pci_dev->device);
-	xeth_main_deinit(xeth_vendor_remove(pci_dev));
+	xeth_vendor_remove(pci_dev);
 }
 
 static int xeth_main_deinit(int err)
@@ -123,12 +127,16 @@ static int xeth_main_deinit(int err)
 	(__err) ?  (__err) : (___err);					\
 })
 
-	if (!xeth_mux_is_registered())
-		return err ? err : -ENODEV;
-
-	err = xeth_main_sub_deinit(xeth_upper_deinit, err);
-	err = xeth_main_sub_deinit(xeth_mux_deinit, err);
-
+	xeth_vendor_remove(NULL);
+	pci_unregister_driver(&xeth_main_pci_driver);
+	if (xeth_mux_is_registered()) {
+		err = xeth_main_sub_deinit(xeth_upper_deinit, err);
+		err = xeth_main_sub_deinit(xeth_mux_deinit, err);
+	}
+	if (xeth_upper_ethtool_flag_names)
+		kfree(xeth_upper_ethtool_flag_names);
+	if (xeth_upper_ethtool_stat_names)
+		kfree(xeth_upper_ethtool_stat_names);
 	return err;
 }
 
