@@ -1025,7 +1025,7 @@ static void xeth_upper_lnko_unregister(struct rtnl_link_ops *lnko)
 		rtnl_link_unregister(lnko);
 }
 
-int xeth_upper_init(struct pci_dev *pci_dev)
+int xeth_upper_init(void)
 {
 	int err = 0;
 	
