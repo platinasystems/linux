@@ -20,7 +20,7 @@ char *xeth_onie_##NAME(void)						\
 					  onie_max_tlv,			\
 					  _xeth_onie_##NAME);		\
 		if (sz < 0)						\
-			sz = 0;						\
+			return ERR_PTR(sz);				\
 		_xeth_onie_##NAME[sz] = '\0';				\
 	}								\
 	return _xeth_onie_##NAME;					\
