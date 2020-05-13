@@ -502,7 +502,7 @@ static const struct ethtool_ops xeth_mux_ethtool_ops = {
  * See @xeth_upper_init() for how to create the proxy netdevs multiplexed by
  * this device.
  */
-int xeth_mux_init(struct platform_device *pdev)
+int xeth_mux_init(struct pci_dev *pci_dev)
 {
 	struct xeth_mux_priv *priv;
 	int err;
