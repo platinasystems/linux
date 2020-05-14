@@ -34,7 +34,7 @@ static void xeth_platina_mk1_et_subport_cb(struct ethtool_link_ksettings *ks);
 
 static const char * const xeth_platina_mk1_ethtool_flag_names[] = {
 	"copper",
-	"fec75",
+	"fec74",
 	"fec91",
 	NULL,
 };
