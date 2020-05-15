@@ -180,7 +180,9 @@ static int onie_cache_fill_device(struct platform_device *pdev)
 	if (IS_ERR(priv->nvmem_dev)) {
 		err = PTR_ERR(priv->nvmem_dev);
 		priv->nvmem_dev = NULL;
-		pr_err("%s get %s: %d\n", pdev->name, onie_nvmem_name, err);
+		if (err != -EPROBE_DEFER)
+			pr_err("%s get %s: %d\n",
+			       pdev->name, onie_nvmem_name, err);
 		return err;
 	} else if (!priv->nvmem_dev) {
 		pr_err("%s got null %s\n", pdev->name, onie_nvmem_name);
@@ -191,7 +193,7 @@ static int onie_cache_fill_device(struct platform_device *pdev)
 	if (err < 0) {
 		nvmem_device_put(priv->nvmem_dev);
 		priv->nvmem_dev = NULL;
-		pr_debug("%s read %s: %d\n", pdev->name, onie_nvmem_name, err);
+		pr_err("%s read %s: %d\n", pdev->name, onie_nvmem_name, err);
 		return err;
 	}
 	strlcpy(priv->nvmem_name, onie_nvmem_name, onie_nvmem_name_sz);
@@ -210,7 +212,9 @@ static int onie_cache_fill_cell(struct platform_device *pdev)
 	if (IS_ERR(priv->nvmem_cell)) {
 		err = PTR_ERR(priv->nvmem_cell);
 		priv->nvmem_cell = NULL;
-		pr_err("%s get "ONIE_NVMEM_CELL ": %d\n", pdev->name, err);
+		if (err != -EPROBE_DEFER)
+			pr_err("%s get "ONIE_NVMEM_CELL ": %d\n",
+			       pdev->name, err);
 		return err;
 	} else if (!priv->nvmem_cell) {
 		pr_err("%s got nil " ONIE_NVMEM_CELL "\n", pdev->name);
