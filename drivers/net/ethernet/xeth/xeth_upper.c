@@ -1260,7 +1260,7 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 		return -ENODEV;
 
 	if (xeth_debug_err(xeth_upper_lookup_rcu(xid) != NULL))
-		return -EBUSY;
+		return -EEXIST;
 
 	nd = xeth_debug_ptr_err(alloc_netdev_mqs(priv_sz,
 						 name,

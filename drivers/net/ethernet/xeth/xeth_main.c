@@ -84,16 +84,16 @@ static int __init xeth_main_init(void)
 	if (!xeth_upper_ethtool_stat_names)
 		return xeth_main_deinit(-ENOMEM);
 
-	err = xeth_mux_init();
+	err = xeth_debug_err(xeth_mux_init());
 	if (err)
 		return xeth_main_deinit(err);
-	err = xeth_upper_init();
+	err = xeth_debug_err(xeth_upper_init());
 	if (err)
 		return xeth_main_deinit(err);
-	err = pci_register_driver(&xeth_main_pci_driver);
+	err = xeth_debug_err(pci_register_driver(&xeth_main_pci_driver));
 	if (err)
 		return xeth_main_deinit(err);
-	pr_debug("ready");
+	xeth_debug("ready");
 	return 0;
 }
 module_init(xeth_main_init)
@@ -101,20 +101,21 @@ module_init(xeth_main_init)
 static void __exit xeth_main_exit(void)
 {
 	xeth_main_deinit(0);
-	pr_debug("done");
+	xeth_debug("done");
 }
 module_exit(xeth_main_exit);
 
 static int xeth_main_probe(struct pci_dev *pci_dev,
 			   const struct pci_device_id *id)
 {
-	pr_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
+	xeth_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
 	return xeth_vendor_probe(pci_dev, id);
 }
 
 static void xeth_main_remove(struct pci_dev *pci_dev)
 {
-	pr_debug("vendor 0x%x, device 0x%x", pci_dev->vendor, pci_dev->device);
+	xeth_debug("vendor 0x%x, device 0x%x",
+		   pci_dev->vendor, pci_dev->device);
 	xeth_vendor_remove(pci_dev);
 }
 
