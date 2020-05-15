@@ -58,9 +58,9 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		}
 	xeth_vendor_remove = xeth_platina_mk1_remove;
 	xeth_upper_set_ethtool_flag_names(xeth_platina_mk1_ethtool_flag_names);
-	err = xeth_platina_mk1_add_lowers();
+	err = xeth_debug_err(xeth_platina_mk1_add_lowers());
 	if (!err)
-		err = xeth_platina_mk1_make_uppers();
+		err = xeth_debug_err(xeth_platina_mk1_make_uppers());
 	return err ? err : -EBUSY;
 }
 

@@ -11,10 +11,11 @@
 int xeth_platina_mk1_probe(struct pci_dev *, const struct pci_device_id *);
 
 static const struct {
-	const char *pn;
+	const char *str;
 	int (*probe)(struct pci_dev *, const struct pci_device_id *);
-} const xeth_platina_pns[] = {
+} const xeth_platina_match[] = {
 	{ "BT77O759.00", xeth_platina_mk1_probe },
+	{ "PS-3001-32C", xeth_platina_mk1_probe },
 	{ /* END */ },
 };
 
@@ -26,9 +27,11 @@ int xeth_platina_probe(struct pci_dev *pci_dev, const struct pci_device_id *id)
 	pn = xeth_onie_part_number();
 	if (IS_ERR(pn))
 		return PTR_ERR(pn);
-	for (i = 0; xeth_platina_pns[i].pn; i++)
-		if (!strcasecmp(pn, xeth_platina_pns[i].pn))
-			return xeth_platina_pns[i].probe(pci_dev, id);
-	pr_err("no matching part number");
+	for (i = 0; xeth_platina_match[i].str; i++) {
+		size_t len = strlen(xeth_platina_match[i].str);
+		if (!memcmp(pn, xeth_platina_match[i].str, len))
+			return xeth_platina_match[i].probe(pci_dev, id);
+	}
+	xeth_debug("unsupported part number: %s", pn);
 	return -ENOENT;
 }
