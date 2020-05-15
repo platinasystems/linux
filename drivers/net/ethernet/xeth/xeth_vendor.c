@@ -39,9 +39,11 @@ int xeth_vendor_probe(struct pci_dev *pci_dev, const struct pci_device_id *id)
 		int err = PTR_ERR(vendor);
 		return (err == -ENOMSG) ? -EPROBE_DEFER : err;
 	}
-	for (i = 0; xeth_vendors[i].name; i++)
-		if (!strcasecmp(vendor, xeth_vendors[i].name))
+	for (i = 0; xeth_vendors[i].name; i++) {
+		size_t len = strlen(xeth_vendors[i].name);
+		if (!memcmp(vendor, xeth_vendors[i].name, len))
 			return xeth_vendors[i].probe(pci_dev, id);
-	pr_err("no matching vendor");
+	}
+	xeth_debug("no matching vendor: %s", vendor);
 	return -ENOENT;
 }
