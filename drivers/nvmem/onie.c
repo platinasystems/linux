@@ -133,7 +133,8 @@ static int onie_probe(struct platform_device *pdev)
 {
 	int err;
 
-	pr_debug("%s", pdev->name);
+	if (onie_pdev)
+		return -EBUSY;
 	err = onie_cache_fill(pdev);
 	if (!err && !onie_pdev)
 		onie_pdev = pdev;
@@ -143,7 +144,6 @@ static int onie_probe(struct platform_device *pdev)
 
 static int onie_remove(struct platform_device *pdev)
 {
-	pr_debug("%s\n", pdev->name);
 	dev_set_drvdata(&pdev->dev, NULL);
 	if (pdev == onie_pdev)
 		onie_pdev = NULL;
@@ -588,7 +588,7 @@ ssize_t onie_tlv_get(enum onie_type t, size_t sz, u8 *v)
 	u8 *end;
 
 	if (!onie_pdev)
-		return -ENODEV;
+		return -EPROBE_DEFER;
 	priv = dev_get_drvdata(&onie_pdev->dev);
 	if (!priv)
 		return -ENOMEM;
