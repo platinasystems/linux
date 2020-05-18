@@ -155,15 +155,16 @@ static inline void xeth_get_link_stats(struct rtnl_link_stats64 *dst,
 }
 
 enum {
-	xeth_n_et_flags = 32,
-	xeth_n_et_stats = 512,
+	xeth_max_et_flags = 32,
+	xeth_max_et_stats = 512,
 };
 
 enum {
-	xeth_et_stat_names_sz = xeth_n_et_stats * ETH_GSTRING_LEN,
+	xeth_et_stat_names_sz = xeth_max_et_stats * ETH_GSTRING_LEN,
 };
 
-extern char xeth_upper_et_flag_names[xeth_n_et_flags][ETH_GSTRING_LEN];
+extern size_t xeth_upper_n_et_stat_names;
+extern char xeth_upper_et_flag_names[xeth_max_et_flags][ETH_GSTRING_LEN];
 extern char *xeth_upper_et_stat_names;
 
 enum xeth_encap {

@@ -13,7 +13,7 @@ enum {
 	xeth_upper_txqs = 1,
 	xeth_upper_link_n_stats =
 		sizeof(struct rtnl_link_stats64)/sizeof(__u64),
-	xeth_upper_et_stats_sz = sizeof(u64) * xeth_n_et_stats,
+	xeth_upper_et_stats_sz = sizeof(u64) * xeth_max_et_stats,
 };
 
 struct xeth_upper_priv {
@@ -27,7 +27,10 @@ struct xeth_upper_priv {
 	u64 et_stats[];
 };
 
-char xeth_upper_et_flag_names[xeth_n_et_flags][ETH_GSTRING_LEN];
+static size_t xeth_upper_n_et_flag_names = 0;
+size_t xeth_upper_n_et_stat_names = 0;
+
+char xeth_upper_et_flag_names[xeth_max_et_flags][ETH_GSTRING_LEN];
 char *xeth_upper_et_stat_names;
 
 /* @names - a NULL terminated list */
@@ -35,9 +38,12 @@ void xeth_upper_set_et_flag_names(const char * const names[])
 {
 	int i;
 
-	for (i = 0; names[i] && i < xeth_n_et_flags; i++)
+	for (i = 0; names[i] && i < xeth_max_et_flags; i++) {
 		strlcpy(xeth_upper_et_flag_names[i], names[i],
 			ETH_GSTRING_LEN);
+		if (xeth_upper_n_et_flag_names <= i)
+			xeth_upper_n_et_flag_names = i + 1;
+	}
 }
 
 /* @names - a NULL terminated list */
@@ -45,29 +51,12 @@ void xeth_upper_set_et_stat_names(const  char * const names[])
 {
 	int i;
 
-	for (i = 0; names[i] && i < xeth_n_et_stats; i++)
+	for (i = 0; names[i] && i < xeth_max_et_stats; i++) {
 		strlcpy(xeth_upper_et_stat_names + (i * ETH_GSTRING_LEN),
 			names[i], ETH_GSTRING_LEN);
-}
-
-static int xeth_upper_et_n_priv_flags(void)
-{
-	int i;
-
-	for (i = 0; i < xeth_n_et_flags &&
-	     xeth_upper_et_flag_names[i * ETH_GSTRING_LEN]; i++);
-	return i;
-}
-
-static int xeth_upper_et_n_stats(void)
-{
-	int i;
-
-	if (!xeth_upper_et_stat_names)
-		return 0;
-	for (i = 0; i < xeth_n_et_stats &&
-	     xeth_upper_et_stat_names[i * ETH_GSTRING_LEN]; i++);
-	return i;
+		if (xeth_upper_n_et_stat_names <= i)
+			xeth_upper_n_et_stat_names = i + 1;
+	}
 }
 
 struct net_device *xeth_upper_lookup_rcu(u32 xid)
@@ -184,12 +173,11 @@ static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	int et_n_stats = xeth_upper_et_n_stats();
 	int i;
 
 	xeth_reset_link_stats(&priv->link_stats);
 	if (priv->kind == XETH_DEV_KIND_PORT)
-		for (i = 0; i < et_n_stats; i++)
+		for (i = 0; i < xeth_upper_n_et_stat_names; i++)
 			priv->et_stats[i] = 0;
 }
 
@@ -373,8 +361,8 @@ static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
 	else
 		scnprintf(drvinfo->bus_info, ETHTOOL_BUSINFO_LEN, "%u",
 			  priv->xid);
-	drvinfo->n_priv_flags = xeth_upper_et_n_priv_flags();
-	drvinfo->n_stats = xeth_upper_et_n_stats();
+	drvinfo->n_priv_flags = xeth_upper_n_et_flag_names;
+	drvinfo->n_stats = xeth_upper_n_et_stat_names;
 }
 
 static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
@@ -385,9 +373,9 @@ static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
 		return 0;
 	switch (sset) {
 	case ETH_SS_PRIV_FLAGS:
-		return xeth_upper_et_n_priv_flags();
+		return xeth_upper_n_et_flag_names;
 	case ETH_SS_STATS:
-		return xeth_upper_et_n_stats();
+		return xeth_upper_n_et_stat_names;
 	case ETH_SS_TEST:
 		return 0;
 	}
@@ -409,16 +397,14 @@ static void xeth_upper_eto_get_strings(struct net_device *nd,
 	case ETH_SS_STATS:
 		if (!xeth_upper_et_stat_names)
 			break;
-		for (i = 0; i < xeth_n_et_stats &&
-		     xeth_upper_et_stat_names[i * ETH_GSTRING_LEN]; i++) {
+		for (i = 0; i < xeth_upper_n_et_stat_names; i++) {
 			strlcpy(p, xeth_upper_et_stat_names +
 				(i * ETH_GSTRING_LEN), ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < xeth_n_et_flags &&
-		     xeth_upper_et_flag_names[i * ETH_GSTRING_LEN]; i++) {
+		for (i = 0; i < xeth_upper_n_et_flag_names; i++) {
 			strlcpy(p, xeth_upper_et_flag_names[i],
 				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
@@ -435,7 +421,7 @@ static void xeth_upper_eto_get_stats(struct net_device *nd,
 	size_t sz;
 
 	if (priv->kind == XETH_DEV_KIND_PORT) {
-		sz = sizeof(u64) * xeth_upper_et_n_stats();
+		sz = sizeof(u64) * xeth_upper_n_et_stat_names;
 		memcpy(data, &priv->et_stats, sz);
 	}
 }
@@ -450,9 +436,8 @@ static u32 xeth_upper_eto_get_priv_flags(struct net_device *nd)
 static int xeth_upper_eto_set_priv_flags(struct net_device *nd, u32 flags)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	size_t n = xeth_upper_et_n_priv_flags();
 
-	if (flags >= (1 << n))
+	if (flags >= (1 << xeth_upper_n_et_flag_names))
 		return -EINVAL;
 
 	priv->et_priv_flags = flags;
@@ -1114,7 +1099,7 @@ void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	if (index < xeth_upper_et_n_stats())
+	if (index < xeth_upper_n_et_stat_names)
 		priv->et_stats[index] = count;
 	else
 		xeth_counter_inc(sbrx_invalid);
