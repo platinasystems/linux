@@ -7,7 +7,7 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-static void *xeth_sbrx_buf;
+void *xeth_sbrx_buf;
 
 static bool xeth_sbrx_is_msg(void *data)
 {
@@ -221,18 +221,4 @@ struct task_struct *xeth_sbrx_fork(struct socket *conn)
 		return NULL;
 	}
 	return t;
-}
-
-int xeth_sbrx_init(void)
-{
-	xeth_sbrx_buf = xeth_debug_ptr_err(kzalloc(XETH_SIZEOF_JUMBO_FRAME,
-						   GFP_KERNEL));
-	return IS_ERR(xeth_sbrx_buf) ? PTR_ERR(xeth_sbrx_buf) : 0;
-}
-
-int xeth_sbrx_deinit(int err)
-{
-	if (!IS_ERR(xeth_sbrx_buf))
-		kfree(xeth_sbrx_buf);
-	return err;
 }

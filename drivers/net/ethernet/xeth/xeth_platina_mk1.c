@@ -26,8 +26,8 @@ module_param_array_named(platina_mk1_provision,
 MODULE_PARM_DESC(platina_mk1_provision,
 		 "*1, 2, or 4 subports per port");
 
-static void xeth_platina_mk1_remove(struct pci_dev *);
-static int xeth_platina_mk1_make_uppers(void);
+static int xeth_platina_mk1_init(void);
+static void xeth_platina_mk1_exit(void);
 static void xeth_platina_mk1_et_port_cb(struct ethtool_link_ksettings *ks);
 static void xeth_platina_mk1_et_subport_cb(struct ethtool_link_ksettings *ks);
 
@@ -64,7 +64,8 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 	int i, j;
 
 	xeth_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
-	for (i = 0; i < ARRAY_SIZE(xeth_platina_mk1_provision); i++)
+
+	for (i = 0; i < ARRAY_SIZE(xeth_platina_mk1_provision); i++) {
 		if (i >= xeth_platina_mk1_n_provision) {
 			xeth_platina_mk1_provision[i] = 1;
 		} else {
@@ -72,8 +73,7 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 			if (n != 1 && n != 2 && n != 4)
 				return -EINVAL;
 		}
-	xeth_main_remove = xeth_platina_mk1_remove;
-	xeth_upper_set_et_flag_names(xeth_platina_mk1_et_flag_names);
+	}
 
 	for (i = 0; xeth_platina_mk1_lower_akas[i]; i++) {
 		for (j = 0; !xeth_platina_mk1_lowers[i]; j++) {
@@ -84,33 +84,18 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 				dev_get_by_name(&init_net, aka);
 		}
 	}
-	xeth_main_lowers = xeth_platina_mk1_lowers;
-	xeth_main_make_uppers = xeth_platina_mk1_make_uppers;
+
+	xeth_vendor_init = xeth_platina_mk1_init;
+	xeth_vendor_exit = xeth_platina_mk1_exit;
+	xeth_vendor_lowers = xeth_platina_mk1_lowers;
+
+	xeth_upper_set_et_flag_names(xeth_platina_mk1_et_flag_names);
 
 	return 0;
 }
 
-static void xeth_platina_mk1_remove(struct pci_dev *pci_dev)
-{
-	int port, subport;
-
-	xeth_debug("vendor 0x%x, device 0x%x",
-		   pci_dev->vendor, pci_dev->device);
-	for (port = 0; port < xeth_platina_mk1_n_ports; port++)
-		if (xeth_platina_mk1_provision[port] > 1) {
-			for (subport = 0;
-			     subport < xeth_platina_mk1_provision[port];
-			     subport++) {
-				u32 o = xeth_platina_mk1_n_ports * subport;
-				u32 xid = xeth_platina_mk1_top_xid - port - o;
-				xeth_upper_delete_port(xid);
-			}
-		} else
-			xeth_upper_delete_port(xeth_platina_mk1_top_xid - port);
-}
-
 /* If successful, this returns -EBUSY to release the device for vfio_pci */
-static int xeth_platina_mk1_make_uppers(void)
+static int xeth_platina_mk1_init(void)
 {
 	u64 ea;
 	u8 first_port;
@@ -146,6 +131,24 @@ static int xeth_platina_mk1_make_uppers(void)
 		}
 	}
 	return (err < 0) ? (int)err : -EBUSY;
+}
+
+static void xeth_platina_mk1_exit(void)
+{
+	int port, subport;
+
+	for (port = 0; port < xeth_platina_mk1_n_ports; port++) {
+		if (xeth_platina_mk1_provision[port] > 1) {
+			for (subport = 0;
+			     subport < xeth_platina_mk1_provision[port];
+			     subport++) {
+				u32 o = xeth_platina_mk1_n_ports * subport;
+				u32 xid = xeth_platina_mk1_top_xid - port - o;
+				xeth_upper_delete_port(xid);
+			}
+		} else
+			xeth_upper_delete_port(xeth_platina_mk1_top_xid - port);
+	}
 }
 
 static void xeth_platina_mk1_et_port_cb(struct ethtool_link_ksettings *ks)

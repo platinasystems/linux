@@ -507,9 +507,6 @@ int xeth_mux_init(void)
 	struct xeth_mux_priv *priv;
 	int err;
 
-	err = xeth_sbrx_init();
-	if (err)
-		return err;
 	xeth_mux = xeth_debug_ptr_err(alloc_netdev_mqs(sizeof(*priv),
 						       xeth_name,
 						       NET_NAME_USER,
@@ -540,7 +537,7 @@ int xeth_mux_init(void)
 	return 0;
 }
 
-int xeth_mux_deinit(int err)
+void xeth_mux_exit(void)
 {
 	struct xeth_mux_priv *priv = xeth_mux_priv();
 	struct net_device *lower;
@@ -549,7 +546,8 @@ int xeth_mux_deinit(int err)
 	int bkt;
 
 	if (!priv)
-		return err;
+		return;
+
 	if (xeth_flag(sb_task)) {
 		if (!IS_ERR_OR_NULL(priv->sb)) {
 			kthread_stop(priv->sb);
@@ -576,8 +574,6 @@ int xeth_mux_deinit(int err)
 
 	unregister_netdev(xeth_mux);
 	xeth_mux = NULL;
-
-	return xeth_sbrx_deinit(err);
 }
 
 u8 xeth_mux_bits(void)

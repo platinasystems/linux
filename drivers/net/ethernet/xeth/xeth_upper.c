@@ -1018,14 +1018,13 @@ int xeth_upper_init(void)
 	return err;
 }
 
-int xeth_upper_deinit(int err)
+void xeth_upper_exit(void)
 {
 	/* WARNING must deinit the bridges and lags first so that they
 	 * release all vlan lowers before those are unregistered */
 	xeth_upper_lnko_unregister(&xeth_upper_lnko_bridge);
 	xeth_upper_lnko_unregister(&xeth_upper_lnko_lag);
 	xeth_upper_lnko_unregister(&xeth_upper_lnko_vlan);
-	return err;
 }
 
 static void xeth_upper_call_rcu_for_each_priv(rcu_callback_t cb)
