@@ -124,7 +124,3 @@ u8 xeth_onie_device_version(void)
 	}
 	return _xeth_onie_device_version;
 }
-
-bool xeth_onie_match(enum onie_type t, void *data, size_t ln)
-{
-}
