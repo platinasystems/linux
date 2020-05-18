@@ -91,10 +91,14 @@ static int xeth_main_probe(struct pci_dev *pci_dev,
 	if (!xeth_main_lowers || !xeth_main_lowers[0] || !xeth_main_make_uppers)
 		return -EINVAL;
 
-	xeth_upper_et_stat_names =
-		devm_kzalloc(&pci_dev->dev, xeth_et_stat_names_sz, GFP_KERNEL);
-	if (!xeth_upper_et_stat_names)
-		return -ENOMEM;
+	if (!xeth_upper_et_stat_names) {
+		/* stat names may be alloc'd and set w/in vendor probe */
+		xeth_upper_et_stat_names = devm_kzalloc(&pci_dev->dev,
+							xeth_et_stat_names_sz,
+							GFP_KERNEL);
+		if (!xeth_upper_et_stat_names)
+			return -ENOMEM;
+	}
 
 	err = xeth_debug_err(xeth_mux_init());
 	if (err)
@@ -136,7 +140,7 @@ static ssize_t stat_index_store(struct device_driver *drv,
 					  size_t sz)
 {
 	int err = kstrtouint(buf, 10, &xeth_main_stat_index);
-	if (xeth_main_stat_index > xeth_n_et_stats)
+	if (xeth_main_stat_index > xeth_max_et_stats)
 		err = -ERANGE;
 	if (err)
 		xeth_main_stat_index = 0;
@@ -159,6 +163,8 @@ static ssize_t stat_name_store(struct device_driver *drv, const char *buf,
 		sz = ETH_GSTRING_LEN;
 	if (!xeth_upper_et_stat_names)
 		return -ENOMEM;
+	if (xeth_upper_n_et_stat_names <= xeth_main_stat_index)
+		xeth_upper_n_et_stat_names = xeth_main_stat_index + 1;
 	return strlcpy(xeth_upper_et_stat_names +
 		       (xeth_main_stat_index * ETH_GSTRING_LEN),
 		       buf, sz);
