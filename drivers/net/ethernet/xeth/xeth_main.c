@@ -80,6 +80,10 @@ static void __exit xeth_main_exit(void)
 		xeth_vendor_exit();
 	xeth_mux_exit();
 	pci_unregister_driver(&xeth_main_pci_driver);
+	if (xeth_upper_et_stat_names)
+		kfree(xeth_upper_et_stat_names);
+	if (xeth_sbrx_buf)
+		kfree(xeth_sbrx_buf);
 }
 module_exit(xeth_main_exit);
 
@@ -98,22 +102,22 @@ static int xeth_main_probe(struct pci_dev *pci_dev,
 	if (!xeth_vendor_lowers || !xeth_vendor_lowers[0] || !xeth_vendor_init)
 		return -EINVAL;
 
+	/*
+	 * Don't use devm_kzalloc here b/c the vendor init may release the
+	 * device to vfio with EBUSY.
+	 */
 	if (!xeth_upper_et_stat_names) {
-		/* stat names may be alloc'd and set w/in vendor probe */
-		xeth_upper_et_stat_names = devm_kzalloc(&pci_dev->dev,
-							xeth_et_stat_names_sz,
-							GFP_KERNEL);
+		xeth_upper_et_stat_names =
+			kzalloc(xeth_et_stat_names_sz, GFP_KERNEL);
 		if (!xeth_upper_et_stat_names)
 			return -ENOMEM;
 	}
 	if (!xeth_sbrx_buf) {
-		xeth_sbrx_buf = devm_kzalloc(&pci_dev->dev,
-					     XETH_SIZEOF_JUMBO_FRAME,
-					     GFP_KERNEL);
+		xeth_sbrx_buf =
+			kzalloc(XETH_SIZEOF_JUMBO_FRAME, GFP_KERNEL);
 		if (!xeth_sbrx_buf)
 			return -ENOMEM;
 	}
-
 	err = xeth_mux_init();
 	if (err)
 		return err;
