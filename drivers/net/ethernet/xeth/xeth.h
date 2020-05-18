@@ -39,10 +39,6 @@
 
 #include <xeth_debug.h>
 
-extern int xeth_encap;
-extern int xeth_base_xid;
-extern struct net_device *xeth_mux;
-
 enum xeth_link_stat_index {
 	xeth_link_stat_rx_packets_index,
 	xeth_link_stat_tx_packets_index,
@@ -163,9 +159,16 @@ enum {
 	xeth_et_stat_names_sz = xeth_max_et_stats * ETH_GSTRING_LEN,
 };
 
+extern int xeth_base_xid;
+extern int xeth_encap;
+extern struct net_device *xeth_mux;
+extern void *xeth_sbrx_buf;
 extern size_t xeth_upper_n_et_stat_names;
 extern char xeth_upper_et_flag_names[xeth_max_et_flags][ETH_GSTRING_LEN];
 extern char *xeth_upper_et_stat_names;
+extern int (*xeth_vendor_init)(void);
+extern void (*xeth_vendor_exit)(void);
+extern struct net_device **xeth_vendor_lowers;
 
 enum xeth_encap {
 	XETH_ENCAP_VLAN = 0,
@@ -268,18 +271,11 @@ static inline void xeth_kobject_put(struct kobject *kobj)
 }
 
 int xeth_mux_init(void);
-int xeth_sbrx_init(void);
 int xeth_upper_init(void);
 
-extern void (*xeth_main_remove)(struct pci_dev *);
-extern struct net_device **xeth_main_lowers;
-extern int (*xeth_main_make_uppers)(void);
-
-int xeth_mux_deinit(int err);
-int xeth_sbrx_deinit(int err);
-int xeth_upper_deinit(int err);
-
 u8 xeth_mux_bits(void);
+
+void xeth_mux_exit(void);
 
 int xeth_mux_add_lowers(struct net_device *lowers[]);
 void xeth_mux_add_node(struct hlist_node __rcu *node,
@@ -336,6 +332,7 @@ u8 xeth_onie_device_version(void);
 
 struct task_struct *xeth_sb_start(void);
 
+void xeth_sbrx_exit(void);
 struct task_struct *xeth_sbrx_fork(struct socket *conn);
 
 int xeth_sbtx_service(struct socket *conn);
@@ -353,6 +350,7 @@ int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason);
 int xeth_sbtx_neigh_update(struct neighbour *neigh);
 
+void xeth_upper_exit(void);
 struct net_device *xeth_upper_lookup_rcu(u32 xid);
 void xeth_upper_all_carrier_off(void);
 void xeth_upper_all_dump_ifinfo(void);
