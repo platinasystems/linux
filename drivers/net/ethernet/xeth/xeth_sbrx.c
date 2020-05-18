@@ -53,7 +53,7 @@ static void xeth_sbrx_carrier(struct xeth_msg_carrier *msg)
 		}
 }
 
-static void xeth_sbrx_ethtool_stat(struct xeth_msg_stat *msg)
+static void xeth_sbrx_et_stat(struct xeth_msg_stat *msg)
 {
 	struct net_device *nd;
 	
@@ -61,7 +61,7 @@ static void xeth_sbrx_ethtool_stat(struct xeth_msg_stat *msg)
 	if (!nd)
 		xeth_counter_inc(sbrx_no_dev);
 	else
-		xeth_upper_ethtool_stat(nd, msg->index, msg->count);
+		xeth_upper_et_stat(nd, msg->index, msg->count);
 }
 
 static void xeth_sbrx_link_stat(struct xeth_msg_stat *msg)
@@ -155,7 +155,7 @@ static int xeth_sbrx_service(struct socket *conn)
 		xeth_sbrx_carrier(xeth_sbrx_buf);
 		break;
 	case XETH_MSG_KIND_ETHTOOL_STAT:
-		xeth_sbrx_ethtool_stat(xeth_sbrx_buf);
+		xeth_sbrx_et_stat(xeth_sbrx_buf);
 		break;
 	case XETH_MSG_KIND_LINK_STAT:
 		xeth_sbrx_link_stat(xeth_sbrx_buf);
