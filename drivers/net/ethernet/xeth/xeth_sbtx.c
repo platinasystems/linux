@@ -184,7 +184,7 @@ int xeth_sbtx_change_upper(u32 upper_xid, u32 lower_xid, bool linking)
 	return 0;
 }
 
-int xeth_sbtx_ethtool_flags(u32 xid, u32 flags)
+int xeth_sbtx_et_flags(u32 xid, u32 flags)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_flags *msg;
@@ -200,8 +200,8 @@ int xeth_sbtx_ethtool_flags(u32 xid, u32 flags)
 	return 0;
 }
 
-static int xeth_sbtx_ethtool_link_modes(enum xeth_msg_kind kind, u32 xid,
-					const volatile unsigned long *addr)
+static int xeth_sbtx_et_link_modes(enum xeth_msg_kind kind, u32 xid,
+				   const volatile unsigned long *addr)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_link_modes *msg;
@@ -226,7 +226,7 @@ static int xeth_sbtx_ethtool_link_modes(enum xeth_msg_kind kind, u32 xid,
  * SPEED to note the auto-negotiated speed to ethtool user, but in subsequent
  * run, we don't want the controller to override autoneg.
  */
-int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *ks)
+int xeth_sbtx_et_settings(u32 xid, struct ethtool_link_ksettings *ks)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_settings *msg;
@@ -248,8 +248,7 @@ int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *ks)
 	msg->eth_tp_mdix = ks->base.eth_tp_mdix;
 	msg->eth_tp_mdix_ctrl = ks->base.eth_tp_mdix_ctrl;
 	xeth_sbtx_queue(entry);
-	return xeth_sbtx_ethtool_link_modes(kadv, xid,
-					    ks->link_modes.advertising);
+	return xeth_sbtx_et_link_modes(kadv, xid, ks->link_modes.advertising);
 }
 
 static const char * const xeth_sbtx_fib_event_names[] = {

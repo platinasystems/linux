@@ -22,23 +22,14 @@ static const struct {
 	{ },
 };
 
-static void _xeth_vendor_remove(struct pci_dev *pci_dev)
-{
-	do {} while(0);
-}
-
-void (*xeth_vendor_remove)(struct pci_dev *) = _xeth_vendor_remove;
-
 int xeth_vendor_probe(struct pci_dev *pci_dev, const struct pci_device_id *id)
 {
 	int i;
 	char *vendor;
 
 	vendor = xeth_onie_vendor();
-	if (IS_ERR(vendor)) {
-		int err = PTR_ERR(vendor);
-		return (err == -ENOMSG) ? -EPROBE_DEFER : err;
-	}
+	if (IS_ERR(vendor))
+		return PTR_ERR(vendor);
 	for (i = 0; xeth_vendors[i].name; i++) {
 		size_t len = strlen(xeth_vendors[i].name);
 		if (!memcmp(vendor, xeth_vendors[i].name, len))

@@ -155,17 +155,16 @@ static inline void xeth_get_link_stats(struct rtnl_link_stats64 *dst,
 }
 
 enum {
-	xeth_n_ethtool_flags = 32,
-	xeth_n_ethtool_stats = 512,
+	xeth_n_et_flags = 32,
+	xeth_n_et_stats = 512,
 };
 
 enum {
-	xeth_ethtool_flag_names_sz = xeth_n_ethtool_flags * ETH_GSTRING_LEN,
-	xeth_ethtool_stat_names_sz = xeth_n_ethtool_stats * ETH_GSTRING_LEN,
+	xeth_et_stat_names_sz = xeth_n_et_stats * ETH_GSTRING_LEN,
 };
 
-extern char *xeth_upper_ethtool_flag_names;
-extern char *xeth_upper_ethtool_stat_names;
+extern char xeth_upper_et_flag_names[xeth_n_et_flags][ETH_GSTRING_LEN];
+extern char *xeth_upper_et_stat_names;
 
 enum xeth_encap {
 	XETH_ENCAP_VLAN = 0,
@@ -271,6 +270,10 @@ int xeth_mux_init(void);
 int xeth_sbrx_init(void);
 int xeth_upper_init(void);
 
+extern void (*xeth_main_remove)(struct pci_dev *);
+extern struct net_device **xeth_main_lowers;
+extern int (*xeth_main_make_uppers)(void);
+
 int xeth_mux_deinit(int err);
 int xeth_sbrx_deinit(int err);
 int xeth_upper_deinit(int err);
@@ -337,8 +340,8 @@ struct task_struct *xeth_sbrx_fork(struct socket *conn);
 int xeth_sbtx_service(struct socket *conn);
 int xeth_sbtx_break(void);
 int xeth_sbtx_change_upper(u32 upper_xid, u32 lower_xid, bool linking);
-int xeth_sbtx_ethtool_flags(u32 xid, u32 flags);
-int xeth_sbtx_ethtool_settings(u32 xid, struct ethtool_link_ksettings *);
+int xeth_sbtx_et_flags(u32 xid, u32 flags);
+int xeth_sbtx_et_settings(u32 xid, struct ethtool_link_ksettings *);
 int xeth_sbtx_fib_entry(unsigned long event,
 			struct fib_entry_notifier_info *feni);
 int xeth_sbtx_fib6_entry(unsigned long event,
@@ -355,7 +358,7 @@ void xeth_upper_all_dump_ifinfo(void);
 void xeth_upper_all_reset_stats(void);
 void xeth_upper_changemtu(int mtu, int max_mtu);
 bool xeth_upper_check(struct net_device *nd);
-void xeth_upper_ethtool_stat(struct net_device *nd, u32 index, u64 count);
+void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count);
 void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count);
 void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
 				 struct list_head *q);
@@ -366,10 +369,8 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 		     void (*ethtool_cb) (struct ethtool_link_ksettings *));
 void xeth_upper_delete_port(u32 xid);
 
-void xeth_upper_set_ethtool_flag_names(const char * const names[]);
-void xeth_upper_set_ethtool_stat_names(const char * const names[]);
+void xeth_upper_set_et_flag_names(const char * const names[]);
 
 int xeth_vendor_probe(struct pci_dev *, const struct pci_device_id *);
-extern void (*xeth_vendor_remove)(struct pci_dev *);
 
 #endif  /* __NET_ETHERNET_XETH_H */

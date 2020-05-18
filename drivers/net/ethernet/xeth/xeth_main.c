@@ -19,16 +19,22 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_VERSION(xeth_version);
 MODULE_SOFTDEP("pre: nvmem-onie");
+static struct pci_driver xeth_main_pci_driver;
+module_pci_driver(xeth_main_pci_driver);
 
 int xeth_encap = XETH_ENCAP_VLAN;
 int xeth_base_xid = 3000;
 
+/* a NULL terminated list */
+struct net_device **xeth_main_lowers;
+
+void (*xeth_main_remove)(struct pci_dev *);
+int (*xeth_main_make_uppers)(void);
+
 static int xeth_main_stat_index;
 
 static int xeth_main_probe(struct pci_dev *, const struct pci_device_id *);
-static void xeth_main_remove(struct pci_dev *);
-static int xeth_main_deinit(int err);
-
+static void _xeth_main_remove(struct pci_dev *);
 static ssize_t stat_index_show(struct device_driver *, char *);
 static ssize_t stat_name_show(struct device_driver *, char *);
 
@@ -66,79 +72,58 @@ static struct pci_driver xeth_main_pci_driver = {
 	.name = KBUILD_MODNAME,
 	.id_table = xeth_main_pci_ids,
 	.probe = xeth_main_probe,
-	.remove = xeth_main_remove,
+	.remove = _xeth_main_remove,
 	.groups = stat_groups,
 };
-
-static int __init xeth_main_init(void)
-{
-	int err;
-
-	xeth_upper_ethtool_flag_names = kzalloc(xeth_ethtool_flag_names_sz,
-						GFP_KERNEL);
-	if (!xeth_upper_ethtool_flag_names)
-		return xeth_main_deinit(-ENOMEM);
-
-	xeth_upper_ethtool_stat_names = kzalloc(xeth_ethtool_stat_names_sz,
-						GFP_KERNEL);
-	if (!xeth_upper_ethtool_stat_names)
-		return xeth_main_deinit(-ENOMEM);
-
-	err = xeth_debug_err(xeth_mux_init());
-	if (err)
-		return xeth_main_deinit(err);
-	err = xeth_debug_err(xeth_upper_init());
-	if (err)
-		return xeth_main_deinit(err);
-	err = xeth_debug_err(pci_register_driver(&xeth_main_pci_driver));
-	if (err)
-		return xeth_main_deinit(err);
-	xeth_debug("ready");
-	return 0;
-}
-module_init(xeth_main_init)
-
-static void __exit xeth_main_exit(void)
-{
-	xeth_main_deinit(0);
-	xeth_debug("done");
-}
-module_exit(xeth_main_exit);
 
 static int xeth_main_probe(struct pci_dev *pci_dev,
 			   const struct pci_device_id *id)
 {
-	xeth_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
-	return xeth_vendor_probe(pci_dev, id);
-}
+	int i, err;
 
-static void xeth_main_remove(struct pci_dev *pci_dev)
-{
-	xeth_debug("vendor 0x%x, device 0x%x",
-		   pci_dev->vendor, pci_dev->device);
-	xeth_vendor_remove(pci_dev);
-}
+	if (xeth_mux_is_registered())
+		return -EBUSY;
 
-static int xeth_main_deinit(int err)
-{
-#define xeth_main_sub_deinit(deinit, err)				\
-({									\
-	int __err = (err);						\
-	int ___err = (deinit)(__err);					\
-	(__err) ?  (__err) : (___err);					\
-})
+	err = xeth_vendor_probe(pci_dev, id);
+	if (err)
+		return err;
 
-	xeth_vendor_remove(NULL);
-	pci_unregister_driver(&xeth_main_pci_driver);
-	if (xeth_mux_is_registered()) {
-		err = xeth_main_sub_deinit(xeth_upper_deinit, err);
-		err = xeth_main_sub_deinit(xeth_mux_deinit, err);
-	}
-	if (xeth_upper_ethtool_flag_names)
-		kfree(xeth_upper_ethtool_flag_names);
-	if (xeth_upper_ethtool_stat_names)
-		kfree(xeth_upper_ethtool_stat_names);
+	if (!xeth_main_lowers || !xeth_main_lowers[0] || !xeth_main_make_uppers)
+		return -EINVAL;
+
+	xeth_upper_et_stat_names =
+		devm_kzalloc(&pci_dev->dev, xeth_et_stat_names_sz, GFP_KERNEL);
+	if (!xeth_upper_et_stat_names)
+		return -ENOMEM;
+
+	err = xeth_debug_err(xeth_mux_init());
+	if (err)
+		return err;
+	err = xeth_debug_err(xeth_upper_init());
+	if (err)
+		return xeth_mux_deinit(err);
+
+	rtnl_lock();
+	err = xeth_mux_add_lowers(xeth_main_lowers);
+	rtnl_unlock();
+	for (i = 0; xeth_main_lowers[i]; i++)
+		dev_put(xeth_main_lowers[i]);
+	if (err)
+		return xeth_upper_deinit(xeth_mux_deinit(err));
+
+	err = xeth_main_make_uppers();
+	if (err < 0 && err != -EBUSY)
+		return xeth_mux_deinit(xeth_upper_deinit(err));
+
 	return err;
+}
+
+static void _xeth_main_remove(struct pci_dev *pci_dev)
+{
+	if (xeth_main_remove)
+		xeth_main_remove(pci_dev);
+	if (xeth_mux_is_registered())
+		xeth_mux_deinit(xeth_upper_deinit(0));
 }
 
 static ssize_t stat_index_show(struct device_driver *drv, char *buf)
@@ -151,7 +136,7 @@ static ssize_t stat_index_store(struct device_driver *drv,
 					  size_t sz)
 {
 	int err = kstrtouint(buf, 10, &xeth_main_stat_index);
-	if (xeth_main_stat_index > xeth_n_ethtool_stats)
+	if (xeth_main_stat_index > xeth_n_et_stats)
 		err = -ERANGE;
 	if (err)
 		xeth_main_stat_index = 0;
@@ -160,7 +145,9 @@ static ssize_t stat_index_store(struct device_driver *drv,
 
 static ssize_t stat_name_show(struct device_driver *drv, char *buf)
 {
-	return strlcpy(buf, xeth_upper_ethtool_stat_names +
+	if (!xeth_upper_et_stat_names)
+		return -ENOMEM;
+	return strlcpy(buf, xeth_upper_et_stat_names +
 		       (xeth_main_stat_index * ETH_GSTRING_LEN),
 		       ETH_GSTRING_LEN);
 }
@@ -168,7 +155,11 @@ static ssize_t stat_name_show(struct device_driver *drv, char *buf)
 static ssize_t stat_name_store(struct device_driver *drv, const char *buf,
 			       size_t sz)
 {
-	return strlcpy(xeth_upper_ethtool_stat_names +
+	if (sz > ETH_GSTRING_LEN)
+		sz = ETH_GSTRING_LEN;
+	if (!xeth_upper_et_stat_names)
+		return -ENOMEM;
+	return strlcpy(xeth_upper_et_stat_names +
 		       (xeth_main_stat_index * ETH_GSTRING_LEN),
-		       buf, ETH_GSTRING_LEN);
+		       buf, sz);
 }

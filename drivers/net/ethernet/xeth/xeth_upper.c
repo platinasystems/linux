@@ -13,8 +13,7 @@ enum {
 	xeth_upper_txqs = 1,
 	xeth_upper_link_n_stats =
 		sizeof(struct rtnl_link_stats64)/sizeof(__u64),
-	xeth_upper_ethtool_stats_sz =
-		sizeof(u64) * xeth_n_ethtool_stats,
+	xeth_upper_et_stats_sz = sizeof(u64) * xeth_n_et_stats,
 };
 
 struct xeth_upper_priv {
@@ -23,53 +22,51 @@ struct xeth_upper_priv {
 	u8 kind;
 	struct rcu_head rcu;
 	struct xeth_atomic_link_stats link_stats;
-	struct ethtool_link_ksettings ethtool_settings;
-	u32 ethtool_priv_flags;
-	u64 ethtool_stats[];
+	struct ethtool_link_ksettings et_settings;
+	u32 et_priv_flags;
+	u64 et_stats[];
 };
 
-char *xeth_upper_ethtool_flag_names;
-char *xeth_upper_ethtool_stat_names;
+char xeth_upper_et_flag_names[xeth_n_et_flags][ETH_GSTRING_LEN];
+char *xeth_upper_et_stat_names;
 
 /* @names - a NULL terminated list */
-void xeth_upper_set_ethtool_flag_names(const char * const names[])
+void xeth_upper_set_et_flag_names(const char * const names[])
 {
 	int i;
 
-	for (i = 0; names[i] && i < xeth_n_ethtool_flags; i++)
-		strlcpy(xeth_upper_ethtool_flag_names + (i * ETH_GSTRING_LEN),
-			names[i], ETH_GSTRING_LEN);
+	for (i = 0; names[i] && i < xeth_n_et_flags; i++)
+		strlcpy(xeth_upper_et_flag_names[i], names[i],
+			ETH_GSTRING_LEN);
 }
 
 /* @names - a NULL terminated list */
-void xeth_upper_set_ethtool_stat_names(const  char * const names[])
+void xeth_upper_set_et_stat_names(const  char * const names[])
 {
 	int i;
 
-	for (i = 0; names[i] && i < xeth_n_ethtool_stats; i++)
-		strlcpy(xeth_upper_ethtool_stat_names + (i * ETH_GSTRING_LEN),
+	for (i = 0; names[i] && i < xeth_n_et_stats; i++)
+		strlcpy(xeth_upper_et_stat_names + (i * ETH_GSTRING_LEN),
 			names[i], ETH_GSTRING_LEN);
 }
 
-static int xeth_upper_ethtool_n_priv_flags(void)
+static int xeth_upper_et_n_priv_flags(void)
 {
 	int i;
 
-	if (!xeth_upper_ethtool_flag_names)
-		return 0;
-	for (i = 0; i < xeth_n_ethtool_flags &&
-	     xeth_upper_ethtool_flag_names[i * ETH_GSTRING_LEN]; i++);
+	for (i = 0; i < xeth_n_et_flags &&
+	     xeth_upper_et_flag_names[i * ETH_GSTRING_LEN]; i++);
 	return i;
 }
 
-static int xeth_upper_ethtool_n_stats(void)
+static int xeth_upper_et_n_stats(void)
 {
 	int i;
 
-	if (!xeth_upper_ethtool_stat_names)
+	if (!xeth_upper_et_stat_names)
 		return 0;
-	for (i = 0; i < xeth_n_ethtool_stats &&
-	     xeth_upper_ethtool_stat_names[i * ETH_GSTRING_LEN]; i++);
+	for (i = 0; i < xeth_n_et_stats &&
+	     xeth_upper_et_stat_names[i * ETH_GSTRING_LEN]; i++);
 	return i;
 }
 
@@ -145,11 +142,9 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 			 XETH_IFINFO_REASON_DUMP);
 
 	if (priv->kind == XETH_DEV_KIND_PORT) {
-		xeth_sbtx_ethtool_settings(priv->xid,
-					   &priv->ethtool_settings);
-		if (priv->ethtool_priv_flags)
-			xeth_sbtx_ethtool_flags(priv->xid,
-						priv->ethtool_priv_flags);
+		xeth_sbtx_et_settings(priv->xid, &priv->et_settings);
+		if (priv->et_priv_flags)
+			xeth_sbtx_et_flags(priv->xid, priv->et_priv_flags);
 	}
 
 	if (in_dev) {
@@ -189,13 +184,13 @@ static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *priv =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	int ethtool_n_stats = xeth_upper_ethtool_n_stats();
+	int et_n_stats = xeth_upper_et_n_stats();
 	int i;
 
 	xeth_reset_link_stats(&priv->link_stats);
 	if (priv->kind == XETH_DEV_KIND_PORT)
-		for (i = 0; i < ethtool_n_stats; i++)
-			priv->ethtool_stats[i] = 0;
+		for (i = 0; i < et_n_stats; i++)
+			priv->et_stats[i] = 0;
 }
 
 static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
@@ -378,8 +373,8 @@ static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
 	else
 		scnprintf(drvinfo->bus_info, ETHTOOL_BUSINFO_LEN, "%u",
 			  priv->xid);
-	drvinfo->n_priv_flags = xeth_upper_ethtool_n_priv_flags();
-	drvinfo->n_stats = xeth_upper_ethtool_n_stats();
+	drvinfo->n_priv_flags = xeth_upper_et_n_priv_flags();
+	drvinfo->n_stats = xeth_upper_et_n_stats();
 }
 
 static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
@@ -390,9 +385,9 @@ static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
 		return 0;
 	switch (sset) {
 	case ETH_SS_PRIV_FLAGS:
-		return xeth_upper_ethtool_n_priv_flags();
+		return xeth_upper_et_n_priv_flags();
 	case ETH_SS_STATS:
-		return xeth_upper_ethtool_n_stats();
+		return xeth_upper_et_n_stats();
 	case ETH_SS_TEST:
 		return 0;
 	}
@@ -412,22 +407,20 @@ static void xeth_upper_eto_get_strings(struct net_device *nd,
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		if (!xeth_upper_ethtool_stat_names)
+		if (!xeth_upper_et_stat_names)
 			break;
-		for (i = 0; i < xeth_n_ethtool_stats &&
-		     xeth_upper_ethtool_stat_names[i * ETH_GSTRING_LEN]; i++) {
-			strlcpy(p, xeth_upper_ethtool_stat_names +
+		for (i = 0; i < xeth_n_et_stats &&
+		     xeth_upper_et_stat_names[i * ETH_GSTRING_LEN]; i++) {
+			strlcpy(p, xeth_upper_et_stat_names +
 				(i * ETH_GSTRING_LEN), ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		if (!xeth_upper_ethtool_flag_names)
-			break;
-		for (i = 0; i < xeth_n_ethtool_flags &&
-		     xeth_upper_ethtool_flag_names[i * ETH_GSTRING_LEN]; i++) {
-			strlcpy(p, xeth_upper_ethtool_flag_names +
-				(i * ETH_GSTRING_LEN), ETH_GSTRING_LEN);
+		for (i = 0; i < xeth_n_et_flags &&
+		     xeth_upper_et_flag_names[i * ETH_GSTRING_LEN]; i++) {
+			strlcpy(p, xeth_upper_et_flag_names[i],
+				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
@@ -442,8 +435,8 @@ static void xeth_upper_eto_get_stats(struct net_device *nd,
 	size_t sz;
 
 	if (priv->kind == XETH_DEV_KIND_PORT) {
-		sz = sizeof(u64) * xeth_upper_ethtool_n_stats();
-		memcpy(data, &priv->ethtool_stats, sz);
+		sz = sizeof(u64) * xeth_upper_et_n_stats();
+		memcpy(data, &priv->et_stats, sz);
 	}
 }
 
@@ -451,19 +444,19 @@ static u32 xeth_upper_eto_get_priv_flags(struct net_device *nd)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	return priv->ethtool_priv_flags;
+	return priv->et_priv_flags;
 }
 
 static int xeth_upper_eto_set_priv_flags(struct net_device *nd, u32 flags)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	size_t n = xeth_upper_ethtool_n_priv_flags();
+	size_t n = xeth_upper_et_n_priv_flags();
 
 	if (flags >= (1 << n))
 		return -EINVAL;
 
-	priv->ethtool_priv_flags = flags;
-	xeth_sbtx_ethtool_flags(priv->xid, flags);
+	priv->et_priv_flags = flags;
+	xeth_sbtx_et_flags(priv->xid, flags);
 
 	return 0;
 }
@@ -472,14 +465,14 @@ static int xeth_upper_eto_get_link_ksettings(struct net_device *nd,
 					     struct ethtool_link_ksettings *p)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	memcpy(p, &priv->ethtool_settings, sizeof(*p));
+	memcpy(p, &priv->et_settings, sizeof(*p));
 	return 0;
 }
 
 static int xeth_upper_validate_port(struct net_device *nd, u8 port)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	struct ethtool_link_ksettings *ks = &priv->ethtool_settings;
+	struct ethtool_link_ksettings *ks = &priv->et_settings;
 	bool t = false;
 
 	switch (port) {
@@ -536,7 +529,7 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 	struct ethtool_link_ksettings *settings;
 	int err;
 
-	settings = &priv->ethtool_settings;
+	settings = &priv->et_settings;
 	if (req->base.port != settings->base.port) {
 		err = xeth_upper_validate_port(nd, req->base.port);
 		if (err)
@@ -572,7 +565,7 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 		}
 	}
 
-	return xeth_sbtx_ethtool_settings(priv->xid, settings);
+	return xeth_sbtx_et_settings(priv->xid, settings);
 }
 
 static int xeth_upper_eto_get_fecparam(struct net_device *nd,
@@ -582,7 +575,7 @@ static int xeth_upper_eto_get_fecparam(struct net_device *nd,
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *ks;
 
-	ks = &priv->ethtool_settings;
+	ks = &priv->et_settings;
 	param->fec = 0;
 	param->active_fec = 0;
 	if (xeth_supports(ks, FEC_NONE))
@@ -613,7 +606,7 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *ks;
 
-	ks = &priv->ethtool_settings;
+	ks = &priv->et_settings;
 	switch (param->fec) {
 	case ETHTOOL_FEC_AUTO:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -672,10 +665,10 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 	default:
 		return -EINVAL;
 	}
-	return xeth_sbtx_ethtool_settings(priv->xid, ks);
+	return xeth_sbtx_et_settings(priv->xid, ks);
 }
 
-static const struct ethtool_ops xeth_upper_ethtool_ops = {
+static const struct ethtool_ops xeth_upper_et_ops = {
 	.get_drvinfo = xeth_upper_eto_get_drvinfo,
 	.get_link = ethtool_op_get_link,
 	.get_sset_count = xeth_upper_eto_get_sset_count,
@@ -693,7 +686,7 @@ static void xeth_upper_lnko_setup_port(struct net_device *nd)
 {
 	ether_setup(nd);
 	nd->netdev_ops = &xeth_upper_ndo_port;
-	nd->ethtool_ops = &xeth_upper_ethtool_ops;
+	nd->ethtool_ops = &xeth_upper_et_ops;
 	nd->needs_free_netdev = true;
 	nd->priv_destructor = NULL;
 	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
@@ -1117,12 +1110,12 @@ void xeth_upper_changemtu(int mtu, int max_mtu)
 #endif /* __FIXME__ */
 }
 
-void xeth_upper_ethtool_stat(struct net_device *nd, u32 index, u64 count)
+void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
-	if (index < xeth_upper_ethtool_n_stats())
-		priv->ethtool_stats[index] = count;
+	if (index < xeth_upper_et_n_stats())
+		priv->et_stats[index] = count;
 	else
 		xeth_counter_inc(sbrx_invalid);
 }
@@ -1212,7 +1205,7 @@ void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count)
 void xeth_upper_speed(struct net_device *nd, u32 mbps)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	priv->ethtool_settings.base.speed = mbps;
+	priv->et_settings.base.speed = mbps;
 }
 
 void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
@@ -1242,8 +1235,7 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
  * @xid:	A unique and immutable xeth device identifier; if zero,
  *		the device is assigned the next available xid
  * @ea:		Ethernet Address, if zero, it's assigned a random address
- * @ethtool_cb
- *		An initialization call-back
+ * @cb		An initialization call-back
  *
  * Returns a non-zero, negative number on error; otherwise, returns the
  * non-zero, poistive xid.
@@ -1253,7 +1245,7 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 {
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
-	size_t priv_sz = sizeof(*priv) + xeth_upper_ethtool_stats_sz;
+	size_t priv_sz = sizeof(*priv) + xeth_upper_et_stats_sz;
 	s64 x;
 
 	if (IS_ERR(xeth_mux_upper_head_indexed(0)))
@@ -1293,7 +1285,7 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 	}
 
 	if (cb)
-		cb(&priv->ethtool_settings);
+		cb(&priv->et_settings);
 
 	xeth_debug("%s xid %u mac %pM", name, xid, nd->dev_addr);
 	return xid;
