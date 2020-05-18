@@ -22,6 +22,12 @@ static const struct {
 	{ },
 };
 
+int (*xeth_vendor_init)(void);
+void (*xeth_vendor_exit)(void);
+
+/* a NULL terminated list */
+struct net_device **xeth_vendor_lowers;
+
 int xeth_vendor_probe(struct pci_dev *pci_dev, const struct pci_device_id *id)
 {
 	int i;
