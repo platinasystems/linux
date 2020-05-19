@@ -81,10 +81,10 @@
 
 	ddrsmp = <0>;		/* DDR internal Sampling */
 
-	flash10: s25fl256s1@0 {
+	flash10: s25fl512s@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spansion,s25fl256s1";
+		compatible = "spansion,s25fl512s", "jedec,spi-nor";
 		spi-max-frequency = <29000000>;
 		reg = <0>;
 		all@0 {
@@ -127,7 +127,7 @@
 	flash11: s25fl512s@1 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spansion,s25fl512s";
+		compatible = "spansion,s25fl512s", "jedec,spi-nor";
 		spi-max-frequency = <29000000>;
 		reg = <1>;
 	};
@@ -135,7 +135,7 @@
 	flash12: s25fl512s@2 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spansion,s25fl512s";
+		compatible = "spansion,s25fl512s", "jedec,spi-nor";
 		spi-max-frequency = <29000000>;
 		reg = <2>;
 	};
@@ -143,7 +143,7 @@
 	flash13: s25fl512s@3 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spansion,s25fl512s";
+		compatible = "spansion,s25fl512s", "jedec,spi-nor";
 		spi-max-frequency = <29000000>;
 		reg = <3>;
 	};
