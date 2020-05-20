@@ -287,12 +287,12 @@ int xeth_sbtx_fib_entry(unsigned long event,
 	msg->type = feni->type;
 	msg->table = feni->tb_id;
 	for(i = 0; i < msg->nhs; i++) {
-		nh[i].ifindex = feni->fi->fib_nh[i].nh_dev ?
-			feni->fi->fib_nh[i].nh_dev->ifindex : 0;
-		nh[i].weight = feni->fi->fib_nh[i].nh_weight;
-		nh[i].flags = feni->fi->fib_nh[i].nh_flags;
-		nh[i].gw = feni->fi->fib_nh[i].nh_gw;
-		nh[i].scope = feni->fi->fib_nh[i].nh_scope;
+		nh[i].ifindex = feni->fi->fib_nh[i].fib_nh_dev ?
+			feni->fi->fib_nh[i].fib_nh_dev->ifindex : 0;
+		nh[i].weight = feni->fi->fib_nh[i].fib_nh_weight;
+		nh[i].flags = feni->fi->fib_nh[i].fib_nh_flags;
+		nh[i].gw = feni->fi->fib_nh[i].fib_nh_gw4;
+		nh[i].scope = feni->fi->fib_nh[i].fib_nh_scope;
 	}
 	no_xeth_debug("%s %pI4/%d w/ %d nexhop(s)",
 		      xeth_sbtx_fib_event_names[event],
@@ -330,18 +330,18 @@ int xeth_sbtx_fib6_entry(unsigned long event,
 	msg->nsiblings = rt->fib6_nsiblings;
 	msg->type = rt->fib6_type;
 	msg->table = rt->fib6_table->tb6_id;
-	msg->nh.ifindex = rt->fib6_nh.nh_dev->ifindex;
-	msg->nh.weight = rt->fib6_nh.nh_weight;
-	msg->nh.flags = rt->fib6_nh.nh_flags;
-	memcpy(msg->nh.gw, &rt->fib6_nh.nh_gw, 16);
+	msg->nh.ifindex = rt->fib6_nh->fib_nh_dev->ifindex;
+	msg->nh.weight = rt->fib6_nh->fib_nh_weight;
+	msg->nh.flags = rt->fib6_nh->fib_nh_flags;
+	memcpy(msg->nh.gw, &rt->fib6_nh->fib_nh_gw6, 16);
 	i = 0;
 	list_for_each_entry(iter, &rt->fib6_siblings, fib6_siblings) {
 		if (i == rt->fib6_nsiblings)
 			break;
-		sibling->ifindex = iter->fib6_nh.nh_dev->ifindex;
-		sibling->weight = iter->fib6_nh.nh_weight;
-		sibling->flags = iter->fib6_nh.nh_flags;
-		memcpy(sibling->gw, &iter->fib6_nh.nh_gw, 16);
+		sibling->ifindex = iter->fib6_nh->fib_nh_dev->ifindex;
+		sibling->weight = iter->fib6_nh->fib_nh_weight;
+		sibling->flags = iter->fib6_nh->fib_nh_flags;
+		memcpy(sibling->gw, &iter->fib6_nh->fib_nh_gw6, 16);
 		i++;
 		sibling++;
 	}
