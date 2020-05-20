@@ -101,7 +101,7 @@ static int xeth_sbrx_exception_vlan(const char *buf, size_t n)
 	memcpy(skb->data, buf, n);
 	eth_type_trans(skb, xeth_mux);
 	skb->vlan_proto = h_vlan_proto;
-	skb->vlan_tci = VLAN_TAG_PRESENT | be16_to_cpu(h_vlan_TCI);
+	skb->vlan_tci = VLAN_CFI_MASK | be16_to_cpu(h_vlan_TCI);
 	skb->protocol = h_vlan_encapsulated_proto;
 	skb_pull_inline(skb, VLAN_HLEN);
 	xeth_mux_demux(&skb);
@@ -192,7 +192,7 @@ static int xeth_sbrx_task(void *data)
 	};
 	int err;
 	
-	err = xeth_debug_err(kernel_setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO,
+	err = xeth_debug_err(kernel_setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO_NEW,
 					       (char *)&tv, sizeof(tv)));
 	if (err)
 		return err;

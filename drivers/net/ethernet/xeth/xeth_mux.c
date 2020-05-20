@@ -163,7 +163,7 @@ static int xeth_mux_open(struct net_device *nd)
 	int err;
 
 	netdev_for_each_lower_dev(nd, lower, lowers) {
-		err = xeth_debug_nd_err(lower, dev_open(lower));
+		err = xeth_debug_nd_err(lower, dev_open(lower, NULL));
 		if (err)
 			return err;
 	}

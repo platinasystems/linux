@@ -206,7 +206,7 @@ static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
 static int xeth_upper_ndo_open(struct net_device *nd)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	int err = xeth_debug_nd_err(xeth_mux, dev_open(xeth_mux));
+	int err = xeth_debug_nd_err(xeth_mux, dev_open(xeth_mux, NULL));
 	if (err)
 		return err;
 	netif_carrier_off(nd);
