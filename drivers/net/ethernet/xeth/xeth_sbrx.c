@@ -86,40 +86,6 @@ static void xeth_sbrx_speed(struct xeth_msg_speed *msg)
 		xeth_upper_speed(nd, msg->mbps);
 }
 
-static int xeth_sbrx_exception_vlan(const char *buf, size_t n)
-{
-	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)buf;
-	__be16 h_vlan_proto = veh->h_vlan_proto;
-	__be16 h_vlan_TCI = veh->h_vlan_TCI;
-	__be16 h_vlan_encapsulated_proto = veh->h_vlan_encapsulated_proto;
-	struct sk_buff *skb = netdev_alloc_skb(xeth_mux, n);
-	if (!skb) {
-		xeth_counter_inc(sbrx_no_mem);
-		return xeth_debug_err(-ENOMEM);
-	}
-	skb_put(skb, n);
-	memcpy(skb->data, buf, n);
-	eth_type_trans(skb, xeth_mux);
-	skb->vlan_proto = h_vlan_proto;
-	skb->vlan_tci = VLAN_CFI_MASK | be16_to_cpu(h_vlan_TCI);
-	skb->protocol = h_vlan_encapsulated_proto;
-	skb_pull_inline(skb, VLAN_HLEN);
-	xeth_mux_demux(&skb);
-	return 0;
-}
-
-static int xeth_sbrx_exception(const char *buf, size_t n)
-{
-	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)buf;
-
-	if (eth_type_vlan(veh->h_vlan_proto)) {
-		return xeth_sbrx_exception_vlan(buf, n);
-	}
-	xeth_counter_inc(sbex_invalid);
-	return xeth_debug_err(-EINVAL);
-}
-
-
 // return < 0 if error, 1 if sock closed, and 0 othewise
 static int xeth_sbrx_service(struct socket *conn)
 {
@@ -142,11 +108,8 @@ static int xeth_sbrx_service(struct socket *conn)
 	if (n < 0)
 		return n;
 	xeth_counter_inc(sbrx_msgs);
-	if (n < sizeof(*msg))
+	if (n < sizeof(*msg) || !xeth_sbrx_is_msg(msg))
 		return -EINVAL;
-	if (!xeth_sbrx_is_msg(msg)) {
-		return xeth_sbrx_exception(xeth_sbrx_buf, n);
-	}
 	err = xeth_debug_err(xeth_sbrx_msg_version_match(msg));
 	if (err)
 		return err;
