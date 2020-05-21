@@ -14,6 +14,7 @@
 #include <linux/atomic.h>
 #include <linux/etherdevice.h>
 #include <linux/hashtable.h>
+#include <linux/i2c.h>
 #include <linux/inetdevice.h>
 #include <linux/if_vlan.h>
 #include <linux/pci.h>
@@ -162,10 +163,17 @@ enum {
 extern int xeth_base_xid;
 extern int xeth_encap;
 extern struct net_device *xeth_mux;
+extern const struct i2c_device_id xeth_qsfp_id_table[];
+extern const u32 *xeth_qsfp_xids;
+extern size_t xeth_qsfp_n_xids;
 extern void *xeth_sbrx_buf;
 extern size_t xeth_upper_n_et_stat_names;
 extern char xeth_upper_et_flag_names[xeth_max_et_flags][ETH_GSTRING_LEN];
 extern char *xeth_upper_et_stat_names;
+extern int (*xeth_upper_eto_get_module_info)(struct net_device *,
+					     struct ethtool_modinfo *);
+extern int (*xeth_upper_eto_get_module_eeprom)(struct net_device *,
+					       struct ethtool_eeprom *, u8 *);
 extern int (*xeth_vendor_init)(void);
 extern void (*xeth_vendor_exit)(void);
 extern struct net_device **xeth_vendor_lowers;
@@ -271,12 +279,12 @@ static inline void xeth_kobject_put(struct kobject *kobj)
 }
 
 int xeth_mux_init(void);
-int xeth_upper_init(void);
-
-u8 xeth_mux_bits(void);
-
 void xeth_mux_exit(void);
 
+int xeth_upper_init(void);
+void xeth_upper_exit(void);
+
+u8 xeth_mux_bits(void);
 int xeth_mux_add_lowers(struct net_device *lowers[]);
 void xeth_mux_add_node(struct hlist_node __rcu *node,
 		       struct hlist_head __rcu *head);
@@ -330,9 +338,15 @@ u64 xeth_onie_mac_base(void);
 u16 xeth_onie_num_macs(void);
 u8 xeth_onie_device_version(void);
 
+int xeth_qsfp_detect(struct i2c_client *, struct i2c_board_info *);
+int xeth_qsfp_probe(struct i2c_client *);
+int xeth_qsfp_remove(struct i2c_client *);
+int xeth_qsfp_get_module_info(struct net_device *, struct ethtool_modinfo *);
+int xeth_qsfp_get_module_eeprom(struct net_device *, struct ethtool_eeprom *,
+				u8 *);
+
 struct task_struct *xeth_sb_start(void);
 
-void xeth_sbrx_exit(void);
 struct task_struct *xeth_sbrx_fork(struct socket *conn);
 
 int xeth_sbtx_service(struct socket *conn);
@@ -350,7 +364,6 @@ int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason);
 int xeth_sbtx_neigh_update(struct neighbour *neigh);
 
-void xeth_upper_exit(void);
 struct net_device *xeth_upper_lookup_rcu(u32 xid);
 void xeth_upper_all_carrier_off(void);
 void xeth_upper_all_dump_ifinfo(void);
@@ -368,8 +381,28 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 		     void (*ethtool_cb) (struct ethtool_link_ksettings *));
 void xeth_upper_delete_port(u32 xid);
 
+struct i2c_client *xeth_upper_qsfp(struct net_device *);
+void xeth_upper_set_qsfp(struct net_device *, struct i2c_client *);
 void xeth_upper_set_et_flag_names(const char * const names[]);
+void xeth_upper_set_et_stat_names(const char * const names[]);
 
 int xeth_vendor_probe(struct pci_dev *, const struct pci_device_id *);
+
+enum {
+	xeth_qsfp_i2c_class = I2C_CLASS_HWMON | I2C_CLASS_DDC | I2C_CLASS_SPD,
+};
+
+#define new_xeth_qsfp_driver(NAME, ADDRS...)				\
+static struct i2c_driver NAME = {					\
+	.class		= xeth_qsfp_i2c_class,				\
+	.driver = {							\
+		.name	= #NAME,					\
+	},								\
+	.probe_new	= xeth_qsfp_probe,				\
+	.remove		= xeth_qsfp_remove,				\
+	.id_table	= xeth_qsfp_id_table,				\
+	.detect		= xeth_qsfp_detect,				\
+	.address_list	= I2C_ADDRS(ADDRS),				\
+}
 
 #endif  /* __NET_ETHERNET_XETH_H */
