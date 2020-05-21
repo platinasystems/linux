@@ -23,6 +23,7 @@ struct xeth_upper_priv {
 	struct rcu_head rcu;
 	struct xeth_atomic_link_stats link_stats;
 	struct ethtool_link_ksettings et_settings;
+	struct i2c_client *qsfp;
 	u32 et_priv_flags;
 	u64 et_stats[];
 };
@@ -32,6 +33,23 @@ size_t xeth_upper_n_et_stat_names = 0;
 
 char xeth_upper_et_flag_names[xeth_max_et_flags][ETH_GSTRING_LEN];
 char *xeth_upper_et_stat_names;
+
+int (*xeth_upper_eto_get_module_info)(struct net_device *,
+				      struct ethtool_modinfo *);
+int (*xeth_upper_eto_get_module_eeprom)(struct net_device *,
+					struct ethtool_eeprom *, u8 *);
+
+struct i2c_client *xeth_upper_qsfp(struct net_device *nd)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	return priv->qsfp;
+}
+
+void xeth_upper_set_qsfp(struct net_device *nd, struct i2c_client *qsfp)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	priv->qsfp = qsfp;
+}
 
 /* @names - a NULL terminated list */
 void xeth_upper_set_et_flag_names(const char * const names[])
@@ -653,6 +671,23 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 	return xeth_sbtx_et_settings(priv->xid, ks);
 }
 
+static int _xeth_upper_eto_get_module_info(struct net_device *nd,
+					   struct ethtool_modinfo *emi)
+{
+	if (!xeth_upper_eto_get_module_info)
+		return -ENOSYS;
+	return xeth_upper_eto_get_module_info(nd, emi);
+}
+
+static int _xeth_upper_eto_get_module_eeprom(struct net_device *nd,
+					     struct ethtool_eeprom *ee,
+					     u8 *data)
+{
+	if (!xeth_upper_eto_get_module_eeprom)
+		return -ENOSYS;
+	return xeth_upper_eto_get_module_eeprom(nd, ee, data);
+}
+
 static const struct ethtool_ops xeth_upper_et_ops = {
 	.get_drvinfo = xeth_upper_eto_get_drvinfo,
 	.get_link = ethtool_op_get_link,
@@ -661,6 +696,8 @@ static const struct ethtool_ops xeth_upper_et_ops = {
 	.get_ethtool_stats = xeth_upper_eto_get_stats,
 	.get_priv_flags = xeth_upper_eto_get_priv_flags,
 	.set_priv_flags = xeth_upper_eto_set_priv_flags,
+	.get_module_info = _xeth_upper_eto_get_module_info,
+	.get_module_eeprom = _xeth_upper_eto_get_module_eeprom,
 	.get_link_ksettings = xeth_upper_eto_get_link_ksettings,
 	.set_link_ksettings = xeth_upper_eto_set_link_ksettings,
 	.get_fecparam = xeth_upper_eto_get_fecparam,

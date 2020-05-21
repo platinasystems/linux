@@ -10,6 +10,8 @@ xeth-y += xeth_sbtx.o
 xeth-y += xeth_upper.o
 xeth-y += xeth_vendor.o
 
+xeth-y += xeth_qsfp.o
+
 xeth-$(CONFIG_NET_XETH_VENDOR_PLATINA) += xeth_platina.o
 xeth-$(CONFIG_NET_XETH_VENDOR_PLATINA) += xeth_platina_mk1.o
 

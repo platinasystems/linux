@@ -9,8 +9,6 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include <linux/onie.h>
-
 enum {
 	xeth_platina_mk1_top_xid = 3999,
 	xeth_platina_mk1_n_ports = 32,
@@ -58,6 +56,43 @@ static const char * const xeth_platina_mk1_et_flag_names[] = {
 	NULL,
 };
 
+static const u32 xeth_platina_mk1_qsfp_xids[] = {
+	[2] = xeth_platina_mk1_top_xid - 0,
+	[3] = xeth_platina_mk1_top_xid - 1,
+	[4] = xeth_platina_mk1_top_xid - 2,
+	[5] = xeth_platina_mk1_top_xid - 3,
+	[6] = xeth_platina_mk1_top_xid - 4,
+	[7] = xeth_platina_mk1_top_xid - 5,
+	[8] = xeth_platina_mk1_top_xid - 6,
+	[9] = xeth_platina_mk1_top_xid - 7,
+	[11] = xeth_platina_mk1_top_xid - 8,
+	[12] = xeth_platina_mk1_top_xid - 9,
+	[13] = xeth_platina_mk1_top_xid - 10,
+	[14] = xeth_platina_mk1_top_xid - 11,
+	[15] = xeth_platina_mk1_top_xid - 12,
+	[16] = xeth_platina_mk1_top_xid - 13,
+	[16] = xeth_platina_mk1_top_xid - 14,
+	[18] = xeth_platina_mk1_top_xid - 15,
+	[20] = xeth_platina_mk1_top_xid - 16,
+	[21] = xeth_platina_mk1_top_xid - 17,
+	[22] = xeth_platina_mk1_top_xid - 18,
+	[23] = xeth_platina_mk1_top_xid - 19,
+	[24] = xeth_platina_mk1_top_xid - 20,
+	[25] = xeth_platina_mk1_top_xid - 21,
+	[26] = xeth_platina_mk1_top_xid - 22,
+	[27] = xeth_platina_mk1_top_xid - 23,
+	[29] = xeth_platina_mk1_top_xid - 24,
+	[30] = xeth_platina_mk1_top_xid - 25,
+	[31] = xeth_platina_mk1_top_xid - 26,
+	[32] = xeth_platina_mk1_top_xid - 27,
+	[33] = xeth_platina_mk1_top_xid - 28,
+	[34] = xeth_platina_mk1_top_xid - 29,
+	[35] = xeth_platina_mk1_top_xid - 30,
+	[36] = xeth_platina_mk1_top_xid - 31,
+};
+
+new_xeth_qsfp_driver(xeth_platina_mk1_qsfp, 0x50, 0x51);
+
 int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		       const struct pci_device_id *id)
 {
@@ -90,6 +125,12 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 	xeth_vendor_lowers = xeth_platina_mk1_lowers;
 
 	xeth_upper_set_et_flag_names(xeth_platina_mk1_et_flag_names);
+
+	xeth_qsfp_xids = xeth_platina_mk1_qsfp_xids;
+	xeth_qsfp_n_xids = ARRAY_SIZE(xeth_platina_mk1_qsfp_xids);
+
+	xeth_upper_eto_get_module_info = xeth_qsfp_get_module_info;
+	xeth_upper_eto_get_module_eeprom = xeth_qsfp_get_module_eeprom;
 
 	return 0;
 }
@@ -130,12 +171,19 @@ static int xeth_platina_mk1_init(void)
 			err = xeth_upper_make(name, xid, pea, cb);
 		}
 	}
-	return (err < 0) ? (int)err : -EBUSY;
+	if (err < 0)
+		return (int)err;
+	err = i2c_add_driver(&xeth_platina_mk1_qsfp);
+	if (err < 0)
+		return (int)err;
+	return -EBUSY;
 }
 
 static void xeth_platina_mk1_exit(void)
 {
 	int port, subport;
+
+	i2c_del_driver(&xeth_platina_mk1_qsfp);
 
 	for (port = 0; port < xeth_platina_mk1_n_ports; port++) {
 		if (xeth_platina_mk1_provision[port] > 1) {
