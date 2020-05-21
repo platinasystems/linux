@@ -272,12 +272,6 @@ static inline void *xeth_netdev(const void *priv)
 	return priv ? (char *)priv - offset : NULL;
 }
 
-static inline void xeth_kobject_put(struct kobject *kobj)
-{
-	if (kobj->parent && kobj->state_initialized)
-		kobject_put(kobj);
-}
-
 int xeth_mux_init(void);
 void xeth_mux_exit(void);
 
