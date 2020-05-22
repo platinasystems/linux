@@ -24,6 +24,7 @@ struct xeth_upper_priv {
 	struct xeth_atomic_link_stats link_stats;
 	struct ethtool_link_ksettings et_settings;
 	struct i2c_client *qsfp;
+	int qsfp_bus;
 	u32 et_priv_flags;
 	u64 et_stats[];
 };
@@ -39,6 +40,18 @@ int (*xeth_upper_eto_get_module_info)(struct net_device *,
 int (*xeth_upper_eto_get_module_eeprom)(struct net_device *,
 					struct ethtool_eeprom *, u8 *);
 
+int xeth_upper_qsfp_bus(struct net_device *nd)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	return priv->qsfp_bus;
+}
+
+void xeth_upper_set_qsfp_bus(struct net_device *nd, int nr)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	priv->qsfp_bus = nr;
+}
+
 struct i2c_client *xeth_upper_qsfp(struct net_device *nd)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
@@ -49,6 +62,22 @@ void xeth_upper_set_qsfp(struct net_device *nd, struct i2c_client *qsfp)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	priv->qsfp = qsfp;
+}
+
+struct net_device *xeth_upper_with_qsfp_bus(int nr)
+{
+	int bkt;
+	struct xeth_upper_priv *priv = NULL;
+	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
+	struct net_device *nd = NULL;
+
+	rcu_read_lock();
+	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
+		hlist_for_each_entry_rcu(priv, head, node)
+			if (!nd && priv->qsfp_bus == nr)
+				nd = xeth_netdev(priv);
+	rcu_read_unlock();
+	return nd;
 }
 
 /* @names - a NULL terminated list */
@@ -1250,7 +1279,7 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
 }
 
 /**
- * xeth_upper_make - create and add an upper port proxy to the xeth mux
+ * new_xeth_upper - create and add an upper port proxy to the xeth mux
  *
  * @name:	IFNAMSIZ buffer
  * @xid:	A unique and immutable xeth device identifier; if zero,
@@ -1258,22 +1287,21 @@ enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
  * @ea:		Ethernet Address, if zero, it's assigned a random address
  * @cb		An initialization call-back
  *
- * Returns a non-zero, negative number on error; otherwise, returns the
- * non-zero, poistive xid.
+ * Returns the netdev or ERR_PTR on error.
  */
-s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
-		    void (*cb)(struct ethtool_link_ksettings *))
+struct net_device *new_xeth_upper(const char *name, u32 xid, u64 ea,
+				  void (*cb)(struct ethtool_link_ksettings *))
 {
 	struct net_device *nd;
 	struct xeth_upper_priv *priv;
 	size_t priv_sz = sizeof(*priv) + xeth_upper_et_stats_sz;
-	s64 x;
+	int err;
 
 	if (IS_ERR(xeth_mux_upper_head_indexed(0)))
-		return -ENODEV;
+		return ERR_PTR(-ENODEV);
 
 	if (xeth_debug_err(xeth_upper_lookup_rcu(xid) != NULL))
-		return -EEXIST;
+		return ERR_PTR(-EEXIST);
 
 	nd = xeth_debug_ptr_err(alloc_netdev_mqs(priv_sz,
 						 name,
@@ -1282,7 +1310,7 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 						 xeth_upper_txqs,
 						 xeth_upper_rxqs));
 	if (IS_ERR(nd))
-		return PTR_ERR(nd);
+		return nd;
 
 	priv = netdev_priv(nd);
 
@@ -1297,19 +1325,19 @@ s64 xeth_upper_make(const char *name, u32 xid, u64 ea,
 		eth_hw_addr_random(nd);
 
 	rtnl_lock();
-	x = xeth_debug_err(register_netdevice(nd));
+	err = register_netdevice(nd);
 	rtnl_unlock();
 
-	if (x < 0) {
+	if (err < 0) {
 		xeth_mux_del_node(&priv->node);
-		return x;
+		return ERR_PTR(err);
 	}
 
 	if (cb)
 		cb(&priv->et_settings);
 
 	xeth_debug("%s xid %u mac %pM", name, xid, nd->dev_addr);
-	return xid;
+	return nd;
 }
 
 void xeth_upper_delete_port(u32 xid)

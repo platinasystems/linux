@@ -56,42 +56,13 @@ static const char * const xeth_platina_mk1_et_flag_names[] = {
 	NULL,
 };
 
-static const u32 xeth_platina_mk1_qsfp_xids[] = {
-	[2] = xeth_platina_mk1_top_xid - 0,
-	[3] = xeth_platina_mk1_top_xid - 1,
-	[4] = xeth_platina_mk1_top_xid - 2,
-	[5] = xeth_platina_mk1_top_xid - 3,
-	[6] = xeth_platina_mk1_top_xid - 4,
-	[7] = xeth_platina_mk1_top_xid - 5,
-	[8] = xeth_platina_mk1_top_xid - 6,
-	[9] = xeth_platina_mk1_top_xid - 7,
-	[11] = xeth_platina_mk1_top_xid - 8,
-	[12] = xeth_platina_mk1_top_xid - 9,
-	[13] = xeth_platina_mk1_top_xid - 10,
-	[14] = xeth_platina_mk1_top_xid - 11,
-	[15] = xeth_platina_mk1_top_xid - 12,
-	[16] = xeth_platina_mk1_top_xid - 13,
-	[16] = xeth_platina_mk1_top_xid - 14,
-	[18] = xeth_platina_mk1_top_xid - 15,
-	[20] = xeth_platina_mk1_top_xid - 16,
-	[21] = xeth_platina_mk1_top_xid - 17,
-	[22] = xeth_platina_mk1_top_xid - 18,
-	[23] = xeth_platina_mk1_top_xid - 19,
-	[24] = xeth_platina_mk1_top_xid - 20,
-	[25] = xeth_platina_mk1_top_xid - 21,
-	[26] = xeth_platina_mk1_top_xid - 22,
-	[27] = xeth_platina_mk1_top_xid - 23,
-	[29] = xeth_platina_mk1_top_xid - 24,
-	[30] = xeth_platina_mk1_top_xid - 25,
-	[31] = xeth_platina_mk1_top_xid - 26,
-	[32] = xeth_platina_mk1_top_xid - 27,
-	[33] = xeth_platina_mk1_top_xid - 28,
-	[34] = xeth_platina_mk1_top_xid - 29,
-	[35] = xeth_platina_mk1_top_xid - 30,
-	[36] = xeth_platina_mk1_top_xid - 31,
+static const int xeth_platina_mk1_qsfp_bus[] = {
+	 2,  3,  4,  5,  6,  7,  8,  9,
+	11, 12, 13, 14, 15, 16, 16, 18,
+	20, 21, 22, 23, 24, 25, 26, 27,
+	29, 30, 31, 32, 33, 34, 35, 36,
+	-1,
 };
-
-new_xeth_qsfp_driver(xeth_platina_mk1_qsfp, 0x50, 0x51);
 
 int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		       const struct pci_device_id *id)
@@ -126,9 +97,6 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 
 	xeth_upper_set_et_flag_names(xeth_platina_mk1_et_flag_names);
 
-	xeth_qsfp_xids = xeth_platina_mk1_qsfp_xids;
-	xeth_qsfp_n_xids = ARRAY_SIZE(xeth_platina_mk1_qsfp_xids);
-
 	xeth_upper_eto_get_module_info = xeth_qsfp_get_module_info;
 	xeth_upper_eto_get_module_eeprom = xeth_qsfp_get_module_eeprom;
 
@@ -140,19 +108,21 @@ static int xeth_platina_mk1_init(void)
 {
 	u64 ea;
 	u8 first_port;
-	int port, subport;
-	s64 err = 0;
+	int port, subport, err = 0;
 	char name[IFNAMSIZ];
+	struct net_device *nd;
 
+	xeth_qsfp_bus = xeth_platina_mk1_qsfp_bus;
 	ea = xeth_onie_mac_base();
 	first_port = xeth_onie_device_version() > 0 ? 1 : 0;
-	for (port = 0; err >= 0&& port < xeth_platina_mk1_n_ports; port++) {
+	for (port = 0; err >= 0 && port < xeth_platina_mk1_n_ports; port++) {
+		int qsfp_bus = xeth_platina_mk1_qsfp_bus[port];
 		if (xeth_platina_mk1_provision[port] > 1) {
 			void (*cb)(struct ethtool_link_ksettings *) =
 				xeth_platina_mk1_et_subport_cb;
 			for (subport = 0;
-			     err >= 0 &&
-				     subport < xeth_platina_mk1_provision[port];
+			     subport < xeth_platina_mk1_provision[port] &&
+				     err >= 0;
 			     subport++) {
 				u32 o = xeth_platina_mk1_n_ports * subport;
 				u32 xid = xeth_platina_mk1_top_xid - port - o;
@@ -160,7 +130,11 @@ static int xeth_platina_mk1_init(void)
 				scnprintf(name, IFNAMSIZ, "xeth%d-%d",
 					  port + first_port,
 					  subport + first_port);
-				err = xeth_upper_make(name, xid, pea, cb);
+				nd = new_xeth_upper(name, xid, pea, cb);
+				if (IS_ERR(nd))
+					err = PTR_ERR(nd);
+				else if (subport == 0)
+					xeth_upper_set_qsfp_bus(nd, qsfp_bus);
 			}
 		} else {
 			u32 xid = xeth_platina_mk1_top_xid - port;
@@ -168,12 +142,16 @@ static int xeth_platina_mk1_init(void)
 			void (*cb)(struct ethtool_link_ksettings *) =
 				xeth_platina_mk1_et_port_cb;
 			scnprintf(name, IFNAMSIZ, "xeth%d", port + first_port);
-			err = xeth_upper_make(name, xid, pea, cb);
+			nd = new_xeth_upper(name, xid, pea, cb);
+			if (IS_ERR(nd))
+				err = PTR_ERR(nd);
+			else
+				xeth_upper_set_qsfp_bus(nd, qsfp_bus);
 		}
 	}
 	if (err < 0)
 		return (int)err;
-	err = i2c_add_driver(&xeth_platina_mk1_qsfp);
+	err = xeth_qsfp_register_driver();
 	if (err < 0)
 		return (int)err;
 	return -EBUSY;
@@ -183,7 +161,7 @@ static void xeth_platina_mk1_exit(void)
 {
 	int port, subport;
 
-	i2c_del_driver(&xeth_platina_mk1_qsfp);
+	xeth_qsfp_unregister_driver();
 
 	for (port = 0; port < xeth_platina_mk1_n_ports; port++) {
 		if (xeth_platina_mk1_provision[port] > 1) {
