@@ -16,6 +16,7 @@ static const struct {
 } const xeth_platina_match[] = {
 	{ "BT77O759.00", xeth_platina_mk1_probe },
 	{ "PS-3001-32C", xeth_platina_mk1_probe },
+	{ "PSW-3001-32C", xeth_platina_mk1_probe },
 	{ /* END */ },
 };
 
