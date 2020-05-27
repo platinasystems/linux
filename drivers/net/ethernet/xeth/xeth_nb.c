@@ -102,6 +102,18 @@ static int xeth_nb_netdevice(struct notifier_block *nb, unsigned long event,
 	if (nb != &xeth_nb.netdevice)
 		return NOTIFY_DONE;
 	nd = netdev_notifier_info_to_dev(ptr);
+	if (nd->ifindex == 1) {
+		struct net *ndnet = dev_net(nd);
+		switch (event) {
+		case NETDEV_REGISTER:
+			xeth_sbtx_netns(ndnet, true);
+			break;
+		case NETDEV_UNREGISTER:
+			xeth_sbtx_netns(ndnet, false);
+			break;
+		}
+		return NOTIFY_DONE;
+	}
 	if (!xeth_upper_check(nd))
 		return NOTIFY_DONE;
 	kind = xeth_upper_kind(nd);

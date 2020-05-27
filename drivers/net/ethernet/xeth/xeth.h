@@ -355,6 +355,7 @@ int xeth_sbtx_ifa6(struct inet6_ifaddr *ifa, u32 xid, unsigned long event);
 int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason);
 int xeth_sbtx_neigh_update(struct neighbour *neigh);
+int xeth_sbtx_netns(struct net *ndnet, bool add);
 
 struct net_device *new_xeth_upper(const char *name, u32 xid, u64 ea,
 				  void (*cb) (struct ethtool_link_ksettings *));
