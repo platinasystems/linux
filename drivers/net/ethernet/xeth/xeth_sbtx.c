@@ -389,7 +389,6 @@ int xeth_sbtx_ifa6(struct inet6_ifaddr *ifa6, u32 xid, unsigned long event)
 	return 0;
 }
 
-
 int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 		     unsigned iff, u8 reason)
 {
@@ -437,6 +436,24 @@ int xeth_sbtx_neigh_update(struct neighbour *neigh)
 			memcpy(&msg->lladdr[0], ha, ETH_ALEN);
 	}
 	read_unlock_bh(&neigh->lock);
+	xeth_sbtx_queue(entry);
+	return 0;
+}
+
+int xeth_sbtx_netns(struct net *ndnet, bool add)
+{
+	uint64_t net = net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
+	struct xeth_sbtx_entry *entry;
+	struct xeth_msg_netns *msg;
+
+	entry = xeth_sbtx_alloc(sizeof(*msg));
+	if (!entry)
+		return -ENOMEM;
+	xeth_sbtx_msg_set(&entry->data[0], add ?
+			  XETH_MSG_KIND_NETNS_ADD :
+			  XETH_MSG_KIND_NETNS_DEL);
+	msg = (typeof(msg))&entry->data[0];
+	msg->net = net;
 	xeth_sbtx_queue(entry);
 	return 0;
 }
