@@ -987,13 +987,19 @@ static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 	u32 xid = xeth_upper_xid(nd);
 	enum xeth_dev_kind kind = xeth_upper_kind(nd);
+	struct net_device *upper;
+	struct list_head *uppers;
+
+	netdev_for_each_upper_dev_rcu(nd, upper, uppers)
+		xeth_upper_ndo_del_lower(upper, nd);
 
 	xeth_sbtx_ifinfo(nd, xid, kind, 0, XETH_IFINFO_REASON_DEL);
 	xeth_mux_del_node(&priv->node);
 	unregister_netdevice_queue(nd, q);
 }
 
-static void xeth_upper_lnko_del_bridge_or_lag(struct net_device *nd, struct list_head *q)
+static void xeth_upper_lnko_del_bridge_or_lag(struct net_device *nd,
+					      struct list_head *q)
 {
 	struct net_device *lower;
 	struct list_head *lowers;
