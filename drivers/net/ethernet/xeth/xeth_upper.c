@@ -787,6 +787,7 @@ static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
 	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
+	nd->features |= NETIF_F_NETNS_LOCAL;
 #ifdef __FIXME__
 	nd->features |= NETIF_F_LLTX;
 	nd->features |= VETH_FEATURES;
