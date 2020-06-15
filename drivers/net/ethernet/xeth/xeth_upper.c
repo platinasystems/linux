@@ -26,7 +26,7 @@ struct xeth_upper_priv {
 	struct i2c_client *qsfp;
 	int qsfp_bus;
 	u32 et_priv_flags;
-	u64 et_stats[];
+	atomic64_t et_stats[];
 };
 
 static size_t xeth_upper_n_et_flag_names = 0;
@@ -225,7 +225,7 @@ static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 	xeth_reset_link_stats(&priv->link_stats);
 	if (priv->kind == XETH_DEV_KIND_PORT)
 		for (i = 0; i < xeth_upper_n_et_stat_names; i++)
-			priv->et_stats[i] = 0;
+			atomic64_set(&priv->et_stats[0], 0LL);
 }
 
 static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
@@ -465,12 +465,11 @@ static void xeth_upper_eto_get_stats(struct net_device *nd,
 				     u64 *data)
 {
 	struct xeth_upper_priv *priv = netdev_priv(nd);
-	size_t sz;
+	int i;
 
-	if (priv->kind == XETH_DEV_KIND_PORT) {
-		sz = sizeof(u64) * xeth_upper_n_et_stat_names;
-		memcpy(data, &priv->et_stats, sz);
-	}
+	if (priv->kind == XETH_DEV_KIND_PORT)
+		for (i = 0; i < xeth_upper_n_et_stat_names; i++)
+			data[i] = atomic64_read(&priv->et_stats[i]);
 }
 
 static u32 xeth_upper_eto_get_priv_flags(struct net_device *nd)
@@ -1166,7 +1165,7 @@ void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count)
 	struct xeth_upper_priv *priv = netdev_priv(nd);
 
 	if (index < xeth_upper_n_et_stat_names)
-		priv->et_stats[index] = count;
+		atomic64_set(&priv->et_stats[index], count);
 	else
 		xeth_counter_inc(sbrx_invalid);
 }
@@ -1177,76 +1176,76 @@ void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count)
 
 	switch (index) {
 	case xeth_link_stat_rx_packets_index:
-		atomic64_inc(&priv->link_stats.rx_packets);
+		atomic64_set(&priv->link_stats.rx_packets, count);
 		break;
 	case xeth_link_stat_tx_packets_index:
-		atomic64_inc(&priv->link_stats.tx_packets);
+		atomic64_set(&priv->link_stats.tx_packets, count);
 		break;
 	case xeth_link_stat_rx_bytes_index:
-		atomic64_inc(&priv->link_stats.rx_bytes);
+		atomic64_set(&priv->link_stats.rx_bytes, count);
 		break;
 	case xeth_link_stat_tx_bytes_index:
-		atomic64_inc(&priv->link_stats.tx_bytes);
+		atomic64_set(&priv->link_stats.tx_bytes, count);
 		break;
 	case xeth_link_stat_rx_errors_index:
-		atomic64_inc(&priv->link_stats.rx_errors);
+		atomic64_set(&priv->link_stats.rx_errors, count);
 		break;
 	case xeth_link_stat_tx_errors_index:
-		atomic64_inc(&priv->link_stats.tx_errors);
+		atomic64_set(&priv->link_stats.tx_errors, count);
 		break;
 	case xeth_link_stat_rx_dropped_index:
-		atomic64_inc(&priv->link_stats.rx_dropped);
+		atomic64_set(&priv->link_stats.rx_dropped, count);
 		break;
 	case xeth_link_stat_tx_dropped_index:
-		atomic64_inc(&priv->link_stats.tx_dropped);
+		atomic64_set(&priv->link_stats.tx_dropped, count);
 		break;
 	case xeth_link_stat_multicast_index:
-		atomic64_inc(&priv->link_stats.multicast);
+		atomic64_set(&priv->link_stats.multicast, count);
 		break;
 	case xeth_link_stat_collisions_index:
-		atomic64_inc(&priv->link_stats.collisions);
+		atomic64_set(&priv->link_stats.collisions, count);
 		break;
 	case xeth_link_stat_rx_length_errors_index:
-		atomic64_inc(&priv->link_stats.rx_length_errors);
+		atomic64_set(&priv->link_stats.rx_length_errors, count);
 		break;
 	case xeth_link_stat_rx_over_errors_index:
-		atomic64_inc(&priv->link_stats.rx_over_errors);
+		atomic64_set(&priv->link_stats.rx_over_errors, count);
 		break;
 	case xeth_link_stat_rx_crc_errors_index:
-		atomic64_inc(&priv->link_stats.rx_crc_errors);
+		atomic64_set(&priv->link_stats.rx_crc_errors, count);
 		break;
 	case xeth_link_stat_rx_frame_errors_index:
-		atomic64_inc(&priv->link_stats.rx_frame_errors);
+		atomic64_set(&priv->link_stats.rx_frame_errors, count);
 		break;
 	case xeth_link_stat_rx_fifo_errors_index:
-		atomic64_inc(&priv->link_stats.rx_fifo_errors);
+		atomic64_set(&priv->link_stats.rx_fifo_errors, count);
 		break;
 	case xeth_link_stat_rx_missed_errors_index:
-		atomic64_inc(&priv->link_stats.rx_missed_errors);
+		atomic64_set(&priv->link_stats.rx_missed_errors, count);
 		break;
 	case xeth_link_stat_tx_aborted_errors_index:
-		atomic64_inc(&priv->link_stats.tx_aborted_errors);
+		atomic64_set(&priv->link_stats.tx_aborted_errors, count);
 		break;
 	case xeth_link_stat_tx_carrier_errors_index:
-		atomic64_inc(&priv->link_stats.tx_carrier_errors);
+		atomic64_set(&priv->link_stats.tx_carrier_errors, count);
 		break;
 	case xeth_link_stat_tx_fifo_errors_index:
-		atomic64_inc(&priv->link_stats.tx_fifo_errors);
+		atomic64_set(&priv->link_stats.tx_fifo_errors, count);
 		break;
 	case xeth_link_stat_tx_heartbeat_errors_index:
-		atomic64_inc(&priv->link_stats.tx_heartbeat_errors);
+		atomic64_set(&priv->link_stats.tx_heartbeat_errors, count);
 		break;
 	case xeth_link_stat_tx_window_errors_index:
-		atomic64_inc(&priv->link_stats.tx_window_errors);
+		atomic64_set(&priv->link_stats.tx_window_errors, count);
 		break;
 	case xeth_link_stat_rx_compressed_index:
-		atomic64_inc(&priv->link_stats.rx_compressed);
+		atomic64_set(&priv->link_stats.rx_compressed, count);
 		break;
 	case xeth_link_stat_tx_compressed_index:
-		atomic64_inc(&priv->link_stats.tx_compressed);
+		atomic64_set(&priv->link_stats.tx_compressed, count);
 		break;
 	case xeth_link_stat_rx_nohandler_index:
-		atomic64_inc(&priv->link_stats.rx_nohandler);
+		atomic64_set(&priv->link_stats.rx_nohandler, count);
 		break;
 	default:
 		xeth_counter_inc(sbrx_invalid);
