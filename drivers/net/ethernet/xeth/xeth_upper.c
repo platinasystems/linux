@@ -864,7 +864,8 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 	u32 xid, range = (1 << muxbits) - 1;
 	struct net_device *xnd, *link;
 	struct xeth_upper_priv *linkpriv;
-	int err;
+	int i, err;
+	unsigned long long ull;
 	u32 li;
 
 	if (!tb || !tb[IFLA_LINK]) {
@@ -884,19 +885,11 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 	nd->addr_assign_type = NET_ADDR_STOLEN;
 	memcpy(nd->dev_addr, link->dev_addr, ETH_ALEN);
 
-	if (data && data[XETH_VLAN_IFLA_VID]) {
+	if (data && data[XETH_VLAN_IFLA_VID])
 		xid  = linkpriv->xid |
 			(nla_get_u16(data[XETH_VLAN_IFLA_VID]) << muxbits);
-		xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
-		if (xnd) {
-			NL_SET_ERR_MSG(extack, "VID in use");
-			return -EBUSY;
-		}
-		priv->xid = xid;
-	} else {
-		unsigned long long ull;
-		int i = 0;
-		while(true)
+	else
+		for (i = xid = 0; !xid; i++)
 			if (i >= IFNAMSIZ) {
 				u32 base = linkpriv->xid | (1 << muxbits);
 				s64 x = xeth_upper_search(base, range);
@@ -905,8 +898,7 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 						       "no VID available");
 					return (int)x;
 				}
-				priv->xid = (u32)x;
-				break;
+				xid = (u32)x;
 			} else if (nd->name[i] == '.') {
 				err = kstrtoull(nd->name+i+1, 0, &ull);
 				if (err)
@@ -915,12 +907,14 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 					NL_SET_ERR_MSG(extack, "invalid name");
 					return -ERANGE;
 				}
-				priv->xid  = linkpriv->xid |
-					(ull << muxbits);
-				break;
-			} else
-				i++;
+				xid  = linkpriv->xid | (ull << muxbits);
+			}
+	xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
+	if (xnd) {
+		NL_SET_ERR_MSG(extack, "VID in use");
+		return -EBUSY;
 	}
+	priv->xid = xid;
 	if (!tb || !tb[IFLA_IFNAME])
 		scnprintf(nd->name, IFNAMSIZ, "%s.%u",
 			  link->name, priv->xid >> muxbits);
