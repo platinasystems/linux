@@ -1,7 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /**
  * XETH side-band channel protocol.
  *
- * SPDX-License-Identifier: GPL-2.0
  * Copyright(c) 2018-2019 Platina Systems, Inc.
  *
  * Contact Information:
