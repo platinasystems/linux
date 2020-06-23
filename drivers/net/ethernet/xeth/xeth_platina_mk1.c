@@ -114,6 +114,8 @@ static int xeth_platina_mk1_init(void)
 
 	xeth_qsfp_bus = xeth_platina_mk1_qsfp_bus;
 	ea = xeth_onie_mac_base();
+	if (ea)		/* 1st port after bmc, eth0, eth1, and eth2 */
+		ea += 4;
 	first_port = xeth_onie_device_version() > 0 ? 1 : 0;
 	for (port = 0; err >= 0 && port < xeth_platina_mk1_n_ports; port++) {
 		int qsfp_bus = xeth_platina_mk1_qsfp_bus[port];
