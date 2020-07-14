@@ -50,14 +50,21 @@ static struct i2c_driver xeth_qsfp_driver = {
 
 static struct spinlock xeth_qsfp_mutex;
 
-int xeth_qsfp_register_driver(void)
+int xeth_qsfp_register_driver(struct xeth_platform_priv *xpp)
 {
-	return i2c_add_driver(&xeth_qsfp_driver);
+	xpp->qsfp_driver.class = xeth_qsfp_i2c_class;
+	xpp->qsfp_driver.driver.name = xpp->config->driver_name.qsfp;
+	xpp->qsfp_driver.probe_new = xeth_qsfp_probe;
+	xpp->qsfp_driver.remove = xeth_qsfp_remove;
+	xpp->qsfp_driver.id_table = xeth_qsfp_id_table;
+	xpp->qsfp_driver.detect = xeth_qsfp_detect;
+	xpp->qsfp_driver.address_list = xpp->config->qsfp_i2c_address_list;
+	return i2c_add_driver(&xpp->qsfp_driver);
 }
 
-void xeth_qsfp_unregister_driver(void)
+void xeth_qsfp_unregister_driver(struct xeth_platform_priv *xpp)
 {
-	i2c_del_driver(&xeth_qsfp_driver);
+	i2c_del_driver(&xpp->qsfp_driver);
 }
 
 int xeth_qsfp_get_module_info(struct net_device *nd,
@@ -148,8 +155,11 @@ static int xeth_qsfp_detect(struct i2c_client *qsfp,
 static int xeth_qsfp_probe(struct i2c_client *qsfp)
 {
 	struct net_device *nd;
+	struct i2c_driver *qsfp_driver = to_i2c_driver(qsfp->dev.driver);
+	struct xeth_platform_priv *xpp =
+		xeth_platform_priv_of_qsfp_driver(qsfp_driver);
 
-	nd = xeth_upper_with_qsfp_bus(qsfp->adapter->nr);
+	nd = xeth_upper_with_qsfp_bus(xpp, qsfp->adapter->nr);
 	if (!nd)
 		return -ENODEV;
 
@@ -164,8 +174,11 @@ static int xeth_qsfp_probe(struct i2c_client *qsfp)
 static int xeth_qsfp_remove(struct i2c_client *qsfp)
 {
 	struct net_device *nd;
+	struct i2c_driver *qsfp_driver = to_i2c_driver(qsfp->dev.driver);
+	struct xeth_platform_priv *xpp =
+		xeth_platform_priv_of_qsfp_driver(qsfp_driver);
 
-	nd = xeth_upper_with_qsfp_bus(qsfp->adapter->nr);
+	nd = xeth_upper_with_qsfp_bus(xpp, qsfp->adapter->nr);
 	if (!nd)
 		return -ENODEV;
 

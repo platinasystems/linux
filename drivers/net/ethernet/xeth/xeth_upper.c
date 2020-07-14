@@ -21,6 +21,7 @@ struct xeth_upper_priv {
 	u32 xid;
 	u8 kind;
 	struct rcu_head rcu;
+	struct xeth_platform_priv *xpp;
 	struct xeth_atomic_link_stats link_stats;
 	struct ethtool_link_ksettings et_settings;
 	struct i2c_client *qsfp;
@@ -29,174 +30,117 @@ struct xeth_upper_priv {
 	atomic64_t et_stats[];
 };
 
-static size_t xeth_upper_n_et_flag_names = 0;
-size_t xeth_upper_n_et_stat_names = 0;
-
-char xeth_upper_et_flag_names[xeth_max_et_flags][ETH_GSTRING_LEN];
-char *xeth_upper_et_stat_names;
-
-int (*xeth_upper_eto_get_module_info)(struct net_device *,
-				      struct ethtool_modinfo *);
-int (*xeth_upper_eto_get_module_eeprom)(struct net_device *,
-					struct ethtool_eeprom *, u8 *);
-
-int xeth_upper_qsfp_bus(struct net_device *nd)
+int xeth_upper_qsfp_bus(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	return priv->qsfp_bus;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	return xup->qsfp_bus;
 }
 
-void xeth_upper_set_qsfp_bus(struct net_device *nd, int nr)
+struct i2c_client *xeth_upper_qsfp(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	priv->qsfp_bus = nr;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	return xup->qsfp;
 }
 
-struct i2c_client *xeth_upper_qsfp(struct net_device *nd)
+void xeth_upper_set_qsfp(struct net_device *upper, struct i2c_client *qsfp)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	return priv->qsfp;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	xup->qsfp = qsfp;
 }
 
-void xeth_upper_set_qsfp(struct net_device *nd, struct i2c_client *qsfp)
+struct net_device *xeth_upper_with_qsfp_bus(struct xeth_platform_priv *xpp,
+					    int nr)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	priv->qsfp = qsfp;
-}
-
-struct net_device *xeth_upper_with_qsfp_bus(int nr)
-{
+	struct xeth_upper_priv *xup = NULL;
+	struct net_device *upper = NULL;
+	struct hlist_head __rcu *head;
 	int bkt;
-	struct xeth_upper_priv *priv = NULL;
-	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
-	struct net_device *nd = NULL;
 
 	rcu_read_lock();
-	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
-		hlist_for_each_entry_rcu(priv, head, node)
-			if (!nd && priv->qsfp_bus == nr)
-				nd = xeth_netdev(priv);
+	head = xeth_indexed_upper_head(xpp, 0);
+	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt))
+		hlist_for_each_entry_rcu(xup, head, node)
+			if (!upper && xup->qsfp_bus == nr)
+				upper = xeth_netdev(xup);
 	rcu_read_unlock();
-	return nd;
+	return upper;
 }
 
-/* @names - a NULL terminated list */
-void xeth_upper_set_et_flag_names(const char * const names[])
+struct net_device *xeth_upper_lookup_rcu(struct xeth_platform_priv *xpp,
+					 u32 xid)
 {
-	int i;
-
-	for (i = 0; names[i] && i < xeth_max_et_flags; i++) {
-		strlcpy(xeth_upper_et_flag_names[i], names[i],
-			ETH_GSTRING_LEN);
-		if (xeth_upper_n_et_flag_names <= i)
-			xeth_upper_n_et_flag_names = i + 1;
-	}
-}
-
-/* @names - a NULL terminated list */
-void xeth_upper_set_et_stat_names(const  char * const names[])
-{
-	int i;
-
-	for (i = 0; names[i] && i < xeth_max_et_stats; i++) {
-		strlcpy(xeth_upper_et_stat_names + (i * ETH_GSTRING_LEN),
-			names[i], ETH_GSTRING_LEN);
-		if (xeth_upper_n_et_stat_names <= i)
-			xeth_upper_n_et_stat_names = i + 1;
-	}
-}
-
-struct net_device *xeth_upper_lookup_rcu(u32 xid)
-{
+	struct xeth_upper_priv *xup = NULL;
 	struct hlist_head __rcu *head;
-	struct xeth_upper_priv *priv = NULL;
 
-	head = xeth_mux_upper_head_hashed(xid);
+	head = xeth_hashed_upper_head(xpp, xid);
 	if (head)
-		hlist_for_each_entry_rcu(priv, head, node)
-			if (priv->xid == xid)
-				return xeth_netdev(priv);
+		hlist_for_each_entry_rcu(xup, head, node)
+			if (xup->xid == xid)
+				return xeth_netdev(xup);
 	return NULL;
 }
 
-static s64 xeth_upper_search(u32 base, u32 range)
+static s64 xeth_upper_search(struct xeth_platform_priv *xpp,
+			     u32 base, u32 range)
 {
 	u32 xid, limit;
 
 	for (xid = base, limit = base + range; xid < limit; xid++)
-		if (!xeth_debug_rcu(xeth_upper_lookup_rcu(xid)))
+		if (!xeth_debug_rcu(xeth_upper_lookup_rcu(xpp, xid)))
 			return xid;
 	return -ENOSPC;
 }
 
-static void xeth_upper_steal_mux_addr(struct net_device *nd)
+static int xeth_upper_add_rcu(struct net_device *upper)
 {
-	nd->addr_assign_type = NET_ADDR_STOLEN;
-	memcpy(nd->dev_addr, xeth_mux->dev_addr, ETH_ALEN);
-}
-
-static struct net_device *xeth_upper_link_rcu(u32 ifindex)
-{
-	int bkt;
-	struct xeth_upper_priv *priv = NULL;
-	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
-
-	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
-		hlist_for_each_entry_rcu(priv, head, node) {
-			struct net_device *nd = xeth_netdev(priv);
-			if (nd->ifindex == ifindex)
-				return nd;
-		}
-	return ERR_PTR(-ENODEV);
-}
-
-static int xeth_upper_add_rcu(struct net_device *nd)
-{
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	struct hlist_head __rcu *head = xeth_mux_upper_head_hashed(priv->xid);
-	xeth_mux_add_node(&priv->node, head);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	struct hlist_head __rcu *head =
+		xeth_hashed_upper_head(xup->xpp, xup->xid);
+	xeth_add_node(xup->xpp, &xup->node, head);
 	return 0;
 }
 
 static void xeth_upper_cb_carrier_off(struct rcu_head *rcu)
 {
-	struct xeth_upper_priv *priv =
+	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	struct net_device *nd = xeth_netdev(priv);
-	netif_carrier_off(nd);
+	struct net_device *upper = xeth_netdev(xup);
+	netif_carrier_off(upper);
 }
 
 static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 {
-	struct xeth_upper_priv *priv =
+	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	struct net_device *nd = xeth_netdev(priv);
-	struct in_device *in_dev = in_dev_get(nd);
-	struct inet6_dev *in6_dev = in6_dev_get(nd);
+	struct net_device *upper = xeth_netdev(xup);
+	struct in_device *in_dev;
+	struct inet6_dev *in6_dev;
+	struct in_ifaddr *ifa;
+	struct inet6_ifaddr *ifa6;
 
-	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0,
+	xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind, 0,
 			 XETH_IFINFO_REASON_DUMP);
 
-	if (priv->kind == XETH_DEV_KIND_PORT) {
-		xeth_sbtx_et_settings(priv->xid, &priv->et_settings);
-		if (priv->et_priv_flags)
-			xeth_sbtx_et_flags(priv->xid, priv->et_priv_flags);
+	if (xup->kind == XETH_DEV_KIND_PORT) {
+		xeth_sbtx_et_settings(xup->xpp, xup->xid,
+				      &xup->et_settings);
+		if (xup->et_priv_flags)
+			xeth_sbtx_et_flags(xup->xpp, xup->xid,
+					   xup->et_priv_flags);
 	}
 
+	in_dev = in_dev_get(upper);
 	if (in_dev) {
-		struct in_ifaddr *ifa;
-
 		for (ifa = in_dev->ifa_list; ifa; ifa = ifa->ifa_next)
-			xeth_sbtx_ifa(ifa, priv->xid, NETDEV_UP);
+			xeth_sbtx_ifa(xup->xpp, ifa, xup->xid, NETDEV_UP);
 		in_dev_put(in_dev);
 	}
 
+	in6_dev = in6_dev_get(upper);
 	if (in6_dev) {
-		struct inet6_ifaddr *ifa6;
-
 		read_lock_bh(&in6_dev->lock);
 		list_for_each_entry(ifa6, &in6_dev->addr_list, if_list)
-			xeth_sbtx_ifa6(ifa6, priv->xid, NETDEV_UP);
+			xeth_sbtx_ifa6(xup->xpp, ifa6, xup->xid, NETDEV_UP);
 		read_unlock_bh(&in6_dev->lock);
 		in6_dev_put(in6_dev);
 	}
@@ -204,162 +148,169 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 
 static void xeth_upper_cb_dump_lowers(struct rcu_head *rcu)
 {
-	struct xeth_upper_priv *priv =
+	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	struct net_device *nd = xeth_netdev(priv);
+	struct net_device *upper = xeth_netdev(xup);
 	struct net_device *lower;
 	struct list_head *iter;
 
-	netdev_for_each_lower_dev(nd, lower, iter) {
-		struct xeth_upper_priv *lower_priv = netdev_priv(lower);
-		xeth_sbtx_change_upper(priv->xid, lower_priv->xid, true);
+	netdev_for_each_lower_dev(upper, lower, iter) {
+		struct xeth_upper_priv *xlp = netdev_priv(lower);
+		xeth_sbtx_change_upper(xup->xpp, xup->xid, xlp->xid, true);
 	}
 }
 
 static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
 {
-	struct xeth_upper_priv *priv =
+	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
 	int i;
 
-	xeth_reset_link_stats(&priv->link_stats);
-	if (priv->kind == XETH_DEV_KIND_PORT)
-		for (i = 0; i < xeth_upper_n_et_stat_names; i++)
-			atomic64_set(&priv->et_stats[0], 0LL);
+	xeth_reset_link_stats(&xup->link_stats);
+	if (xup->kind == XETH_DEV_KIND_PORT)
+		for (i = 0; i < xup->xpp->n_et_stats; i++)
+			atomic64_set(&xup->et_stats[0], 0LL);
 }
 
-static netdev_tx_t xeth_upper_encap_vlan(struct sk_buff *skb,
-					 struct net_device *nd)
+static netdev_tx_t xeth_upper_encap_vlan(struct net_device *upper,
+					 struct sk_buff *skb)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	u16 tpid = cpu_to_be16(ETH_P_8021Q);
 	const u16 vidmask = (1 << 12) - 1;
 
-	if (priv->kind == XETH_DEV_KIND_VLAN) {
-		u16 vid = (u16)(priv->xid / VLAN_N_VID) & vidmask;
+	if (xup->kind == XETH_DEV_KIND_VLAN) {
+		u16 vid = (u16)(xup->xid / VLAN_N_VID) & vidmask;
 		skb = vlan_insert_tag_set_proto(skb, tpid, vid);
 		if (skb) {
 			tpid = cpu_to_be16(ETH_P_8021AD);
-			vid = (u16)(priv->xid) & vidmask;
+			vid = (u16)(xup->xid) & vidmask;
 			skb = vlan_insert_tag_set_proto(skb, tpid, vid);
 		}
 	} else {
-		u16 vid = (u16)(priv->xid) & vidmask;
+		u16 vid = (u16)(xup->xid) & vidmask;
 		skb = vlan_insert_tag_set_proto(skb, tpid, vid);
 	}
 	return skb ? xeth_mux_queue_xmit(skb) : NETDEV_TX_OK;
 }
 
-static int xeth_upper_ndo_open(struct net_device *nd)
+static int xeth_upper_ndo_open(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	int err = xeth_debug_nd_err(xeth_mux, dev_open(xeth_mux, NULL));
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	int err = dev_open(xup->xpp->mux.nd, NULL);
 	if (err)
 		return err;
-	netif_carrier_off(nd);
-	return xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, nd->flags,
-				XETH_IFINFO_REASON_UP);
+	netif_carrier_off(upper);
+	return xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind,
+				upper->flags, XETH_IFINFO_REASON_UP);
 }
 
-static int xeth_upper_ndo_stop(struct net_device *nd)
+static int xeth_upper_ndo_stop(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 
 	/* netif_carrier_off() through xeth_sbrx_carrier() */
-	return xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, nd->flags,
-				XETH_IFINFO_REASON_DOWN);
+	return xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind,
+				upper->flags, XETH_IFINFO_REASON_DOWN);
 }
 
 static netdev_tx_t xeth_upper_ndo_xmit(struct sk_buff *skb,
-				       struct net_device *nd)
+				       struct net_device *upper)
 {
-	switch (xeth_encap) {
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+
+	switch (xup->xpp->config->encap) {
 	case XETH_ENCAP_VLAN:
-		return xeth_upper_encap_vlan(skb, nd);
+		return xeth_upper_encap_vlan(upper, skb);
 	}
 	kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
 
-static int xeth_upper_ndo_get_iflink(const struct net_device *nd)
+static int xeth_upper_ndo_get_iflink(const struct net_device *upper)
 {
-	return xeth_mux_ifindex();
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+
+	return xup->xpp->mux.nd->ifindex;
 }
 
-static int xeth_upper_ndo_get_iflink_vlan(const struct net_device *nd)
+static int xeth_upper_ndo_get_iflink_vlan(const struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	u32 stag = priv->xid & ((1 << xeth_mux_bits()) - 1);
-	struct net_device *iflink = xeth_upper_lookup_rcu(stag);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	u32 stag = xup->xid & ((1 << xup->xpp->config->n_mux_bits) - 1);
+	struct net_device *iflink = xeth_upper_lookup_rcu(xup->xpp, stag);
 	return iflink ? iflink->ifindex : 0;
 }
 
-static void xeth_upper_ndo_get_stats64(struct net_device *nd,
+static void xeth_upper_ndo_get_stats64(struct net_device *upper,
 				       struct rtnl_link_stats64 *dst)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	xeth_get_link_stats(dst, &priv->link_stats);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	xeth_get_link_stats(dst, &xup->link_stats);
 }
 
-static int xeth_upper_ndo_add_lower(struct net_device *upper_nd,
-				    struct net_device *lower_nd,
+static int xeth_upper_ndo_add_lower(struct net_device *upper,
+				    struct net_device *lower,
 				    struct netlink_ext_ack *extack)
 {
-	struct xeth_upper_priv *upper_priv = netdev_priv(upper_nd);
-	struct xeth_upper_priv *lower_priv;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	struct xeth_upper_priv *xlp;
 	int err = 0;
 
-	if (!xeth_upper_check(lower_nd)) {
+	if (!xeth_upper_check(lower)) {
 		NL_SET_ERR_MSG(extack, "This device may only enslave another xeth");
 		return -EOPNOTSUPP;
 	}
-	lower_priv = netdev_priv(lower_nd);
-	if (lower_priv->kind == XETH_DEV_KIND_BRIDGE) {
+	xlp = netdev_priv(lower);
+	if (xlp->kind == XETH_DEV_KIND_BRIDGE) {
 		NL_SET_ERR_MSG(extack, "Cannot enslave a bridge");
 		return -EOPNOTSUPP;
 	}
-	if (netdev_master_upper_dev_get(lower_nd))
+	if (netdev_master_upper_dev_get(lower))
 		return -EBUSY;
 
-	call_netdevice_notifiers(NETDEV_JOIN, lower_nd);
+	call_netdevice_notifiers(NETDEV_JOIN, lower);
 
-	err = netdev_master_upper_dev_link(lower_nd, upper_nd, NULL, NULL, extack);
+	err = netdev_master_upper_dev_link(lower, upper, NULL, NULL, extack);
 	if (err)
 		return err;
 
-	if (upper_priv->kind == XETH_DEV_KIND_BRIDGE)
-		lower_nd->priv_flags |= IFF_BRIDGE_PORT;
-	else if (upper_priv->kind == XETH_DEV_KIND_LAG)
-		lower_nd->priv_flags |= IFF_TEAM_PORT;
+	switch (xup->kind) {
+	case XETH_DEV_KIND_BRIDGE:
+		lower->priv_flags |= IFF_BRIDGE_PORT;
+		break;
+	case XETH_DEV_KIND_LAG:
+		lower->priv_flags |= IFF_TEAM_PORT;
+		break;
+	}
 
-	lower_nd->flags |= IFF_SLAVE;
+	lower->flags |= IFF_SLAVE;
 
-	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, true);
+	return xeth_sbtx_change_upper(xup->xpp, xup->xid, xlp->xid, true);
 }
 
-static int xeth_upper_ndo_del_lower(struct net_device *upper_nd,
-				    struct net_device *lower_nd)
+static int xeth_upper_ndo_del_lower(struct net_device *upper,
+				    struct net_device *lower)
 {
-	struct xeth_upper_priv *upper_priv = netdev_priv(upper_nd);
-	struct xeth_upper_priv *lower_priv;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	struct xeth_upper_priv *xlp;
 	int err = 0;
 
-	err = xeth_debug_nd_err(lower_nd,
-				!xeth_upper_check(lower_nd) ? -EINVAL : 0);
+	err = xeth_debug_nd_err(lower, !xeth_upper_check(lower) ? -EINVAL : 0);
 	if (err) {
 		return err;
 	}
-	lower_priv = netdev_priv(lower_nd);
-	lower_nd->priv_flags &= ~(IFF_BRIDGE_PORT|IFF_TEAM_PORT);
-	lower_nd->flags &= ~IFF_SLAVE;
-	netdev_upper_dev_unlink(lower_nd, upper_nd);
-	netdev_update_features(upper_nd);
-	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, false);
+	xlp = netdev_priv(lower);
+	lower->priv_flags &= ~(IFF_BRIDGE_PORT|IFF_TEAM_PORT);
+	lower->flags &= ~IFF_SLAVE;
+	netdev_upper_dev_unlink(lower, upper);
+	netdev_update_features(upper);
+	return xeth_sbtx_change_upper(xup->xpp, xup->xid, xlp->xid, false);
 }
 
-static int xeth_upper_ndo_change_mtu(struct net_device *upper_nd, int mtu)
+static int xeth_upper_ndo_change_mtu(struct net_device *upper, int mtu)
 {
-	upper_nd->mtu = mtu;
+	upper->mtu = mtu;
 	return 0;
 }
 
@@ -391,68 +342,73 @@ static const struct net_device_ops xeth_upper_ndo_bridge_or_lag = {
 	.ndo_del_slave = xeth_upper_ndo_del_lower,
 };
 
-static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
+static void xeth_upper_eto_get_drvinfo(struct net_device *upper,
 				       struct ethtool_drvinfo *drvinfo)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	u8 muxbits = xeth_mux_bits();
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	u8 muxbits = xup->xpp->config->n_mux_bits;
 
 	strlcpy(drvinfo->driver, xeth_name, sizeof(drvinfo->driver));
 	strlcpy(drvinfo->version, xeth_version, sizeof(drvinfo->version));
 	strlcpy(drvinfo->fw_version, "n/a", ETHTOOL_FWVERS_LEN);
 	strlcpy(drvinfo->erom_version, "n/a", ETHTOOL_EROMVERS_LEN);
-	if (priv->xid >= (1 << muxbits))
+	if (xup->xid >= (1 << muxbits))
 		scnprintf(drvinfo->bus_info, ETHTOOL_BUSINFO_LEN, " %u, %u",
-			  priv->xid & ((1 << muxbits)-1),
-			  priv->xid >> muxbits);
+			  xup->xid & ((1 << muxbits)-1),
+			  xup->xid >> muxbits);
 	else
 		scnprintf(drvinfo->bus_info, ETHTOOL_BUSINFO_LEN, "%u",
-			  priv->xid);
-	drvinfo->n_priv_flags = xeth_upper_n_et_flag_names;
-	drvinfo->n_stats = xeth_upper_n_et_stat_names;
+			  xup->xid);
+	drvinfo->n_priv_flags = xup->xpp->config->n_et_flags;
+	drvinfo->n_stats = xup->xpp->n_et_stats;
 }
 
-static int xeth_upper_eto_get_sset_count(struct net_device *nd, int sset)
+static int xeth_upper_eto_get_sset_count(struct net_device *upper, int sset)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 
-	if (priv->kind != XETH_DEV_KIND_PORT)
+	if (xup->kind != XETH_DEV_KIND_PORT)
 		return 0;
 	switch (sset) {
 	case ETH_SS_PRIV_FLAGS:
-		return xeth_upper_n_et_flag_names;
+		return xup->xpp->config->n_et_flags;
 	case ETH_SS_STATS:
-		return xeth_upper_n_et_stat_names;
+		return xup->xpp->n_et_stats;
 	case ETH_SS_TEST:
 		return 0;
 	}
 	return -EOPNOTSUPP;
 }
 
-static void xeth_upper_eto_get_strings(struct net_device *nd,
+static void xeth_upper_eto_get_strings(struct net_device *upper,
 				       u32 sset, u8 *data)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	char *p = (char *)data;
 	int i;
 
-	if (priv->kind != XETH_DEV_KIND_PORT)
+	if (xup->kind != XETH_DEV_KIND_PORT)
 		return;
 	switch (sset) {
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		if (!xeth_upper_et_stat_names)
+		if (!xup->xpp->n_et_stats)
 			break;
-		for (i = 0; i < xeth_upper_n_et_stat_names; i++) {
-			strlcpy(p, xeth_upper_et_stat_names +
+		for (i = 0; i < xup->xpp->n_et_stats; i++) {
+			strlcpy(p, xup->xpp->et_stat_names +
 				(i * ETH_GSTRING_LEN), ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < xeth_upper_n_et_flag_names; i++) {
-			strlcpy(p, xeth_upper_et_flag_names[i],
+		if (!xup->xpp->config->n_et_flags)
+			break;
+		for (i = 0;
+		     xup->xpp->config->et_flag_names &&
+		     	xup->xpp->config->et_flag_names[i];
+		     i++) {
+			strlcpy(p, xup->xpp->config->et_flag_names[i],
 				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
@@ -460,50 +416,50 @@ static void xeth_upper_eto_get_strings(struct net_device *nd,
 	}
 }
 
-static void xeth_upper_eto_get_stats(struct net_device *nd,
+static void xeth_upper_eto_get_stats(struct net_device *upper,
 				     struct ethtool_stats *stats,
 				     u64 *data)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	int i;
 
-	if (priv->kind == XETH_DEV_KIND_PORT)
-		for (i = 0; i < xeth_upper_n_et_stat_names; i++)
-			data[i] = atomic64_read(&priv->et_stats[i]);
+	if (xup->kind == XETH_DEV_KIND_PORT)
+		for (i = 0; i < xup->xpp->n_et_stats; i++)
+			data[i] = atomic64_read(&xup->et_stats[i]);
 }
 
-static u32 xeth_upper_eto_get_priv_flags(struct net_device *nd)
+static u32 xeth_upper_eto_get_priv_flags(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 
-	return priv->et_priv_flags;
+	return xup->et_priv_flags;
 }
 
-static int xeth_upper_eto_set_priv_flags(struct net_device *nd, u32 flags)
+static int xeth_upper_eto_set_priv_flags(struct net_device *upper, u32 flags)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 
-	if (flags >= (1 << xeth_upper_n_et_flag_names))
+	if (flags >= (1 << xup->xpp->config->n_et_flags))
 		return -EINVAL;
 
-	priv->et_priv_flags = flags;
-	xeth_sbtx_et_flags(priv->xid, flags);
+	xup->et_priv_flags = flags;
+	xeth_sbtx_et_flags(xup->xpp, xup->xid, flags);
 
 	return 0;
 }
 
-static int xeth_upper_eto_get_link_ksettings(struct net_device *nd,
+static int xeth_upper_eto_get_link_ksettings(struct net_device *upper,
 					     struct ethtool_link_ksettings *p)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	memcpy(p, &priv->et_settings, sizeof(*p));
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	memcpy(p, &xup->et_settings, sizeof(*p));
 	return 0;
 }
 
-static int xeth_upper_validate_port(struct net_device *nd, u8 port)
+static int xeth_upper_validate_port(struct net_device *upper, u8 port)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	struct ethtool_link_ksettings *ks = &priv->et_settings;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	struct ethtool_link_ksettings *ks = &xup->et_settings;
 	bool t = false;
 
 	switch (port) {
@@ -531,18 +487,18 @@ static int xeth_upper_validate_port(struct net_device *nd, u8 port)
 	return t ? 0 : -EINVAL;
 }
 
-static int xeth_upper_validate_duplex(struct net_device *nd, u8 duplex)
+static int xeth_upper_validate_duplex(struct net_device *upper, u8 duplex)
 {
-	return xeth_debug_nd_err(nd,
+	return xeth_debug_nd_err(upper,
 				 duplex != DUPLEX_HALF &&
 				 duplex != DUPLEX_FULL &&
 				 duplex != DUPLEX_UNKNOWN) ?
 		-EINVAL : 0;
 }
 
-static int xeth_upper_validate_speed(struct net_device *nd, u32 speed)
+static int xeth_upper_validate_speed(struct net_device *upper, u32 speed)
 {
-        return xeth_debug_nd_err(nd,
+        return xeth_debug_nd_err(upper,
 				 speed != 100000 &&
 				 speed != 50000 &&
 				 speed != 40000 &&
@@ -553,25 +509,25 @@ static int xeth_upper_validate_speed(struct net_device *nd, u32 speed)
 		-EINVAL : 0;
 }
 
-static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
+static int xeth_upper_eto_set_link_ksettings(struct net_device *upper,
 					     const struct ethtool_link_ksettings *req)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	struct ethtool_link_ksettings *settings;
 	int err;
 
-	settings = &priv->et_settings;
+	settings = &xup->et_settings;
 	if (req->base.port != settings->base.port) {
-		err = xeth_upper_validate_port(nd, req->base.port);
+		err = xeth_upper_validate_port(upper, req->base.port);
 		if (err)
 			return err;
 		settings->base.port = req->base.port;
 	}
 	if (req->base.autoneg == AUTONEG_DISABLE) {
-		err = xeth_upper_validate_speed(nd, req->base.speed);
+		err = xeth_upper_validate_speed(upper, req->base.speed);
 		if (err)
 			return err;
-		err = xeth_upper_validate_duplex(nd, req->base.duplex);
+		err = xeth_upper_validate_duplex(upper, req->base.duplex);
 		if (err)
 			return err;
 		settings->base.autoneg = req->base.autoneg;
@@ -584,7 +540,8 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 				  __ETHTOOL_LINK_MODE_MASK_NBITS)) {
 			return -EINVAL;
 		} else {
-			err = xeth_upper_validate_duplex(nd, req->base.duplex);
+			err = xeth_upper_validate_duplex(upper,
+							 req->base.duplex);
 			if (err)
 				return err;
 			bitmap_copy(settings->link_modes.advertising,
@@ -596,17 +553,17 @@ static int xeth_upper_eto_set_link_ksettings(struct net_device *nd,
 		}
 	}
 
-	return xeth_sbtx_et_settings(priv->xid, settings);
+	return xeth_sbtx_et_settings(xup->xpp, xup->xid, settings);
 }
 
-static int xeth_upper_eto_get_fecparam(struct net_device *nd,
+static int xeth_upper_eto_get_fecparam(struct net_device *upper,
 				       struct ethtool_fecparam *param)
 {
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	const u32 fec_both = ETHTOOL_FEC_RS | ETHTOOL_FEC_BASER;
-	struct xeth_upper_priv *priv = netdev_priv(nd);
 	struct ethtool_link_ksettings *ks;
 
-	ks = &priv->et_settings;
+	ks = &xup->et_settings;
 	param->fec = 0;
 	param->active_fec = 0;
 	if (xeth_supports(ks, FEC_NONE))
@@ -631,13 +588,13 @@ static int xeth_upper_eto_get_fecparam(struct net_device *nd,
 	return 0;
 }
 
-static int xeth_upper_eto_set_fecparam(struct net_device *nd,
+static int xeth_upper_eto_set_fecparam(struct net_device *upper,
 				       struct ethtool_fecparam *param)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	struct ethtool_link_ksettings *ks;
 
-	ks = &priv->et_settings;
+	ks = &xup->et_settings;
 	switch (param->fec) {
 	case ETHTOOL_FEC_AUTO:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -652,7 +609,7 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 						     FEC_RS);
 		ethtool_link_ksettings_add_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(nd, "set fec auto");
+		xeth_debug_nd(upper, "set fec auto");
 		break;
 	case ETHTOOL_FEC_OFF:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -665,7 +622,7 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 						     FEC_RS);
 		ethtool_link_ksettings_del_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(nd, "set fec none");
+		xeth_debug_nd(upper, "set fec none");
 		break;
 	case ETHTOOL_FEC_RS:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -678,7 +635,7 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 						     FEC_RS);
 		ethtool_link_ksettings_del_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(nd, "set fec rs");
+		xeth_debug_nd(upper, "set fec rs");
 		break;
 	case ETHTOOL_FEC_BASER:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -691,29 +648,12 @@ static int xeth_upper_eto_set_fecparam(struct net_device *nd,
 						     FEC_RS);
 		ethtool_link_ksettings_add_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(nd, "set fec baser");
+		xeth_debug_nd(upper, "set fec baser");
 		break;
 	default:
 		return -EINVAL;
 	}
-	return xeth_sbtx_et_settings(priv->xid, ks);
-}
-
-static int _xeth_upper_eto_get_module_info(struct net_device *nd,
-					   struct ethtool_modinfo *emi)
-{
-	if (!xeth_upper_eto_get_module_info)
-		return -ENOSYS;
-	return xeth_upper_eto_get_module_info(nd, emi);
-}
-
-static int _xeth_upper_eto_get_module_eeprom(struct net_device *nd,
-					     struct ethtool_eeprom *ee,
-					     u8 *data)
-{
-	if (!xeth_upper_eto_get_module_eeprom)
-		return -ENOSYS;
-	return xeth_upper_eto_get_module_eeprom(nd, ee, data);
+	return xeth_sbtx_et_settings(xup->xpp, xup->xid, ks);
 }
 
 static const struct ethtool_ops xeth_upper_et_ops = {
@@ -724,77 +664,51 @@ static const struct ethtool_ops xeth_upper_et_ops = {
 	.get_ethtool_stats = xeth_upper_eto_get_stats,
 	.get_priv_flags = xeth_upper_eto_get_priv_flags,
 	.set_priv_flags = xeth_upper_eto_set_priv_flags,
-	.get_module_info = _xeth_upper_eto_get_module_info,
-	.get_module_eeprom = _xeth_upper_eto_get_module_eeprom,
+	.get_module_info = xeth_qsfp_get_module_info,
+	.get_module_eeprom = xeth_qsfp_get_module_eeprom,
 	.get_link_ksettings = xeth_upper_eto_get_link_ksettings,
 	.set_link_ksettings = xeth_upper_eto_set_link_ksettings,
 	.get_fecparam = xeth_upper_eto_get_fecparam,
 	.set_fecparam = xeth_upper_eto_set_fecparam,
 };
 
-static void xeth_upper_lnko_setup_port(struct net_device *nd)
+static void xeth_upper_lnko_setup_port(struct net_device *upper)
 {
-	ether_setup(nd);
-	nd->netdev_ops = &xeth_upper_ndo_port;
-	nd->ethtool_ops = &xeth_upper_et_ops;
-	nd->needs_free_netdev = true;
-	nd->priv_destructor = NULL;
-	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
-	nd->priv_flags |= IFF_NO_QUEUE;
-	nd->priv_flags |= IFF_PHONY_HEADROOM;
-#ifdef __FIXME__
-	nd->features |= NETIF_F_LLTX;
-	nd->features |= VETH_FEATURES;
-
-	nd->hw_features = VETH_FEATURES;
-	nd->hw_enc_features = VETH_FEATURES;
-	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
-#endif /* __FIXEME__ */
-	nd->min_mtu = xeth_mux->min_mtu;
-	nd->max_mtu = xeth_mux->max_mtu;
+	ether_setup(upper);
+	upper->netdev_ops = &xeth_upper_ndo_port;
+	upper->ethtool_ops = &xeth_upper_et_ops;
+	upper->needs_free_netdev = true;
+	upper->priv_destructor = NULL;
+	upper->priv_flags &= ~IFF_TX_SKB_SHARING;
+	upper->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+	upper->priv_flags |= IFF_NO_QUEUE;
+	upper->priv_flags |= IFF_PHONY_HEADROOM;
 }
 
-static void xeth_upper_lnko_setup_vlan(struct net_device *nd)
+static void xeth_upper_lnko_setup_vlan(struct net_device *upper)
 {
-	ether_setup(nd);
-	nd->netdev_ops = &xeth_upper_ndo_vlan;
-	nd->needs_free_netdev = true;
-	nd->priv_destructor = NULL;
-	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
-	nd->priv_flags |= IFF_NO_QUEUE;
-	nd->priv_flags |= IFF_PHONY_HEADROOM;
-#ifdef __FIXME__
-	nd->features |= NETIF_F_LLTX;
-	nd->features |= VETH_FEATURES;
-
-	nd->hw_features = VETH_FEATURES;
-	nd->hw_enc_features = VETH_FEATURES;
-	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
-#endif /* __FIXEME__ */
+	ether_setup(upper);
+	upper->netdev_ops = &xeth_upper_ndo_vlan;
+	upper->needs_free_netdev = true;
+	upper->priv_destructor = NULL;
+	upper->priv_flags &= ~IFF_TX_SKB_SHARING;
+	upper->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+	upper->priv_flags |= IFF_NO_QUEUE;
+	upper->priv_flags |= IFF_PHONY_HEADROOM;
 }
 
-static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
+static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *upper)
 {
-	ether_setup(nd);
-	nd->netdev_ops = &xeth_upper_ndo_bridge_or_lag;
-	nd->needs_free_netdev = true;
-	nd->priv_destructor = NULL;
-	nd->flags |= IFF_MASTER;
-	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
-	nd->priv_flags |= IFF_NO_QUEUE;
-	nd->priv_flags |= IFF_PHONY_HEADROOM;
-	nd->features |= NETIF_F_NETNS_LOCAL;
-#ifdef __FIXME__
-	nd->features |= NETIF_F_LLTX;
-	nd->features |= VETH_FEATURES;
-
-	nd->hw_features = VETH_FEATURES;
-	nd->hw_enc_features = VETH_FEATURES;
-	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
-#endif /* __FIXEME__ */
+	ether_setup(upper);
+	upper->netdev_ops = &xeth_upper_ndo_bridge_or_lag;
+	upper->needs_free_netdev = true;
+	upper->priv_destructor = NULL;
+	upper->flags |= IFF_MASTER;
+	upper->priv_flags &= ~IFF_TX_SKB_SHARING;
+	upper->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+	upper->priv_flags |= IFF_NO_QUEUE;
+	upper->priv_flags |= IFF_PHONY_HEADROOM;
+	upper->features |= NETIF_F_NETNS_LOCAL;
 }
 
 static int xeth_upper_lnko_validate_vlan(struct nlattr *tb[],
@@ -826,20 +740,18 @@ static int xeth_upper_lnko_validate_bridge_or_lag(struct nlattr *tb[],
 	return 0;
 }
 
-static int xeth_upper_nd_register(struct net_device *nd)
+static int xeth_upper_register(struct net_device *upper)
 {
+	struct xeth_upper_priv *xup = netdev_priv(upper);
 	int err;
 
-	xeth_debug_rcu(xeth_upper_add_rcu(nd));
-	err = xeth_debug_nd_err(nd, register_netdevice(nd));
-	if (err) {
-		struct xeth_upper_priv *priv = netdev_priv(nd);
-		xeth_mux_del_node(&priv->node);
-	} else {
-		struct xeth_upper_priv *priv = netdev_priv(nd);
-		err = xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0,
-				       XETH_IFINFO_REASON_NEW);
-	}
+	xeth_debug_rcu(xeth_upper_add_rcu(upper));
+	err = xeth_debug_nd_err(upper, register_netdevice(upper));
+	if (err)
+		xeth_del_node(xup->xpp, &xup->node);
+	else
+		err = xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind,
+				       0, XETH_IFINFO_REASON_NEW);
 	return err;
 }
 
@@ -858,29 +770,34 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 				    struct nlattr *tb[], struct nlattr *data[],
 				    struct netlink_ext_ack *extack)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	u8 muxbits = xeth_mux_bits();
-	u32 xid, range = (1 << muxbits) - 1;
+	struct xeth_upper_priv *xup = netdev_priv(nd);
 	struct net_device *xnd, *link;
 	struct xeth_upper_priv *linkpriv;
+	u8 muxbits;
+	u32 li, xid, range;
 	int i, err;
 	unsigned long long ull;
-	u32 li;
+
 
 	if (!tb || !tb[IFLA_LINK]) {
 		NL_SET_ERR_MSG(extack, "missing link");
 		return -EINVAL;
 	}
 
-	priv->kind = XETH_DEV_KIND_VLAN;
+	xup->kind = XETH_DEV_KIND_VLAN;
+	xup->xpp = xeth_platform_priv_of_lnko(nd->rtnl_link_ops, vlan);
+	nd->min_mtu = xup->xpp->mux.nd->min_mtu;
+	nd->max_mtu = xup->xpp->mux.nd->max_mtu;
 
 	li = nla_get_u32(tb[IFLA_LINK]);
-	link = xeth_debug_rcu(xeth_upper_link_rcu(li));
+	link = dev_get_by_index_rcu(dev_net(nd), li);
 	if (IS_ERR_OR_NULL(link)) {
 		NL_SET_ERR_MSG(extack, "link must be an XETH_PORT");
 		return PTR_ERR(link);
 	}
 	linkpriv = netdev_priv(link);
+	muxbits = xup->xpp->config->n_mux_bits;
+	range = (1 << muxbits) - 1;
 	nd->addr_assign_type = NET_ADDR_STOLEN;
 	memcpy(nd->dev_addr, link->dev_addr, ETH_ALEN);
 
@@ -891,7 +808,8 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 		for (i = xid = 0; !xid; i++)
 			if (i >= IFNAMSIZ) {
 				u32 base = linkpriv->xid | (1 << muxbits);
-				s64 x = xeth_upper_search(base, range);
+				s64 x = xeth_upper_search(xup->xpp,
+							  base, range);
 				if (x < 0) {
 					NL_SET_ERR_MSG(extack,
 						       "no VID available");
@@ -908,16 +826,16 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 				}
 				xid  = linkpriv->xid | (ull << muxbits);
 			}
-	xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
+	xnd = xeth_debug_rcu(xeth_upper_lookup_rcu(xup->xpp, xid));
 	if (xnd) {
 		NL_SET_ERR_MSG(extack, "VID in use");
 		return -EBUSY;
 	}
-	priv->xid = xid;
+	xup->xid = xid;
 	if (!tb || !tb[IFLA_IFNAME])
 		scnprintf(nd->name, IFNAMSIZ, "%s.%u",
-			  link->name, priv->xid >> muxbits);
-	return xeth_upper_nd_register(nd);
+			  link->name, xup->xid >> muxbits);
+	return xeth_upper_register(nd);
 }
 
 static int xeth_upper_new_bridge_or_lag(struct net *src_net,
@@ -927,21 +845,29 @@ static int xeth_upper_new_bridge_or_lag(struct net *src_net,
 					struct netlink_ext_ack *extack,
 					u8 kind)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	u8 muxbits = xeth_mux_bits();
-	u32 range = (1 << muxbits) - 1;
-	s64 xid_or_err = xeth_upper_search(xeth_base_xid, range);
+	struct xeth_upper_priv *xup = netdev_priv(nd);
+	const struct rtnl_link_ops *lnko = nd->rtnl_link_ops;
+	u32 range = (1 << xup->xpp->config->n_mux_bits) - 1;
+	s64 xid_or_err =
+		xeth_upper_search(xup->xpp, xup->xpp->config->base_xid, range);
 
+	if (kind == XETH_DEV_KIND_BRIDGE)
+		xup->xpp = xeth_platform_priv_of_lnko(lnko, bridge);
+	else
+		xup->xpp = xeth_platform_priv_of_lnko(lnko, lag);
 	if (xid_or_err < 0) {
 		NL_SET_ERR_MSG(extack, "all XIDs in use");
 		return (int)xid_or_err;
 	}
-	priv->xid = (u32)xid_or_err;
-	priv->kind = kind;
+	xup->xid = (u32)xid_or_err;
+	xup->kind = kind;
+	nd->min_mtu = xup->xpp->mux.nd->min_mtu;
+	nd->max_mtu = xup->xpp->mux.nd->max_mtu;
 	if (!tb || !tb[IFLA_IFNAME])
-		scnprintf(nd->name, IFNAMSIZ, "xeth-%u", priv->xid);
-	xeth_upper_steal_mux_addr(nd);
-	return xeth_upper_nd_register(nd);
+		scnprintf(nd->name, IFNAMSIZ, "xeth-%u", xup->xid);
+	nd->addr_assign_type = NET_ADDR_STOLEN;
+	memcpy(nd->dev_addr, xup->xpp->mux.nd->dev_addr, ETH_ALEN);
+	return xeth_upper_register(nd);
 }
 
 /*
@@ -978,7 +904,7 @@ static int xeth_upper_lnko_new_lag(struct net *src_net,
 
 static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(nd);
 	u32 xid = xeth_upper_xid(nd);
 	enum xeth_dev_kind kind = xeth_upper_kind(nd);
 	struct net_device *upper;
@@ -987,8 +913,8 @@ static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 	netdev_for_each_upper_dev_rcu(nd, upper, uppers)
 		xeth_upper_ndo_del_lower(upper, nd);
 
-	xeth_sbtx_ifinfo(nd, xid, kind, 0, XETH_IFINFO_REASON_DEL);
-	xeth_mux_del_node(&priv->node);
+	xeth_sbtx_ifinfo(xup->xpp, nd, xid, kind, 0, XETH_IFINFO_REASON_DEL);
+	xeth_del_node(xup->xpp, &xup->node);
 	unregister_netdevice_queue(nd, q);
 }
 
@@ -1006,8 +932,6 @@ static void xeth_upper_lnko_del_bridge_or_lag(struct net_device *nd,
 
 static struct net *xeth_upper_lnko_get_net(const struct net_device *nd)
 {
-	/* FIXME this should return dev_net of iflink
-	 * (e.g. xeth_mux or vlans real dev */
 	return dev_net(nd);
 }
 
@@ -1015,8 +939,7 @@ static const struct nla_policy xeth_upper_nla_policy_vlan[XETH_VLAN_N_IFLA] = {
 	[XETH_VLAN_IFLA_VID] = { .type = NLA_U16 },
 };
 
-static struct rtnl_link_ops xeth_upper_lnko_vlan = {
-	.kind		= "xeth-vlan",
+const static struct rtnl_link_ops xeth_upper_lnko_vlan = {
 	.priv_size	= sizeof(struct xeth_upper_priv),
 	.setup		= xeth_upper_lnko_setup_vlan,
 	.validate	= xeth_upper_lnko_validate_vlan,
@@ -1027,8 +950,7 @@ static struct rtnl_link_ops xeth_upper_lnko_vlan = {
 	.maxtype	= XETH_VLAN_N_IFLA - 1,
 };
 
-static struct rtnl_link_ops xeth_upper_lnko_bridge = {
-	.kind		= "xeth-bridge",
+const static struct rtnl_link_ops xeth_upper_lnko_bridge = {
 	.priv_size	= sizeof(struct xeth_upper_priv),
 	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
 	.validate	= xeth_upper_lnko_validate_bridge_or_lag,
@@ -1037,8 +959,7 @@ static struct rtnl_link_ops xeth_upper_lnko_bridge = {
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
-static struct rtnl_link_ops xeth_upper_lnko_lag = {
-	.kind		= "xeth-lag",
+const static struct rtnl_link_ops xeth_upper_lnko_lag = {
 	.priv_size	= sizeof(struct xeth_upper_priv),
 	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
 	.validate	= xeth_upper_lnko_validate_bridge_or_lag,
@@ -1047,87 +968,92 @@ static struct rtnl_link_ops xeth_upper_lnko_lag = {
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
+static bool xeth_upper_lnko_is_registered(struct rtnl_link_ops *lnko)
+{
+	return lnko->list.next || lnko->list.prev;
+}
+
+#define xeth_upper_lnko_register(xpp,name)				\
+({									\
+	struct rtnl_link_ops *lnko = &xpp->name##_lnko;			\
+	int _err;							\
+	memcpy(lnko, &xeth_upper_lnko_##name, sizeof(*lnko));		\
+	lnko->kind = xpp->config->driver_name.name;			\
+	_err = rtnl_link_register(lnko);				\
+	if (!_err)							\
+		_err = xeth_upper_lnko_is_registered(lnko) ? 0 : -EINVAL;\
+	(_err);								\
+})
+
+int xeth_upper_register_drivers(struct xeth_platform_priv *xpp)
+{
+	int err = xeth_upper_lnko_register(xpp, bridge);
+	if (!err)
+		err = xeth_upper_lnko_register(xpp, lag);
+	if (!err)
+		err = xeth_upper_lnko_register(xpp, vlan);
+	return err;
+}
+
+#define xeth_upper_lnko_unregister(xpp,name)				\
+do {									\
+	if (xeth_upper_lnko_is_registered(&xpp->name##_lnko))		\
+		rtnl_link_unregister(&xpp->name##_lnko);		\
+} while(0)
+
+void xeth_upper_unregister_drivers(struct xeth_platform_priv *xpp)
+{
+	/* WARNING must deinit the bridges and lags first so that they
+	 * release all vlan lowers before those are unregistered */
+	xeth_upper_lnko_unregister(xpp, bridge);
+	xeth_upper_lnko_unregister(xpp, lag);
+	xeth_upper_lnko_unregister(xpp, vlan);
+}
+
 bool xeth_upper_check(struct net_device *nd)
 {
 	return	nd->netdev_ops->ndo_open == xeth_upper_ndo_open &&
 		nd->netdev_ops->ndo_stop == xeth_upper_ndo_stop;
 }
 
-static bool xeth_upper_lnko_is_registered(struct rtnl_link_ops *lnko)
-{
-	return lnko->list.next || lnko->list.prev;
-}
-
-static int xeth_upper_lnko_register(struct rtnl_link_ops *lnko, int err)
-{
-	if (err)
-		return err;
-	err = rtnl_link_register(lnko);
-	if (!err)
-		err = xeth_upper_lnko_is_registered(lnko) ? 0 : -EINVAL;
-	return err;
-}
-
-static void xeth_upper_lnko_unregister(struct rtnl_link_ops *lnko)
-{
-	if (xeth_upper_lnko_is_registered(lnko))
-		rtnl_link_unregister(lnko);
-}
-
-int xeth_upper_init(void)
-{
-	int err = 0;
-
-	err = xeth_upper_lnko_register(&xeth_upper_lnko_bridge, err);
-	err = xeth_upper_lnko_register(&xeth_upper_lnko_lag, err);
-	err = xeth_upper_lnko_register(&xeth_upper_lnko_vlan, err);
-	return err;
-}
-
-void xeth_upper_exit(void)
-{
-	/* WARNING must deinit the bridges and lags first so that they
-	 * release all vlan lowers before those are unregistered */
-	xeth_upper_lnko_unregister(&xeth_upper_lnko_bridge);
-	xeth_upper_lnko_unregister(&xeth_upper_lnko_lag);
-	xeth_upper_lnko_unregister(&xeth_upper_lnko_vlan);
-}
-
-static void xeth_upper_call_rcu_for_each_priv(rcu_callback_t cb)
+static void xeth_upper_call_rcu_for_all(struct xeth_platform_priv *xpp,
+					rcu_callback_t cb)
 {
 	int bkt;
-	struct xeth_upper_priv *priv = NULL;
-	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
+	struct xeth_upper_priv *xup = NULL;
+	struct hlist_head __rcu *head = xeth_indexed_upper_head(xpp, 0);
 
 	rcu_read_lock();
-	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
-		hlist_for_each_entry_rcu(priv, head, node)
-			call_rcu(&priv->rcu, cb);
+	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt))
+		hlist_for_each_entry_rcu(xup, head, node)
+			call_rcu(&xup->rcu, cb);
 	rcu_read_unlock();
 	rcu_barrier();
 }
 
-static void xeth_upper_call_rcu_for_each_priv_kind(rcu_callback_t cb, u8 kind)
+static void xeth_upper_call_rcu_for_each_kind(struct xeth_platform_priv *xpp,
+					      rcu_callback_t cb,
+					      u8 kind)
 {
 	int bkt;
-	struct xeth_upper_priv *priv = NULL;
-	struct hlist_head __rcu *head = xeth_mux_upper_head_indexed(0);
+	struct xeth_upper_priv *xup = NULL;
+	struct hlist_head __rcu *head = xeth_indexed_upper_head(xpp, 0);
 
 	rcu_read_lock();
-	for (bkt = 0; head; head = xeth_mux_upper_head_indexed(++bkt))
-		hlist_for_each_entry_rcu(priv, head, node)
-			if (priv->kind == kind)
-				call_rcu(&priv->rcu, cb);
+	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt))
+		hlist_for_each_entry_rcu(xup, head, node)
+			if (xup->kind == kind)
+				call_rcu(&xup->rcu, cb);
 	rcu_read_unlock();
 	rcu_barrier();
 }
 
-void xeth_upper_all_carrier_off(void)
+void xeth_upper_all_carrier_off(struct xeth_platform_priv *xpp)
 {
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_carrier_off);
+	xeth_upper_call_rcu_for_all(xpp, xeth_upper_cb_carrier_off);
 }
 
-void xeth_upper_all_dump_ifinfo(void)
+void xeth_upper_all_dump_ifinfo(struct xeth_platform_priv *xpp)
 {
 	/* We *must* dump in this order: ports, lags, vlans, then bridges as
 	 * the control daemon needs to know all of the ports before the vlans
@@ -1135,221 +1061,227 @@ void xeth_upper_all_dump_ifinfo(void)
 	 * then be muxed to vlans. And finally, bridges that may have any of
 	 * these kinds as members.
 	 */
-	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
-					       XETH_DEV_KIND_PORT);
-	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
-					       XETH_DEV_KIND_LAG);
-	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
-					       XETH_DEV_KIND_VLAN);
-	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_ifinfo,
-					       XETH_DEV_KIND_BRIDGE);
-	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_lowers,
-					       XETH_DEV_KIND_LAG);
-	xeth_upper_call_rcu_for_each_priv_kind(xeth_upper_cb_dump_lowers,
-					       XETH_DEV_KIND_BRIDGE);
+	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
+					  XETH_DEV_KIND_PORT);
+	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
+					  XETH_DEV_KIND_LAG);
+	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
+					  XETH_DEV_KIND_VLAN);
+	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
+					  XETH_DEV_KIND_BRIDGE);
+	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_lowers,
+					  XETH_DEV_KIND_LAG);
+	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_lowers,
+					  XETH_DEV_KIND_BRIDGE);
 }
 
-void xeth_upper_all_reset_stats(void)
+void xeth_upper_all_reset_stats(struct xeth_platform_priv *xpp)
 {
-	xeth_upper_call_rcu_for_each_priv(xeth_upper_cb_reset_stats);
+	xeth_upper_call_rcu_for_all(xpp, xeth_upper_cb_reset_stats);
 }
 
-void xeth_upper_changemtu(int mtu, int max_mtu)
+void xeth_upper_changemtu(struct xeth_platform_priv *xpp, int mtu, int max_mtu)
 {
-#ifdef __FIXME__
-#endif /* __FIXME__ */
+	/* FIXME should we relay or nack mtu changes */
 }
 
 void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(nd);
 
-	if (index < xeth_upper_n_et_stat_names)
-		atomic64_set(&priv->et_stats[index], count);
+	if (index < xup->xpp->n_et_stats)
+		atomic64_set(&xup->et_stats[index], count);
 	else
-		xeth_counter_inc(sbrx_invalid);
+		xeth_counter_inc(xup->xpp, sbrx_invalid);
 }
 
 void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
+	struct xeth_upper_priv *xup = netdev_priv(nd);
 
 	switch (index) {
 	case xeth_link_stat_rx_packets_index:
-		atomic64_set(&priv->link_stats.rx_packets, count);
+		atomic64_set(&xup->link_stats.rx_packets, count);
 		break;
 	case xeth_link_stat_tx_packets_index:
-		atomic64_set(&priv->link_stats.tx_packets, count);
+		atomic64_set(&xup->link_stats.tx_packets, count);
 		break;
 	case xeth_link_stat_rx_bytes_index:
-		atomic64_set(&priv->link_stats.rx_bytes, count);
+		atomic64_set(&xup->link_stats.rx_bytes, count);
 		break;
 	case xeth_link_stat_tx_bytes_index:
-		atomic64_set(&priv->link_stats.tx_bytes, count);
+		atomic64_set(&xup->link_stats.tx_bytes, count);
 		break;
 	case xeth_link_stat_rx_errors_index:
-		atomic64_set(&priv->link_stats.rx_errors, count);
+		atomic64_set(&xup->link_stats.rx_errors, count);
 		break;
 	case xeth_link_stat_tx_errors_index:
-		atomic64_set(&priv->link_stats.tx_errors, count);
+		atomic64_set(&xup->link_stats.tx_errors, count);
 		break;
 	case xeth_link_stat_rx_dropped_index:
-		atomic64_set(&priv->link_stats.rx_dropped, count);
+		atomic64_set(&xup->link_stats.rx_dropped, count);
 		break;
 	case xeth_link_stat_tx_dropped_index:
-		atomic64_set(&priv->link_stats.tx_dropped, count);
+		atomic64_set(&xup->link_stats.tx_dropped, count);
 		break;
 	case xeth_link_stat_multicast_index:
-		atomic64_set(&priv->link_stats.multicast, count);
+		atomic64_set(&xup->link_stats.multicast, count);
 		break;
 	case xeth_link_stat_collisions_index:
-		atomic64_set(&priv->link_stats.collisions, count);
+		atomic64_set(&xup->link_stats.collisions, count);
 		break;
 	case xeth_link_stat_rx_length_errors_index:
-		atomic64_set(&priv->link_stats.rx_length_errors, count);
+		atomic64_set(&xup->link_stats.rx_length_errors, count);
 		break;
 	case xeth_link_stat_rx_over_errors_index:
-		atomic64_set(&priv->link_stats.rx_over_errors, count);
+		atomic64_set(&xup->link_stats.rx_over_errors, count);
 		break;
 	case xeth_link_stat_rx_crc_errors_index:
-		atomic64_set(&priv->link_stats.rx_crc_errors, count);
+		atomic64_set(&xup->link_stats.rx_crc_errors, count);
 		break;
 	case xeth_link_stat_rx_frame_errors_index:
-		atomic64_set(&priv->link_stats.rx_frame_errors, count);
+		atomic64_set(&xup->link_stats.rx_frame_errors, count);
 		break;
 	case xeth_link_stat_rx_fifo_errors_index:
-		atomic64_set(&priv->link_stats.rx_fifo_errors, count);
+		atomic64_set(&xup->link_stats.rx_fifo_errors, count);
 		break;
 	case xeth_link_stat_rx_missed_errors_index:
-		atomic64_set(&priv->link_stats.rx_missed_errors, count);
+		atomic64_set(&xup->link_stats.rx_missed_errors, count);
 		break;
 	case xeth_link_stat_tx_aborted_errors_index:
-		atomic64_set(&priv->link_stats.tx_aborted_errors, count);
+		atomic64_set(&xup->link_stats.tx_aborted_errors, count);
 		break;
 	case xeth_link_stat_tx_carrier_errors_index:
-		atomic64_set(&priv->link_stats.tx_carrier_errors, count);
+		atomic64_set(&xup->link_stats.tx_carrier_errors, count);
 		break;
 	case xeth_link_stat_tx_fifo_errors_index:
-		atomic64_set(&priv->link_stats.tx_fifo_errors, count);
+		atomic64_set(&xup->link_stats.tx_fifo_errors, count);
 		break;
 	case xeth_link_stat_tx_heartbeat_errors_index:
-		atomic64_set(&priv->link_stats.tx_heartbeat_errors, count);
+		atomic64_set(&xup->link_stats.tx_heartbeat_errors, count);
 		break;
 	case xeth_link_stat_tx_window_errors_index:
-		atomic64_set(&priv->link_stats.tx_window_errors, count);
+		atomic64_set(&xup->link_stats.tx_window_errors, count);
 		break;
 	case xeth_link_stat_rx_compressed_index:
-		atomic64_set(&priv->link_stats.rx_compressed, count);
+		atomic64_set(&xup->link_stats.rx_compressed, count);
 		break;
 	case xeth_link_stat_tx_compressed_index:
-		atomic64_set(&priv->link_stats.tx_compressed, count);
+		atomic64_set(&xup->link_stats.tx_compressed, count);
 		break;
 	case xeth_link_stat_rx_nohandler_index:
-		atomic64_set(&priv->link_stats.rx_nohandler, count);
+		atomic64_set(&xup->link_stats.rx_nohandler, count);
 		break;
 	default:
-		xeth_counter_inc(sbrx_invalid);
+		xeth_counter_inc(xup->xpp, sbrx_invalid);
 	}
 }
 
-void xeth_upper_speed(struct net_device *nd, u32 mbps)
+void xeth_upper_speed(struct net_device *upper, u32 mbps)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	priv->et_settings.base.speed = mbps;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	xup->et_settings.base.speed = mbps;
 }
 
 void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
 				 struct list_head *q)
 {
-	struct xeth_upper_priv *priv = NULL;
-	hlist_for_each_entry_rcu(priv, head, node)
-		xeth_upper_lnko_del(xeth_netdev(priv), q);
+	struct xeth_upper_priv *xup = NULL;
+	hlist_for_each_entry_rcu(xup, head, node)
+		xeth_upper_lnko_del(xeth_netdev(xup), q);
 }
 
-u32 xeth_upper_xid(struct net_device *nd)
+u32 xeth_upper_xid(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	return priv->xid;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	return xup->xid;
 }
 
-enum xeth_dev_kind xeth_upper_kind(struct net_device *nd)
+enum xeth_dev_kind xeth_upper_kind(struct net_device *upper)
 {
-	struct xeth_upper_priv *priv = netdev_priv(nd);
-	return priv->kind;
+	struct xeth_upper_priv *xup = netdev_priv(upper);
+	return xup->kind;
 }
 
 /**
- * new_xeth_upper - create and add an upper port proxy to the xeth mux
+ * xeth_upper_new - create and add an upper port proxy to the xeth mux
  *
  * @name:	IFNAMSIZ buffer
  * @xid:	A unique and immutable xeth device identifier; if zero,
  *		the device is assigned the next available xid
  * @ea:		Ethernet Address, if zero, it's assigned a random address
- * @cb		An initialization call-back
+ * @setup	An initialization call-back
  *
- * Returns the netdev or ERR_PTR on error.
+ * Returns 0 on success or <0 error.
  */
-struct net_device *new_xeth_upper(const char *name, u32 xid, u64 ea,
-				  void (*cb)(struct ethtool_link_ksettings *))
+int xeth_upper_new_port(struct xeth_platform_priv *xpp,
+			const char *name,
+			u32 xid,
+			u64 ea,
+			void (*setup)(struct ethtool_link_ksettings *),
+			int qsfp_bus)
 {
-	struct net_device *nd;
-	struct xeth_upper_priv *priv;
-	size_t priv_sz = sizeof(*priv) + xeth_upper_et_stats_sz;
+	struct net_device *port;	/* or subport */
+	struct xeth_upper_priv *xup;
+	size_t priv_sz = sizeof(*xup) + xeth_upper_et_stats_sz;
 	int err;
 
-	if (IS_ERR(xeth_mux_upper_head_indexed(0)))
-		return ERR_PTR(-ENODEV);
+	if (IS_ERR(xeth_indexed_upper_head(xpp, 0)))
+		return -ENODEV;
 
-	if (xeth_debug_err(xeth_upper_lookup_rcu(xid) != NULL))
-		return ERR_PTR(-EEXIST);
+	if (xeth_upper_lookup_rcu(xpp, xid) != NULL)
+		return -EEXIST;
 
-	nd = xeth_debug_ptr_err(alloc_netdev_mqs(priv_sz,
-						 name,
-						 NET_NAME_USER,
-						 xeth_upper_lnko_setup_port,
-						 xeth_upper_txqs,
-						 xeth_upper_rxqs));
-	if (IS_ERR(nd))
-		return nd;
+	port = alloc_netdev_mqs(priv_sz, name, NET_NAME_USER,
+				 xeth_upper_lnko_setup_port,
+				 xeth_upper_txqs,
+				 xeth_upper_rxqs);
+	if (IS_ERR(port))
+		return PTR_ERR(port);
 
-	priv = netdev_priv(nd);
+	xup = netdev_priv(port);
+	xup->xpp = xpp;
 
-	priv->xid = xid;
-	priv->kind = XETH_DEV_KIND_PORT;
-	xeth_debug_rcu(xeth_upper_add_rcu(nd));
+	xup->xid = xid;
+	xup->kind = XETH_DEV_KIND_PORT;
+	xup->qsfp_bus = qsfp_bus;
+	port->min_mtu = xup->xpp->mux.nd->min_mtu;
+	port->max_mtu = xup->xpp->mux.nd->max_mtu;
 
 	if (ea) {
-		u64_to_ether_addr(ea, nd->dev_addr);
-		nd->addr_assign_type = NET_ADDR_PERM;
+		u64_to_ether_addr(ea, port->dev_addr);
+		port->addr_assign_type = NET_ADDR_PERM;
 	} else
-		eth_hw_addr_random(nd);
+		eth_hw_addr_random(port);
+
+	setup(&xup->et_settings);
+
+	xeth_debug_rcu(xeth_upper_add_rcu(port));
 
 	rtnl_lock();
-	err = register_netdevice(nd);
+	err = register_netdevice(port);
 	rtnl_unlock();
 
 	if (err < 0) {
-		xeth_mux_del_node(&priv->node);
-		return ERR_PTR(err);
+		xeth_del_node(xup->xpp, &xup->node);
+		return err;
 	}
 
-	if (cb)
-		cb(&priv->et_settings);
+	xeth_debug_nd(port, "xid %u mac %pM", xid, port->dev_addr);
 
-	xeth_debug("%s xid %u mac %pM", name, xid, nd->dev_addr);
-	return nd;
+	return 0;
 }
 
-void xeth_upper_delete_port(u32 xid)
+void xeth_upper_delete_port(struct xeth_platform_priv *xpp, u32 xid)
 {
-	struct net_device *nd;
-	struct xeth_upper_priv *priv;
+	struct net_device *port;
+	struct xeth_upper_priv *xup;
 
-	nd = xeth_upper_lookup_rcu(xid);
-	if (IS_ERR_OR_NULL(nd))
+	port = xeth_upper_lookup_rcu(xpp, xid);
+	if (IS_ERR_OR_NULL(port))
 		return;
-	priv = netdev_priv(nd);
-	xeth_debug("%s xid %u", nd->name, xid);
-	xeth_mux_del_node(&priv->node);
-	unregister_netdev(nd);
+	xup = netdev_priv(port);
+	xeth_debug("%s xid %u", port->name, xid);
+	xeth_del_node(xpp, &xup->node);
+	unregister_netdev(port);
 }

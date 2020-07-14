@@ -1,16 +1,11 @@
 /**
  * SPDX-License-Identifier: GPL-2.0
- * Copyright(c) 2018-2019 Platina Systems, Inc.
+ * Copyright(c) 2018-2020 Platina Systems, Inc.
  *
  * Contact Information:
  * sw@platina.com
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
-
-static struct {
-	struct spinlock mutex;
-	struct list_head head;
-} xeth_sbtx;
 
 struct xeth_sbtx_entry {
 	size_t data_len;
@@ -18,25 +13,26 @@ struct xeth_sbtx_entry {
 	unsigned char data[];
 };
 
-static void xeth_sbtx_lock(void)
-{
-	spin_lock(&xeth_sbtx.mutex);
-}
-
-static void xeth_sbtx_unlock(void)
-{
-	spin_unlock(&xeth_sbtx.mutex);
-}
-
-static struct xeth_sbtx_entry *xeth_sbtx_alloc(size_t len)
+static struct xeth_sbtx_entry *xeth_sbtx_alloc(struct xeth_platform_priv *xpp,
+					       size_t len)
 {
 	size_t n = sizeof(struct xeth_sbtx_entry) + len;
 	struct xeth_sbtx_entry *entry = kzalloc(n, GFP_KERNEL);
 	if (entry)
 		entry->data_len = len;
 	else
-		xeth_counter_inc(sbtx_no_mem);
+		xeth_counter_inc(xpp, sbtx_no_mem);
 	return entry;
+}
+
+static void xeth_sbtx_lock(struct xeth_platform_priv *xpp)
+{
+	spin_lock(&xpp->sb.tx.mutex);
+}
+
+static void xeth_sbtx_unlock(struct xeth_platform_priv *xpp)
+{
+	spin_unlock(&xpp->sb.tx.mutex);
 }
 
 static void xeth_sbtx_msg_set(void *data, enum xeth_msg_kind kind)
@@ -55,69 +51,71 @@ static inline u64 xeth_sbtx_ns_inum(struct net_device *nd)
 	return net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
 }
 
-static struct xeth_sbtx_entry *xeth_sbtx_pop(void)
+static struct xeth_sbtx_entry *xeth_sbtx_pop(struct xeth_platform_priv *xpp)
 {
 	struct xeth_sbtx_entry *entry = NULL;
 
-	xeth_sbtx_lock();
-	if (!list_empty(&xeth_sbtx.head)) {
-		entry = list_first_entry(&xeth_sbtx.head,
+	xeth_sbtx_lock(xpp);
+	if (!list_empty(&xpp->sb.tx.head)) {
+		entry = list_first_entry(&xpp->sb.tx.head,
 					 struct xeth_sbtx_entry,
 					 list);
 		list_del(&entry->list);
-		xeth_counter_dec(sbtx_queued);
+		xeth_counter_dec(xpp, sbtx_queued);
 	}
-	xeth_sbtx_unlock();
+	xeth_sbtx_unlock(xpp);
 	return entry;
 }
 
-static void xeth_sbtx_push(struct xeth_sbtx_entry *entry)
+static void xeth_sbtx_push(struct xeth_platform_priv *xpp,
+			   struct xeth_sbtx_entry *entry)
 {
-	xeth_sbtx_lock();
-	list_add(&entry->list, &xeth_sbtx.head);
-	xeth_sbtx_unlock();
-	xeth_counter_inc(sbtx_queued);
+	xeth_sbtx_lock(xpp);
+	list_add(&entry->list, &xpp->sb.tx.head);
+	xeth_sbtx_unlock(xpp);
+	xeth_counter_inc(xpp, sbtx_queued);
 }
 
-static void xeth_sbtx_queue(struct xeth_sbtx_entry *entry)
+static void xeth_sbtx_queue(struct xeth_platform_priv *xpp,
+			    struct xeth_sbtx_entry *entry)
 {
-	if (xeth_flag(sb_connected) == 0) {
+	if (xeth_flag(xpp, sb_connected) == 0) {
 		kfree(entry);
 		return;
 	}
-	xeth_sbtx_lock();
-	list_add_tail(&entry->list, &xeth_sbtx.head);
-	xeth_sbtx_unlock();
-	xeth_counter_inc(sbtx_queued);
+	xeth_sbtx_lock(xpp);
+	list_add_tail(&entry->list, &xpp->sb.tx.head);
+	xeth_sbtx_unlock(xpp);
+	xeth_counter_inc(xpp, sbtx_queued);
 }
 
-void xeth_sbtx_flush(void)
+void xeth_sbtx_flush(struct xeth_platform_priv *xpp)
 {
 	struct xeth_sbtx_entry *entry;
 
-	for (entry = xeth_sbtx_pop(); entry; entry = xeth_sbtx_pop())
+	for (entry = xeth_sbtx_pop(xpp); entry; entry = xeth_sbtx_pop(xpp))
 		kfree(entry);
-	xeth_debug_err(xeth_counter(sbtx_queued) > 0);
+	xeth_debug_err(xeth_counter(xpp, sbtx_queued) > 0);
 }
 
-int xeth_sbtx_service(struct socket *conn)
+int xeth_sbtx_service(struct xeth_platform_priv *xpp)
 {
 	const unsigned int maxms = 320;
 	const unsigned int minms = 10;
 	unsigned int ms = minms;
 	int err = 0;
 
-	spin_lock_init(&xeth_sbtx.mutex);
-	INIT_LIST_HEAD(&xeth_sbtx.head);
+	spin_lock_init(&xpp->sb.tx.mutex);
+	INIT_LIST_HEAD(&xpp->sb.tx.head);
 
 	while (!err &&
-	       xeth_flag(sbrx_task) &&
+	       xeth_flag(xpp, sbrx_task) &&
 	       !kthread_should_stop() &&
 	       !signal_pending(current)) {
 		struct xeth_sbtx_entry *entry;
 
-		xeth_counter_inc(sbtx_ticks);
-		entry = xeth_sbtx_pop();
+		xeth_counter_inc(xpp, sbtx_ticks);
+		entry = xeth_sbtx_pop(xpp);
 		if (!entry) {
 			msleep(ms);
 			if (ms < maxms)
@@ -133,15 +131,16 @@ int xeth_sbtx_service(struct socket *conn)
 			};
 
 			ms = minms;
-			n = kernel_sendmsg(conn, &msg, &iov, 1, iov.iov_len);
+			n = kernel_sendmsg(xpp->sb.conn, &msg,
+					   &iov, 1, iov.iov_len);
 			if (n == -EAGAIN) {
-				xeth_counter_inc(sbtx_retries);
-				xeth_sbtx_push(entry);
+				xeth_counter_inc(xpp, sbtx_retries);
+				xeth_sbtx_push(xpp, entry);
 				msleep(ms);
 			} else {
 				kfree(entry);
 				if (n > 0)
-					xeth_counter_inc(sbtx_msgs);
+					xeth_counter_inc(xpp, sbtx_msgs);
 				else if (n < 0)
 					err = n;
 				else	/* EOF */
@@ -150,29 +149,30 @@ int xeth_sbtx_service(struct socket *conn)
 		}
 	}
 
-	xeth_sbtx_flush();
+	xeth_sbtx_flush(xpp);
 	return err;
 }
 
-int xeth_sbtx_break(void)
+int xeth_sbtx_break(struct xeth_platform_priv *xpp)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_break *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_BREAK);
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_change_upper(u32 upper_xid, u32 lower_xid, bool linking)
+int xeth_sbtx_change_upper(struct xeth_platform_priv *xpp,
+			   u32 upper_xid, u32 lower_xid, bool linking)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_change_upper_xid *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_CHANGE_UPPER_XID);
@@ -180,27 +180,29 @@ int xeth_sbtx_change_upper(u32 upper_xid, u32 lower_xid, bool linking)
 	msg->upper = upper_xid;
 	msg->lower = lower_xid;
 	msg->linking = linking ? 1 : 0;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_et_flags(u32 xid, u32 flags)
+int xeth_sbtx_et_flags(struct xeth_platform_priv *xpp,
+		       u32 xid, u32 flags)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_flags *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_FLAGS);
 	msg = (typeof(msg))&entry->data[0];
 	msg->xid = xid;
 	msg->flags = flags;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-static int xeth_sbtx_et_link_modes(enum xeth_msg_kind kind, u32 xid,
+static int xeth_sbtx_et_link_modes(struct xeth_platform_priv *xpp,
+				   enum xeth_msg_kind kind, u32 xid,
 				   const volatile unsigned long *addr)
 {
 	struct xeth_sbtx_entry *entry;
@@ -208,7 +210,7 @@ static int xeth_sbtx_et_link_modes(enum xeth_msg_kind kind, u32 xid,
 	int bit;
 	const unsigned bits = min(__ETHTOOL_LINK_MODE_MASK_NBITS, 64);
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], kind);
@@ -217,7 +219,7 @@ static int xeth_sbtx_et_link_modes(enum xeth_msg_kind kind, u32 xid,
 	for (bit = 0; bit < bits; bit++)
 		if (test_bit(bit, addr))
 			msg->modes |= 1ULL<<bit;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
@@ -226,14 +228,15 @@ static int xeth_sbtx_et_link_modes(enum xeth_msg_kind kind, u32 xid,
  * SPEED to note the auto-negotiated speed to ethtool user, but in subsequent
  * run, we don't want the controller to override autoneg.
  */
-int xeth_sbtx_et_settings(u32 xid, struct ethtool_link_ksettings *ks)
+int xeth_sbtx_et_settings(struct xeth_platform_priv *xpp,
+			  u32 xid, struct ethtool_link_ksettings *ks)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ethtool_settings *msg;
 	const enum xeth_msg_kind kadv =
 		XETH_MSG_KIND_ETHTOOL_LINK_MODES_ADVERTISING;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_ETHTOOL_SETTINGS);
@@ -247,8 +250,9 @@ int xeth_sbtx_et_settings(u32 xid, struct ethtool_link_ksettings *ks)
 	msg->mdio_support = ks->base.mdio_support;
 	msg->eth_tp_mdix = ks->base.eth_tp_mdix;
 	msg->eth_tp_mdix_ctrl = ks->base.eth_tp_mdix_ctrl;
-	xeth_sbtx_queue(entry);
-	return xeth_sbtx_et_link_modes(kadv, xid, ks->link_modes.advertising);
+	xeth_sbtx_queue(xpp, entry);
+	return xeth_sbtx_et_link_modes(xpp, kadv, xid,
+				       ks->link_modes.advertising);
 }
 
 static const char * const xeth_sbtx_fib_event_names[] = {
@@ -258,8 +262,9 @@ static const char * const xeth_sbtx_fib_event_names[] = {
 	[FIB_EVENT_ENTRY_DEL] "del",
 };
 
-int xeth_sbtx_fib_entry(unsigned long event,
-			struct fib_entry_notifier_info *feni)
+int xeth_sbtx_fib_entry(struct xeth_platform_priv *xpp,
+			struct fib_entry_notifier_info *feni,
+			unsigned long event)
 {
 	int i, nhs = 0;
 	struct xeth_sbtx_entry *entry;
@@ -271,7 +276,7 @@ int xeth_sbtx_fib_entry(unsigned long event,
 		nhs = feni->fi->fib_nhs;
 		n += (nhs * sizeof(struct xeth_next_hop));
 	}
-	entry = xeth_sbtx_alloc(n);
+	entry = xeth_sbtx_alloc(xpp, n);
 	if (!entry)
 		return -ENOMEM;
 	msg = (typeof(msg))&entry->data[0];
@@ -297,12 +302,13 @@ int xeth_sbtx_fib_entry(unsigned long event,
 	no_xeth_debug("%s %pI4/%d w/ %d nexhop(s)",
 		      xeth_sbtx_fib_event_names[event],
 		      &msg->address, feni->dst_len, nhs);
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_fib6_entry(unsigned long event,
-			 struct fib6_entry_notifier_info *feni)
+int xeth_sbtx_fib6_entry(struct xeth_platform_priv *xpp,
+			 struct fib6_entry_notifier_info *feni,
+			 unsigned long event)
 {
 	struct fib6_info *rt = xeth_debug_ptr_err(feni->rt);
 	struct xeth_sbtx_entry *entry;
@@ -316,7 +322,7 @@ int xeth_sbtx_fib6_entry(unsigned long event,
 		return PTR_ERR(rt);
 	if (rt->fib6_nsiblings)
 		n += (rt->fib6_nsiblings * sizeof(struct xeth_next_hop6));
-	entry = xeth_sbtx_alloc(n);
+	entry = xeth_sbtx_alloc(xpp, n);
 	if (!entry)
 		return -ENOMEM;
 	msg = (typeof(msg))&entry->data[0];
@@ -349,16 +355,19 @@ int xeth_sbtx_fib6_entry(unsigned long event,
 		      xeth_sbtx_fib_event_names[event],
 		      &rt->fib6_dst.addr, rt->fib6_dst.plen,
 		      1+i);
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_ifa(struct in_ifaddr *ifa, u32 xid, unsigned long event)
+int xeth_sbtx_ifa(struct xeth_platform_priv *xpp,
+		  struct in_ifaddr *ifa,
+		  unsigned long event,
+		  u32 xid)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ifa *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_IFA);
@@ -367,16 +376,19 @@ int xeth_sbtx_ifa(struct in_ifaddr *ifa, u32 xid, unsigned long event)
 	msg->event = event;
 	msg->address = ifa->ifa_address;
 	msg->mask = ifa->ifa_mask;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_ifa6(struct inet6_ifaddr *ifa6, u32 xid, unsigned long event)
+int xeth_sbtx_ifa6(struct xeth_platform_priv *xpp,
+		   struct inet6_ifaddr *ifa6,
+		   unsigned long event,
+		   u32 xid)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ifa6 *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_IFA6);
@@ -385,17 +397,21 @@ int xeth_sbtx_ifa6(struct inet6_ifaddr *ifa6, u32 xid, unsigned long event)
 	msg->event = event;
 	memcpy(msg->address, &ifa6->addr, 16);
 	msg->length = ifa6->prefix_len;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
-		     unsigned iff, u8 reason)
+int xeth_sbtx_ifinfo(struct xeth_platform_priv *xpp,
+		     struct net_device *nd,
+		     enum xeth_dev_kind kind,
+		     u32 xid,
+		     unsigned iff,
+		     u8 reason)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_ifinfo *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_IFINFO);
@@ -408,16 +424,17 @@ int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
 	msg->kind = kind;
 	msg->reason = reason;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_neigh_update(struct neighbour *neigh)
+int xeth_sbtx_neigh_update(struct xeth_platform_priv *xpp,
+			   struct neighbour *neigh)
 {
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_neigh_update *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], XETH_MSG_KIND_NEIGH_UPDATE);
@@ -436,17 +453,19 @@ int xeth_sbtx_neigh_update(struct neighbour *neigh)
 			memcpy(&msg->lladdr[0], ha, ETH_ALEN);
 	}
 	read_unlock_bh(&neigh->lock);
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }
 
-int xeth_sbtx_netns(struct net *ndnet, bool add)
+int xeth_sbtx_netns(struct xeth_platform_priv *xpp,
+		    struct net *ndnet,
+		    bool add)
 {
 	uint64_t net = net_eq(ndnet, &init_net) ? 1 : ndnet->ns.inum;
 	struct xeth_sbtx_entry *entry;
 	struct xeth_msg_netns *msg;
 
-	entry = xeth_sbtx_alloc(sizeof(*msg));
+	entry = xeth_sbtx_alloc(xpp, sizeof(*msg));
 	if (!entry)
 		return -ENOMEM;
 	xeth_sbtx_msg_set(&entry->data[0], add ?
@@ -454,6 +473,6 @@ int xeth_sbtx_netns(struct net *ndnet, bool add)
 			  XETH_MSG_KIND_NETNS_DEL);
 	msg = (typeof(msg))&entry->data[0];
 	msg->net = net;
-	xeth_sbtx_queue(entry);
+	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }

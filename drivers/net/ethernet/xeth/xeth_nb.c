@@ -9,17 +9,14 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-static struct {
-	struct notifier_block fib, inetaddr, inet6addr, netdevice, netevent;
-} xeth_nb;
-
-static int xeth_nb_fib(struct notifier_block *nb, unsigned long event,
-		       void *ptr)
+int xeth_nb_fib(struct notifier_block *nb, unsigned long event, void *ptr)
 {
 	struct fib_notifier_info *info = ptr;
+	struct xeth_platform_priv *xpp;
 
-	if (nb != &xeth_nb.fib)
-		return NOTIFY_DONE;
+	if (nb->notifier_call != xeth_nb_fib)
+		goto xeth_nb_fib_done;
+	xpp = xeth_platform_priv_of_nb(nb, fib);
 	switch (event) {
 	case FIB_EVENT_ENTRY_REPLACE:
 	case FIB_EVENT_ENTRY_APPEND:
@@ -30,14 +27,14 @@ static int xeth_nb_fib(struct notifier_block *nb, unsigned long event,
 			do {
 				struct fib_entry_notifier_info *feni =
 					container_of(info, typeof(*feni), info);
-				xeth_sbtx_fib_entry(event, feni);
+				xeth_sbtx_fib_entry(xpp, feni, event);
 			} while(0);
 			break;
 		case AF_INET6:
 			do {
 				struct fib6_entry_notifier_info *feni =
 					container_of(info, typeof(*feni), info);
-				xeth_sbtx_fib6_entry(event, feni);
+				xeth_sbtx_fib6_entry(xpp, feni, event);
 			} while(0);
 			break;
 		}
@@ -50,80 +47,91 @@ static int xeth_nb_fib(struct notifier_block *nb, unsigned long event,
 	case FIB_EVENT_VIF_DEL:
 		break;
 	default:
-		xeth_debug("fib event %ld unknown", event);
+		xeth_debug("unknown fib event: %ld", event);
 	}
+xeth_nb_fib_done:
 	return NOTIFY_DONE;
 }
 
-static void xeth_nb_fib_cb(struct notifier_block *nb)
-{
-	xeth_debug("register_fib_cb");
-}
-
-static int xeth_nb_inetaddr(struct notifier_block *nb, unsigned long event,
-			    void *ptr)
+int xeth_nb_inetaddr(struct notifier_block *nb, unsigned long event, void *ptr)
 {
 	struct in_ifaddr *ifa = (struct in_ifaddr *)ptr;
+	struct xeth_platform_priv *xpp;
+	struct net_device *nd;
+	u32 xid;
 
-	if (nb == &xeth_nb.inetaddr && ifa->ifa_dev) {
-		struct net_device *nd = ifa->ifa_dev->dev;
-		if (xeth_upper_check(nd)) {
-			u32 xid = xeth_upper_xid(nd);
-			if (xid)
-				xeth_sbtx_ifa(ifa, xid, event);
-		}
-	}
+	if (nb->notifier_call != xeth_nb_inetaddr)
+		goto xeth_nb_inetaddr_done;
+	xpp = xeth_platform_priv_of_nb(nb, inetaddr);
+	if (!ifa->ifa_dev)
+		goto xeth_nb_inetaddr_done;
+	nd = ifa->ifa_dev->dev;
+	if (!xeth_upper_check(nd))
+		goto xeth_nb_inetaddr_done;
+	xid = xeth_upper_xid(nd);
+	if (!xid)
+		goto xeth_nb_inetaddr_done;
+	xeth_sbtx_ifa(xpp, ifa, event, xid);
+xeth_nb_inetaddr_done:
 	return NOTIFY_DONE;
 }
 
-static int xeth_nb_inet6addr(struct notifier_block *nb, unsigned long event,
-			     void *ptr)
+int xeth_nb_inet6addr(struct notifier_block *nb, unsigned long event, void *ptr)
 {
 	struct inet6_ifaddr *ifa6 = (struct inet6_ifaddr *)ptr;
+	struct xeth_platform_priv *xpp;
+	struct net_device *nd;
+	u32 xid;
 
-	if (nb == &xeth_nb.inet6addr && ifa6->idev) {
-		struct net_device *nd = ifa6->idev->dev;
-		if (xeth_upper_check(nd)) {
-			u32 xid = xeth_upper_xid(nd);
-			if (xid)
-				xeth_sbtx_ifa6(ifa6, xid, event);
-		}
-	}
+	if (nb->notifier_call != xeth_nb_inet6addr)
+		goto xeth_nb_inet6addr_done;
+	xpp = xeth_platform_priv_of_nb(nb, inet6addr);
+	if (!ifa6->idev)
+		goto xeth_nb_inet6addr_done;
+	nd = ifa6->idev->dev;
+	if (!xeth_upper_check(nd))
+		goto xeth_nb_inet6addr_done;
+	xid = xeth_upper_xid(nd);
+	if (!xid)
+		goto xeth_nb_inet6addr_done;
+	xeth_sbtx_ifa6(xpp, ifa6, event, xid);
+xeth_nb_inet6addr_done:
 	return NOTIFY_DONE;
 }
 
-static int xeth_nb_netdevice(struct notifier_block *nb, unsigned long event,
-			     void *ptr)
+int xeth_nb_netdevice(struct notifier_block *nb, unsigned long event, void *ptr)
 {
+	struct xeth_platform_priv *xpp;
 	struct net_device *nd;
 	enum xeth_dev_kind kind;
 	u32 xid;
 
-	if (nb != &xeth_nb.netdevice)
-		return NOTIFY_DONE;
+	if (nb->notifier_call != xeth_nb_netdevice)
+		goto xeth_nb_netdevice_done;
+	xpp = xeth_platform_priv_of_nb(nb, netdevice);
 	nd = netdev_notifier_info_to_dev(ptr);
 	if (nd->ifindex == 1) {
 		struct net *ndnet = dev_net(nd);
 		switch (event) {
 		case NETDEV_REGISTER:
-			xeth_sbtx_netns(ndnet, true);
+			xeth_sbtx_netns(xpp, ndnet, true);
 			break;
 		case NETDEV_UNREGISTER:
-			xeth_sbtx_netns(ndnet, false);
+			xeth_sbtx_netns(xpp, ndnet, false);
 			break;
 		}
-		return NOTIFY_DONE;
+		goto xeth_nb_netdevice_done;
 	}
 	if (!xeth_upper_check(nd))
-		return NOTIFY_DONE;
+		goto xeth_nb_netdevice_done;
 	kind = xeth_upper_kind(nd);
 	xid = xeth_upper_xid(nd);
-	if (xid == 0)
-		return NOTIFY_DONE;
+	if (!xid)
+		goto xeth_nb_netdevice_done;
 	switch (event) {
 	case NETDEV_REGISTER:
 		/* also notifies dev_change_net_namespace */
-		xeth_sbtx_ifinfo(nd, xid, kind, 0, XETH_IFINFO_REASON_REG);
+		xeth_sbtx_ifinfo(xpp, nd, kind, xid, 0, XETH_IFINFO_REASON_REG);
 		break;
 	case NETDEV_UNREGISTER:
 		/* lgnored here, handled by @xeth_upper_lnko_del() */
@@ -131,11 +139,11 @@ static int xeth_nb_netdevice(struct notifier_block *nb, unsigned long event,
 	case NETDEV_CHANGEMTU:
 		if (dev_get_iflink(nd) == nd->ifindex) {
 			/**
-			 * this is a real rev; if it's one of the mux lowers,
+			 * this is a real dev; if it's one of the mux lowers,
 			 * we may need to change the mtu for all of the uppers.
 			 */
-			if (xeth_mux_is_lower(nd)) {
-				xeth_upper_changemtu(nd->mtu, nd->max_mtu);
+			if (xeth_mux_is_lower_rcu(nd)) {
+				xeth_upper_changemtu(xpp, nd->mtu, nd->max_mtu);
 			}
 		}
 		break;
@@ -143,96 +151,22 @@ static int xeth_nb_netdevice(struct notifier_block *nb, unsigned long event,
 		/* ignore here, handled by @xeth_upper_ndo_add_slave() */
 		break;
 	}
+xeth_nb_netdevice_done:
 	return NOTIFY_DONE;
 }
 
-static int xeth_nb_netevent(struct notifier_block *nb, unsigned long event,
-			    void *ptr)
+int xeth_nb_netevent(struct notifier_block *nb, unsigned long event, void *ptr)
 {
-	if (nb != &xeth_nb.netevent)
-		return NOTIFY_DONE;
+	struct xeth_platform_priv *xpp;
+
+	if (nb->notifier_call != xeth_nb_netevent)
+		goto xeth_nb_netevent_done;
+	xpp = xeth_platform_priv_of_nb(nb, netevent);
 	switch (event) {
 	case NETEVENT_NEIGH_UPDATE:
-		xeth_sbtx_neigh_update(ptr);
+		xeth_sbtx_neigh_update(xpp, ptr);
 		break;
 	}
+xeth_nb_netevent_done:
 	return NOTIFY_DONE;
-}
-
-#define xeth_nb_start(NAME)						\
-({									\
-	int _err = 0;							\
-	if (!xeth_flag(NAME##_notifier)) {				\
-		xeth_nb.NAME.notifier_call = xeth_nb_##NAME;		\
-		_err = register_##NAME##_notifier(&xeth_nb.NAME);	\
-		if (!_err)						\
-			xeth_flag_set(NAME##_notifier);			\
-	}								\
-	(_err);								\
-})
-
-int xeth_nb_start_fib(void)
-{
-	int err = 0;
-
-	if (!xeth_flag(fib_notifier)) {
-		xeth_nb.fib.notifier_call = xeth_nb_fib,
-		err = register_fib_notifier(&xeth_nb.fib, xeth_nb_fib_cb);
-		if (!err)
-			xeth_flag_set(fib_notifier);
-	}
-	return err;
-}
-
-int xeth_nb_start_inetaddr(void)
-{
-	return xeth_nb_start(inetaddr);
-}
-
-int xeth_nb_start_inet6addr(void)
-{
-	return xeth_nb_start(inet6addr);
-}
-
-int xeth_nb_start_netdevice(void)
-{
-	return xeth_nb_start(netdevice);
-}
-
-int xeth_nb_start_netevent(void)
-{
-	return xeth_nb_start(netevent);
-}
-
-#define xeth_nb_stop(NAME)						\
-do {									\
-	if (xeth_flag(NAME##_notifier)) {				\
-		unregister_##NAME##_notifier(&xeth_nb.NAME);		\
-		xeth_flag_clear(NAME##_notifier);			\
-	}								\
-} while(0)
-
-void xeth_nb_stop_fib(void)
-{
-	xeth_nb_stop(fib);
-}
-
-void xeth_nb_stop_inetaddr(void)
-{
-	xeth_nb_stop(inetaddr);
-}
-
-void xeth_nb_stop_inet6addr(void)
-{
-	xeth_nb_stop(inet6addr);
-}
-
-void xeth_nb_stop_netdevice(void)
-{
-	xeth_nb_stop(netdevice);
-}
-
-void xeth_nb_stop_netevent(void)
-{
-	xeth_nb_stop(netevent);
 }

@@ -8,26 +8,16 @@
  */
 
 enum {
-	xeth_mux_upper_hash_bits = 4,
-	xeth_mux_upper_hash_bkts = 1 << xeth_mux_upper_hash_bits,
-	xeth_mux_lower_hash_bits = 4,
-	xeth_mux_lower_hash_bkts = 1 << xeth_mux_lower_hash_bits,
 	xeth_mux_txqs = 1,
 	xeth_mux_rxqs = 1,
 };
 
 struct xeth_mux_priv {
-	struct spinlock mutex;
-	struct hlist_head __rcu upper[xeth_mux_upper_hash_bkts];
-	struct net_device *lower[xeth_mux_lower_hash_bkts];
-	atomic64_t counter[xeth_counters];
-	volatile long unsigned int flags;
-	struct xeth_atomic_link_stats link_stats;
-	struct task_struct *sb;
+	struct xeth_platform_priv *xpp;
 };
 
 static const char *const xeth_mux_counter_names[] = {
-#define xeth_mux_name_counter(name)	[xeth_counter_##name] = #name
+#define xeth_mux_name_counter(name)	[xeth_mux_counter_##name] = #name
 	xeth_mux_name_counter(ex_frames),
 	xeth_mux_name_counter(ex_bytes),
 	xeth_mux_name_counter(sb_connections),
@@ -43,191 +33,131 @@ static const char *const xeth_mux_counter_names[] = {
 	xeth_mux_name_counter(sbtx_no_mem),
 	xeth_mux_name_counter(sbtx_queued),
 	xeth_mux_name_counter(sbtx_ticks),
-	[xeth_counters] = NULL,
+	[xeth_mux_n_counters] = NULL,
 };
 
-static const char *const xeth_mux_flag_names[] = {
-#define xeth_mux_name_flag(name)	[xeth_flag_##name] = #name
-	xeth_mux_name_flag(fib_notifier),
-	xeth_mux_name_flag(inetaddr_notifier),
-	xeth_mux_name_flag(inet6addr_notifier),
-	xeth_mux_name_flag(netdevice_notifier),
-	xeth_mux_name_flag(netevent_notifier),
-	xeth_mux_name_flag(sb_task),
-	xeth_mux_name_flag(sb_listen),
-	xeth_mux_name_flag(sb_connected),
-	xeth_mux_name_flag(sbrx_task),
-	[xeth_flags] = NULL,
+static const char *const xeth_mux_priv_flag_names[] = {
+#define xeth_mux_priv_flag_name(name)	[xeth_mux_priv_flag_##name] = #name
+	xeth_mux_priv_flag_name(main_task),
+	xeth_mux_priv_flag_name(provisioned),
+	xeth_mux_priv_flag_name(sb_listen),
+	xeth_mux_priv_flag_name(sb_connected),
+	xeth_mux_priv_flag_name(sbrx_task),
+	xeth_mux_priv_flag_name(fib_notifier),
+	xeth_mux_priv_flag_name(inetaddr_notifier),
+	xeth_mux_priv_flag_name(inet6addr_notifier),
+	xeth_mux_priv_flag_name(netdevice_notifier),
+	xeth_mux_priv_flag_name(netevent_notifier),
+	[xeth_mux_n_priv_flags] = NULL,
 };
-
-static u32 xeth_mux_flags(struct xeth_mux_priv *priv)
-{
-	u32 flags;
-	barrier();
-	flags = priv->flags;
-	return flags;
-}
 
 static const struct net_device_ops xeth_mux_netdev_ops;
 static const struct ethtool_ops xeth_mux_ethtool_ops;
+static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb);
 
-struct net_device *xeth_mux;
-
-static struct xeth_mux_priv *xeth_mux_priv(void)
+static void xeth_mux_setup(struct net_device *mux)
 {
-	return IS_ERR_OR_NULL(xeth_mux) ? NULL : netdev_priv(xeth_mux);
+	mux->netdev_ops = &xeth_mux_netdev_ops;
+	mux->ethtool_ops = &xeth_mux_ethtool_ops;
+	mux->needs_free_netdev = true;
+	mux->priv_destructor = NULL;
+	ether_setup(mux);
+	eth_hw_addr_random(mux);
+	mux->flags |= IFF_MASTER;
+	mux->priv_flags |= IFF_DONT_BRIDGE;
+	mux->priv_flags |= IFF_NO_QUEUE;
+	mux->priv_flags &= ~IFF_TX_SKB_SHARING;
+	mux->min_mtu = ETH_MIN_MTU;
+	mux->max_mtu = ETH_MAX_MTU - VLAN_HLEN;
+	mux->mtu = XETH_SIZEOF_JUMBO_FRAME - VLAN_HLEN;
+
+	/* FIXME should we netif_keep_dst(nd) ? */
 }
 
-/**
- * xeth_add_lowers - add a NULL terminated list of lower netdevs to xeth mux
- *
- * Returns ENODEV if the xeth mux is unavailable; otherwise, returns non-zero
- * status of its ndo_add_slave or zero if all were added successfully. Also
- * returns zero if all are already lowers of xeth mux.
- */
-int xeth_mux_add_lowers(struct net_device *lowers[])
-{
-	struct net_device *xeth_mux = dev_get_by_name(&init_net, "xeth");
-	int (*ndo_add_slave)(struct net_device *upper,
-			    struct net_device *lower,
-			    struct netlink_ext_ack *extack);
-	int i, err = 0;
-
-	if (IS_ERR_OR_NULL(xeth_mux))
-		return -ENODEV;
-	ndo_add_slave = xeth_mux->netdev_ops->ndo_add_slave;
-	for (i = 0; !err && lowers[i]; i++)
-		err = ndo_add_slave(xeth_mux, lowers[i], NULL);
-	xeth_mux->addr_assign_type = NET_ADDR_STOLEN;
-	memcpy(xeth_mux->dev_addr, lowers[0]->dev_addr, ETH_ALEN);
-	dev_put(xeth_mux);
-	return err;
-}
-
-void xeth_mux_add_node(struct hlist_node __rcu *node,
-		       struct hlist_head __rcu *head)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv) {
-		spin_lock(&priv->mutex);
-		hlist_add_head_rcu(node, head);
-		spin_unlock(&priv->mutex);
-	}
-}
-
-void xeth_mux_del_node(struct hlist_node __rcu *node)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv) {
-		spin_lock(&priv->mutex);
-		hlist_del_rcu(node);
-		spin_unlock(&priv->mutex);
-	}
-}
-
-static void xeth_mux_setup(struct net_device *nd)
-{
-	struct xeth_mux_priv *priv = netdev_priv(nd);
-	int i;
-
-	spin_lock_init(&priv->mutex);
-	xeth_reset_link_stats(&priv->link_stats);
-
-	for (i = 0; i < xeth_mux_upper_hash_bkts; i++)
-		WRITE_ONCE(priv->upper[i].first, NULL);
-
-	for (i = 0; i < xeth_counters; i++)
-		atomic64_set(&priv->counter[i], 0LL);
-
-	nd->netdev_ops = &xeth_mux_netdev_ops;
-	nd->ethtool_ops = &xeth_mux_ethtool_ops;
-	nd->needs_free_netdev = true;
-	nd->priv_destructor = NULL;
-	ether_setup(nd);
-	eth_hw_addr_random(nd);
-	nd->flags |= IFF_MASTER;
-	nd->priv_flags |= IFF_DONT_BRIDGE;
-	nd->priv_flags |= IFF_NO_QUEUE;
-	nd->priv_flags &= ~IFF_TX_SKB_SHARING;
-	nd->min_mtu = ETH_MIN_MTU;
-	nd->max_mtu = ETH_MAX_MTU - VLAN_HLEN;
-	nd->mtu = XETH_SIZEOF_JUMBO_FRAME - VLAN_HLEN;
-
-	/* FIXME should we do this? netif_keep_dst(nd); */
-}
-
-static int xeth_mux_open(struct net_device *nd)
+static int xeth_mux_open(struct net_device *mux)
 {
 	struct net_device *lower;
 	struct list_head *lowers;
 	int err;
 
-	netdev_for_each_lower_dev(nd, lower, lowers) {
+	netdev_for_each_lower_dev(mux, lower, lowers) {
 		err = xeth_debug_nd_err(lower, dev_open(lower, NULL));
 		if (err)
 			return err;
 	}
 
-	/* FIXME condition with lowers carrier? */
-	if (!netif_carrier_ok(nd))
-		netif_carrier_on(nd);
+	if (!netif_carrier_ok(mux))
+		netif_carrier_on(mux);
 	return 0;
 }
 
-static int xeth_mux_stop(struct net_device *nd)
+static int xeth_mux_stop(struct net_device *mux)
 {
 	struct net_device *lower;
 	struct list_head *lowers;
 
-	if (netif_carrier_ok(nd))
-		netif_carrier_off(nd);
-	netdev_for_each_lower_dev(nd, lower, lowers)
+	if (netif_carrier_ok(mux))
+		netif_carrier_off(mux);
+	netdev_for_each_lower_dev(mux, lower, lowers)
 		dev_close(lower);
 	return 0;
 }
 
-static int xeth_mux_add_lower(struct net_device *upper,
+static void xeth_mux_reload_lowers(struct net_device *mux)
+{
+	struct xeth_mux_priv *xmp = netdev_priv(mux);
+	struct net_device *lower;
+	struct list_head *lowers;
+	int i, n = 1;
+
+	if (!xmp)
+		return;
+	netdev_for_each_lower_dev(mux, lower, lowers) {
+		for (i = n - 1; i < xeth_mux_lower_hash_bkts; i += n)
+			xmp->xpp->mux.lower_ht[i] = lower;
+		n++;
+	}
+}
+
+static int xeth_mux_add_lower(struct net_device *mux,
 			      struct net_device *lower,
 			      struct netlink_ext_ack *extack)
 {
-	struct xeth_mux_priv *priv = netdev_priv(upper);
+	struct xeth_mux_priv *xmp = netdev_priv(mux);
 	int (*change_mtu_op)(struct net_device *dev, int new_mtu) =
 		lower->netdev_ops->ndo_change_mtu;
 	int err;
 
-	err = xeth_debug_nd_err(lower, dev_set_promiscuity(lower, 1));
+	err = dev_set_promiscuity(lower, 1);
 	if (err < 0)
 		return err;
 
 	if (change_mtu_op) {
-		err = xeth_debug_err(change_mtu_op(lower,
-						   XETH_SIZEOF_JUMBO_FRAME));
+		err = change_mtu_op(lower, XETH_SIZEOF_JUMBO_FRAME);
 		if (err)
 			return err;
 	}
-	if (xeth_debug_err(lower == dev_net(upper)->loopback_dev))
+	if (lower == dev_net(mux)->loopback_dev)
 		return -EOPNOTSUPP;
 
 	if (netdev_is_rx_handler_busy(lower))
-		return xeth_debug_err(rtnl_dereference(lower->rx_handler) !=
-				      xeth_mux_demux) ? -EBUSY : 0;
+		return rtnl_dereference(lower->rx_handler) != xeth_mux_demux ?
+			-EBUSY : 0;
 
-	err = xeth_debug_err(netdev_rx_handler_register(lower,
-							xeth_mux_demux,
-							upper));
+	err = netdev_rx_handler_register(lower, xeth_mux_demux, xmp->xpp);
 	if (err)
 		return err;
 
-	spin_lock(&priv->mutex);
+	spin_lock(&xmp->xpp->mux.mutex);
 
 	lower->flags |= IFF_SLAVE;
-	err = netdev_master_upper_dev_link(lower, upper, NULL, NULL, extack);
+	err = netdev_master_upper_dev_link(lower, mux, NULL, NULL, extack);
 	if (err)
 		lower->flags &= ~IFF_SLAVE;
 	else
-		xeth_mux_reload_lowers();
+		xeth_mux_reload_lowers(mux);
 
-	spin_unlock(&priv->mutex);
+	spin_unlock(&xmp->xpp->mux.mutex);
 
 	if (err)
 		netdev_rx_handler_unregister(lower);
@@ -235,24 +165,63 @@ static int xeth_mux_add_lower(struct net_device *upper,
 	return err;
 }
 
-static int xeth_mux_del_lower(struct net_device *upper,
+static int _xeth_mux_add_all_lowers(struct xeth_platform_priv *xpp)
+{
+	int i, err;
+
+	for (i = 0; !err && xpp->mux.lowers[i]; i++)
+		err = xpp->mux.nd->netdev_ops->ndo_add_slave(xpp->mux.nd,
+							     xpp->mux.lowers[i],
+							     NULL);
+	for (i = 0; xpp->mux.lowers[i]; i++)
+		dev_put(xpp->mux.lowers[i]);
+
+	return err;
+}
+
+static int xeth_mux_add_all_lowers(struct xeth_platform_priv *xpp)
+{
+	int err;
+	rtnl_lock();
+	err = _xeth_mux_add_all_lowers(xpp);
+	rtnl_unlock();
+	return err;
+}
+
+static int xeth_mux_del_lower(struct net_device *mux,
 			      struct net_device *lower)
 {
-	struct xeth_mux_priv *priv = netdev_priv(upper);
+	struct xeth_mux_priv *xmp = netdev_priv(mux);
 
-	spin_lock(&priv->mutex);
+	spin_lock(&xmp->xpp->mux.mutex);
 
 	lower->flags &= ~IFF_SLAVE;
-	netdev_upper_dev_unlink(lower, upper);
-	xeth_mux_reload_lowers();
+	netdev_upper_dev_unlink(lower, mux);
+	xeth_mux_reload_lowers(mux);
 
-	spin_unlock(&priv->mutex);
+	spin_unlock(&xmp->xpp->mux.mutex);
 
 	netdev_rx_handler_unregister(lower);
 
 	dev_set_promiscuity(lower, -1);
 
 	return 0;
+}
+
+static void _xeth_mux_del_all_lowers(struct xeth_platform_priv *xpp)
+{
+	struct net_device *lower;
+	struct list_head *lowers;
+
+	netdev_for_each_lower_dev(xpp->mux.nd, lower, lowers)
+		xeth_mux_del_lower(xpp->mux.nd, lower);
+}
+
+static void xeth_mux_del_all_lowers(struct xeth_platform_priv *xpp)
+{
+	rtnl_lock();
+	_xeth_mux_del_all_lowers(xpp);
+	rtnl_unlock();
 }
 
 static int xeth_mux_lower_hash(struct sk_buff *skb)
@@ -266,16 +235,17 @@ static int xeth_mux_lower_hash(struct sk_buff *skb)
 	return vlan_get_tag(skb, &tci) ? 0 : tci & 1;
 }
 
-static void xeth_mux_vlan_exception(struct sk_buff *skb)
+static void xeth_mux_vlan_exception(struct xeth_platform_priv *xpp,
+				    struct sk_buff *skb)
 {
 	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)skb->data;
 	__be16 h_vlan_proto = veh->h_vlan_proto;
 	u16 tci = be16_to_cpu(veh->h_vlan_TCI);
 	__be16 h_vlan_encapsulated_proto =
 		veh->h_vlan_encapsulated_proto;
-	xeth_counter_inc(ex_frames);
-	xeth_counter_add(ex_bytes, skb->len);
-	eth_type_trans(skb, xeth_mux);
+	xeth_counter_inc(xpp, ex_frames);
+	xeth_counter_add(xpp, ex_bytes, skb->len);
+	eth_type_trans(skb, xpp->mux.nd);
 	skb->vlan_proto = h_vlan_proto;
 	skb->vlan_tci = tci & ~VLAN_PRIO_MASK;
 	skb->protocol = h_vlan_encapsulated_proto;
@@ -283,76 +253,76 @@ static void xeth_mux_vlan_exception(struct sk_buff *skb)
 	xeth_mux_demux(&skb);
 }
 
-static bool xeth_mux_was_exception(struct sk_buff *skb)
+static bool xeth_mux_was_exception(struct xeth_platform_priv *xpp,
+				   struct sk_buff *skb)
 {
 	const u16 expri = 7 << VLAN_PRIO_SHIFT;
 	struct vlan_ethhdr *veh = (struct vlan_ethhdr *)skb->data;
 	if (eth_type_vlan(veh->h_vlan_proto)) {
 		if ((be16_to_cpu(veh->h_vlan_TCI) & VLAN_PRIO_MASK) == expri) {
-			xeth_mux_vlan_exception(skb);
+			xeth_mux_vlan_exception(xpp, skb);
 			return true;
 		}
 	}
 	return false;
 }
 
-static netdev_tx_t xeth_mux_xmit(struct sk_buff *skb, struct net_device *nd)
+static netdev_tx_t xeth_mux_xmit(struct sk_buff *skb, struct net_device *mux)
 {
-	struct xeth_mux_priv *priv = netdev_priv(nd);
+	struct xeth_mux_priv *xmp = netdev_priv(mux);
+	struct xeth_atomic_link_stats *ls = &xmp->xpp->mux.link_stats;
 	struct net_device *lower;
 
-	if (xeth_mux_was_exception(skb))
+	if (xeth_mux_was_exception(xmp->xpp, skb))
 		return NETDEV_TX_OK;
-	lower = priv->lower[xeth_mux_lower_hash(skb)];
+	lower = xmp->xpp->mux.lower_ht[xeth_mux_lower_hash(skb)];
 	if (lower) {
 		if (lower->flags & IFF_UP) {
 			skb->dev = lower;
 			no_xeth_debug_skb(skb);
 			if (dev_queue_xmit(skb)) {
-				atomic64_inc(&priv->link_stats.tx_dropped);
+				atomic64_inc(&ls->tx_dropped);
 			} else {
-				atomic64_inc(&priv->link_stats.tx_packets);
-				atomic64_add(skb->len, &priv->link_stats.tx_bytes);
+				atomic64_inc(&ls->tx_packets);
+				atomic64_add(skb->len, &ls->tx_bytes);
 			}
 		} else {
-			atomic64_inc(&priv->link_stats.tx_errors);
-			atomic64_inc(&priv->link_stats.tx_heartbeat_errors);
+			atomic64_inc(&ls->tx_errors);
+			atomic64_inc(&ls->tx_heartbeat_errors);
 			kfree_skb(skb);
 		}
 	} else {
-		atomic64_inc(&priv->link_stats.tx_errors);
-		atomic64_inc(&priv->link_stats.tx_aborted_errors);
+		atomic64_inc(&ls->tx_errors);
+		atomic64_inc(&ls->tx_aborted_errors);
 		kfree_skb(skb);
 	}
 	return NETDEV_TX_OK;
 }
 
-static void xeth_mux_get_stats64(struct net_device *nd,
-					 struct rtnl_link_stats64 *dst)
+static void xeth_mux_get_stats64(struct net_device *mux,
+				 struct rtnl_link_stats64 *dst)
 {
-	struct xeth_mux_priv *priv = netdev_priv(nd);
-	xeth_get_link_stats(dst, &priv->link_stats);
+	struct xeth_mux_priv *xmp = netdev_priv(mux);
+	xeth_get_link_stats(dst, &xmp->xpp->mux.link_stats);
 }
 
-static void xeth_mux_forward(struct net_device *to, struct sk_buff *skb)
+static void xeth_mux_forward(struct xeth_platform_priv *xpp,
+			     struct sk_buff *skb,
+			     struct net_device *to)
 {
-	struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
-	int rx_result;
-	
-	rx_result = dev_forward_skb(to, skb);
-	if (rx_result == NET_RX_SUCCESS) {
-		atomic64_inc(&priv->link_stats.rx_packets);
-		atomic64_add(skb->len, &priv->link_stats.rx_bytes);
+	if (dev_forward_skb(to, skb) == NET_RX_SUCCESS) {
+		atomic64_inc(&xpp->mux.link_stats.rx_packets);
+		atomic64_add(skb->len, &xpp->mux.link_stats.rx_bytes);
 	} else
-		atomic64_inc(&priv->link_stats.rx_dropped);
+		atomic64_inc(&xpp->mux.link_stats.rx_dropped);
 }
 
-static void xeth_mux_demux_vlan(struct sk_buff *skb)
+static void xeth_mux_demux_vlan(struct xeth_platform_priv *xpp,
+				struct sk_buff *skb)
 {
-	struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
 	struct net_device *upper;
 	u32 xid;
-	
+
 	skb->priority =
 		(typeof(skb->priority))(skb->vlan_tci >> VLAN_PRIO_SHIFT);
 	xid = skb->vlan_tci & VLAN_VID_MASK;
@@ -363,7 +333,7 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 		skb->protocol = proto;
 		skb_pull_inline(skb, VLAN_HLEN);
 	}
-	upper = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
+	upper = xeth_debug_rcu(xeth_upper_lookup_rcu(xpp, xid));
 	if (upper) {
 		struct ethhdr *eth;
 		unsigned char *mac = skb_mac_header(skb);
@@ -373,33 +343,27 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 		eth->h_proto = skb->protocol;
 		skb->vlan_proto = 0;
 		skb->vlan_tci = 0;
-		xeth_mux_forward(upper, skb);
+		xeth_mux_forward(xpp, skb, upper);
 	} else {
 		no_xeth_debug("no upper for xid %d; tci 0x%x",
 			xid, skb->vlan_tci);
-		atomic64_inc(&priv->link_stats.rx_errors);
-		atomic64_inc(&priv->link_stats.rx_nohandler);
+		atomic64_inc(&xpp->mux.link_stats.rx_errors);
+		atomic64_inc(&xpp->mux.link_stats.rx_nohandler);
 		dev_kfree_skb(skb);
 	}
 }
 
-rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
+static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
 {
 	struct sk_buff *skb = *pskb;
-	struct xeth_mux_priv *priv;
-
-	if (IS_ERR_OR_NULL(xeth_mux)) {
-		kfree_skb(skb);
-		return RX_HANDLER_CONSUMED;
-	}
-
-	priv = netdev_priv(xeth_mux);
+	struct xeth_platform_priv *xpp =
+		rcu_dereference(skb->dev->rx_handler_data);
 
 	if (eth_type_vlan(skb->vlan_proto)) {
-		xeth_mux_demux_vlan(skb);
+		xeth_mux_demux_vlan(xpp, skb);
 	} else {
-		atomic64_inc(&priv->link_stats.rx_errors);
-		atomic64_inc(&priv->link_stats.rx_frame_errors);
+		atomic64_inc(&xpp->mux.link_stats.rx_errors);
+		atomic64_inc(&xpp->mux.link_stats.rx_frame_errors);
 		dev_kfree_skb(skb);
 	}
 
@@ -423,8 +387,8 @@ static void xeth_mux_eto_get_drvinfo(struct net_device *nd,
 	strlcpy(drvinfo->fw_version, "n/a", ETHTOOL_FWVERS_LEN);
 	strlcpy(drvinfo->erom_version, "n/a", ETHTOOL_EROMVERS_LEN);
 	strlcpy(drvinfo->bus_info, "n/a", ETHTOOL_BUSINFO_LEN);
-	drvinfo->n_priv_flags = xeth_flags;
-	drvinfo->n_stats = xeth_counters;
+	drvinfo->n_priv_flags = xeth_mux_n_priv_flags;
+	drvinfo->n_stats = xeth_mux_n_counters;
 }
 
 static int xeth_mux_eto_get_sset_count(struct net_device *nd, int sset)
@@ -433,9 +397,9 @@ static int xeth_mux_eto_get_sset_count(struct net_device *nd, int sset)
 	case ETH_SS_TEST:
 		return 0;
 	case ETH_SS_STATS:
-		return xeth_counters;
+		return xeth_mux_n_counters;
 	case ETH_SS_PRIV_FLAGS:
-		return xeth_flags;
+		return xeth_mux_n_priv_flags;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -450,14 +414,15 @@ static void xeth_mux_eto_get_strings(struct net_device *nd, u32 sset, u8 *data)
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		for (i = 0; xeth_mux_counter_names[i]; i++) {
+		for (i = 0; i < xeth_mux_n_counters; i++) {
 			strlcpy(p, xeth_mux_counter_names[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; xeth_mux_flag_names[i]; i++) {
-			strlcpy(p, xeth_mux_flag_names[i], ETH_GSTRING_LEN);
+		for (i = 0; i < xeth_mux_n_priv_flags; i++) {
+			strlcpy(p, xeth_mux_priv_flag_names[i],
+				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
 		break;
@@ -468,16 +433,17 @@ static void xeth_mux_eto_get_stats(struct net_device *nd,
 					   struct ethtool_stats *stats,
 					   u64 *data)
 {
-	struct xeth_mux_priv *priv = netdev_priv(nd);
+	struct xeth_mux_priv *xmp = netdev_priv(nd);
 	int i;
 
-	for (i = 0; i < xeth_counters; i++)
-		*data++ = atomic64_read(&priv->counter[i]);
+	for (i = 0; i < xeth_mux_n_counters; i++)
+		*data++ = atomic64_read(&xmp->xpp->mux.counter[i]);
 }
 
 static u32 xeth_mux_eto_get_priv_flags(struct net_device *nd)
 {
-	return xeth_mux_flags(netdev_priv(nd));
+	struct xeth_mux_priv *xmp = netdev_priv(nd);
+	return xeth_mux_priv_flags(xmp->xpp);
 }
 
 static const struct ethtool_ops xeth_mux_ethtool_ops = {
@@ -489,81 +455,70 @@ static const struct ethtool_ops xeth_mux_ethtool_ops = {
 	.get_priv_flags = xeth_mux_eto_get_priv_flags,
 };
 
-/**
- * xeth_mux_init() - creates the xeth multiplexor.
- *
- * A platform driver may reference the mux netdev with,
- *	xeth = dev_get_by_name(&init_net, "xeth");
- * It may then assign lower netdevs with,
- * 	xeth->netdev_ops->ndo_add_lower(xeth, LOWER, NULL);
- * or through user space with,
- *	ip link set LOWER master xeth
- *
- * See @xeth_upper_init() for how to create the proxy netdevs multiplexed by
- * this device.
- */
-int xeth_mux_init(void)
+int xeth_mux_register(struct xeth_platform_priv *xpp)
 {
-	struct xeth_mux_priv *priv;
-	int err;
+	struct xeth_mux_priv *xmp;
+	int i, err;
 
-	xeth_mux = xeth_debug_ptr_err(alloc_netdev_mqs(sizeof(*priv),
-						       xeth_name,
-						       NET_NAME_USER,
-						       xeth_mux_setup,
-						       xeth_mux_txqs,
-						       xeth_mux_rxqs));
-	if (IS_ERR(xeth_mux))
-		return PTR_ERR(xeth_mux);
+	spin_lock_init(&xpp->mux.mutex);
+	xeth_reset_link_stats(&xpp->mux.link_stats);
+	for (i = 0; i < xeth_mux_upper_hash_bkts; i++)
+		WRITE_ONCE(xpp->mux.upper_hl[i].first, NULL);
+	for (i = 0; i < xeth_mux_n_counters; i++)
+		atomic64_set(&xpp->mux.counter[i], 0LL);
+
+	xpp->mux.nd = alloc_netdev_mqs(sizeof(*xmp),
+				       xpp->pdev->name,
+				       NET_NAME_USER,
+				       xeth_mux_setup,
+				       xeth_mux_txqs,
+				       xeth_mux_rxqs);
+	if (IS_ERR(xpp->mux.nd)) {
+		err = PTR_ERR(xpp->mux.nd);
+		xpp->mux.nd = NULL;
+		return err;
+	}
+	xmp = netdev_priv(xpp->mux.nd);
+	xmp->xpp = xpp;
+
+	xpp->mux.nd->addr_assign_type = NET_ADDR_STOLEN;
+	memcpy(xpp->mux.nd->dev_addr, xpp->mux.lowers[0]->dev_addr, ETH_ALEN);
 
 	rtnl_lock();
-	err = xeth_debug_err(register_netdevice(xeth_mux));
+	err = register_netdevice(xpp->mux.nd);
 	rtnl_unlock();
-
 	if (err) {
-		kfree(xeth_mux);
+		free_netdev(xpp->mux.nd);
+		xpp->mux.nd = NULL;
 		return err;
 	}
 
-	priv = netdev_priv(xeth_mux);
-	priv->sb = xeth_sb_start();
-
-	if (IS_ERR(priv->sb)) {
-		err = PTR_ERR(priv->sb);
-		kfree(xeth_mux);
-		return err;
+	err = xeth_mux_add_all_lowers(xpp);
+	if (err) {
+		xeth_mux_del_all_lowers(xpp);
+		unregister_netdev(xpp->mux.nd);
+		xpp->mux.nd = NULL;
 	}
 
-	return 0;
+	return err;
 }
 
-void xeth_mux_exit(void)
+void xeth_mux_unregister(struct xeth_platform_priv *xpp)
 {
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	struct net_device *lower;
-	struct list_head *lowers;
 	LIST_HEAD(q);
 	int bkt;
 
-	if (!priv)
+	if (IS_ERR_OR_NULL(xpp->mux.nd) ||
+	    xpp->mux.nd->reg_state != NETREG_REGISTERED)
 		return;
-
-	if (xeth_flag(sb_task)) {
-		if (!IS_ERR_OR_NULL(priv->sb)) {
-			kthread_stop(priv->sb);
-			priv->sb = NULL;
-		}
-		while (xeth_flag(sb_task)) ;
-	}
 
 	rtnl_lock();
 
-	netdev_for_each_lower_dev(xeth_mux, lower, lowers)
-		xeth_mux_del_lower(xeth_mux, lower);
+	_xeth_mux_del_all_lowers(xpp);
 
 	rcu_read_lock();
 	for (bkt = 0; bkt < xeth_mux_upper_hash_bkts; bkt++)
-		xeth_upper_queue_unregister(&priv->upper[bkt], &q);
+		xeth_upper_queue_unregister(&xpp->mux.upper_hl[bkt], &q);
 	rcu_read_unlock();
 
 	unregister_netdevice_many(&q);
@@ -572,154 +527,42 @@ void xeth_mux_exit(void)
 
 	rcu_barrier();
 
-	unregister_netdev(xeth_mux);
-	xeth_mux = NULL;
+	unregister_netdev(xpp->mux.nd);
+	xpp->mux.nd = NULL;
 }
 
-u8 xeth_mux_bits(void)
+bool xeth_mux_is_lower_rcu(struct net_device *nd)
 {
-	switch (xeth_encap) {
-	case XETH_ENCAP_VLAN:
-		return 12;
-	}
-	return 0;
-}
+	struct net_device *upper;
+	struct list_head *uppers;
 
-long long xeth_mux_counter(enum xeth_counter index)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	return priv ? atomic64_read(&priv->counter[index]) : 0LL;
-}
-
-void xeth_mux_counter_add(enum xeth_counter index, s64 n)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv)
-		atomic64_add(n, &priv->counter[index]);
-}
-
-void xeth_mux_counter_dec(enum xeth_counter index)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv)
-		atomic64_dec(&priv->counter[index]);
-}
-
-void xeth_mux_counter_inc(enum xeth_counter index)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv)
-		atomic64_inc(&priv->counter[index]);
-}
-
-void xeth_mux_counter_set(enum xeth_counter index, s64 n)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv)
-		atomic64_set(&priv->counter[index], n);
-}
-
-bool xeth_mux_flag(enum xeth_flag bit)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	bool flag = false;
-	
-	if (priv) {
-		smp_mb__before_atomic();
-		flag = variable_test_bit(bit, &priv->flags);
-		smp_mb__after_atomic();
-	}
-	return flag;
-}
-
-void xeth_mux_flag_clear(enum xeth_flag bit)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv) {
-		smp_mb__before_atomic();
-		clear_bit(bit, &priv->flags);
-		smp_mb__after_atomic();
-	}
-}
-
-void xeth_mux_flag_set(enum xeth_flag bit)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	if (priv) {
-		smp_mb__before_atomic();
-		set_bit(bit, &priv->flags);
-		smp_mb__after_atomic();
-	}
-}
-
-int xeth_mux_ifindex(void)
-{
-	return IS_ERR_OR_NULL(xeth_mux) ? 0 : xeth_mux->ifindex;
-}
-
-bool xeth_mux_is_registered(void)
-{
-	return !IS_ERR_OR_NULL(xeth_mux) &&
-		xeth_mux->reg_state == NETREG_REGISTERED;
-}
-
-bool xeth_mux_is_lower(struct net_device *nd)
-{
-	struct net_device *lower;
-	struct list_head *lowers;
-
-	netdev_for_each_lower_dev(xeth_mux, lower, lowers)
-		if (lower == nd)
+	netdev_for_each_upper_dev_rcu(nd, upper, uppers)
+		if (upper->netdev_ops == &xeth_mux_netdev_ops)
 			return true;
 	return false;
 }
 
-struct kobject *xeth_mux_kobj(void)
-{
-	return IS_ERR_OR_NULL(xeth_mux) ? NULL : &xeth_mux->dev.kobj;
-}
-
-void xeth_mux_reload_lowers(void)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	struct net_device *lower;
-	struct list_head *lowers;
-	int i, n = 1;
-
-	if (!priv)
-		return;
-	netdev_for_each_lower_dev(xeth_mux, lower, lowers) {
-		for (i = n - 1; i < ARRAY_SIZE(priv->lower); i += n) {
-			priv->lower[i] = lower;
-		}
-		n++;
-	}
-}
-
 int xeth_mux_queue_xmit(struct sk_buff *skb)
 {
-	if (xeth_mux->flags & IFF_UP) {
-		skb->dev = xeth_mux;
+	struct net_device *mux = NULL;
+	struct net_device *lower;
+	struct list_head *lowers;
+
+	netdev_for_each_lower_dev(skb->dev, lower, lowers)
+		if (lower->netdev_ops == &xeth_mux_netdev_ops) {
+			mux = lower;
+			break;
+		}
+	if (!mux) {
+		kfree_skb_list(skb);
+	} else if (mux->flags & IFF_UP) {
+		skb->dev = mux;
 		dev_queue_xmit(skb);
 	} else {
-		struct xeth_mux_priv *priv = netdev_priv(xeth_mux);
+		struct xeth_mux_priv *xmp = netdev_priv(mux);
+		atomic64_inc(&xmp->xpp->mux.link_stats.tx_errors);
+		atomic64_inc(&xmp->xpp->mux.link_stats.tx_carrier_errors);
 		kfree_skb_list(skb);
-		atomic64_inc(&priv->link_stats.tx_errors);
-		atomic64_inc(&priv->link_stats.tx_carrier_errors);
 	}
 	return NETDEV_TX_OK;
-}
-
-struct hlist_head __rcu *xeth_mux_upper_head_hashed(u32 xid)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	return !priv ? NULL :
-		&priv->upper[hash_min(xid, xeth_mux_upper_hash_bits)];
-}
-
-struct hlist_head __rcu *xeth_mux_upper_head_indexed(u32 index)
-{
-	struct xeth_mux_priv *priv = xeth_mux_priv();
-	return (!priv || index >= xeth_mux_upper_hash_bkts) ?
-		NULL : &priv->upper[index];
 }

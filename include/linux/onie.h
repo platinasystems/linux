@@ -38,10 +38,13 @@ enum onie_type {
 	onie_type_crc			= 0xfe,
 };
 
+extern const struct attribute_group *onie_attr_groups[];
+
 /**
- * onie_tlv_get() - get cached ONIE EEPROM value.
+ * onie_get_tlv() - get cached ONIE EEPROM value.
+ * @dev: onie client
  * @t: &enum onie_type
- * @sz: sizeof destination
+ * @l: sizeof destination
  * @v: destination buffer
  *
  * This expects these @sz sized destinations per @t type::
@@ -74,6 +77,6 @@ enum onie_type {
  * * -EINVAL	- @sz insufficient for value
  * * >=0	- value length
  */
-ssize_t onie_tlv_get(enum onie_type, size_t, u8 *);
+ssize_t onie_get_tlv(struct device *dev, enum onie_type t, size_t l, u8 *v);
 
 #endif /* __ONIE_H */

@@ -161,7 +161,7 @@ static inline void xeth_debug_test(void)
 		}
 		dev_put(lo);
 	}
-	if (rcu_read_lock_held()) 
+	if (rcu_read_lock_held())
 		xeth_debug_hold_rcu(xeth_debug_err_test());
 	else
 		xeth_debug_rcu(xeth_debug_err_test());
