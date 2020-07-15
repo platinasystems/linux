@@ -52,8 +52,10 @@ static struct spinlock xeth_qsfp_mutex;
 
 int xeth_qsfp_register_driver(struct xeth_platform_priv *xpp)
 {
+	scnprintf(xpp->qsfp_kind, xeth_drvr_kind_sz, "%s-qsfp",
+		  xpp->config->name);
 	xpp->qsfp_driver.class = xeth_qsfp_i2c_class;
-	xpp->qsfp_driver.driver.name = xpp->config->driver_name.qsfp;
+	xpp->qsfp_driver.driver.name = xpp->qsfp_kind;
 	xpp->qsfp_driver.probe_new = xeth_qsfp_probe;
 	xpp->qsfp_driver.remove = xeth_qsfp_remove;
 	xpp->qsfp_driver.id_table = xeth_qsfp_id_table;

@@ -111,7 +111,8 @@ static int xeth_main(void *data)
 	addr.sun_family = AF_UNIX;
 	/* Note: This is an abstract namespace w/ addr.sun_path[0] == 0 */
 	n = sizeof(sa_family_t) + 1 +
-		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1, "%s", xeth_name);
+		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1, "%s",
+			  xpp->config->name);
 
 	err = xeth_debug_err(sock_create_kern(current->nsproxy->net_ns,
 					      AF_UNIX, SOCK_SEQPACKET, 0,
@@ -174,7 +175,7 @@ static int xeth_main_probe(struct platform_device *pdev)
 	for (config = xeth_main_configs[0]; true; config++)
 		if (!config)
 			return -ENXIO;
-		else if (!strcmp(config->driver_name.main, pdev->name))
+		else if (!strcmp(config->name, pdev->name))
 			break;
 
 	err = -ENOMEM;
@@ -215,14 +216,14 @@ static int xeth_main_probe(struct platform_device *pdev)
 	if (err)
 		goto xeth_main_probe_err;
 
-	xpp->main = kthread_run(xeth_main, xpp, "%s", pdev->name);
+	xpp->main = kthread_run(xeth_main, xpp, "%s", xpp->config->name);
 	if (IS_ERR(xpp->main)) {
 		err = PTR_ERR(xpp->main);
 		xpp->main = NULL;
 		goto xeth_main_probe_err;
 	}
 
-	xeth_debug("%s", pdev->name);
+	xeth_debug("%s", xpp->config->name);
 	return 0;
 
 xeth_main_probe_err:
@@ -247,7 +248,7 @@ static int xeth_main_remove(struct platform_device *pdev)
 			while (xeth_flag(xpp, main_task)) ;
 		}
 	}
-	xeth_debug("%s", pdev->name);
+	xeth_debug("%s", xpp->config->name);
 	return 0;
 }
 

@@ -37,13 +37,7 @@ static void xeth_platina_mk1_port_setup(struct ethtool_link_ksettings *ks);
 static void xeth_platina_mk1_subport_setup(struct ethtool_link_ksettings *ks);
 
 const struct xeth_config xeth_platina_mk1_config = {
-	.driver_name = {
-		.main = "platina-mk1",
-		.vlan = "platina-mk1-vlan",
-		.bridge = "platina-mk1-bridge",
-		.lag = "platina-mk1-lag",
-		.qsfp = "platina-mk1-qsfp",
-	},
+	.name = "platina-mk1",
 	.setup = xeth_platina_mk1_setup,
 	.port_label = xeth_platina_mk1_port_label,
 	.port_setup = xeth_platina_mk1_port_setup,

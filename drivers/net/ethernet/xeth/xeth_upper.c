@@ -968,20 +968,22 @@ const static struct rtnl_link_ops xeth_upper_lnko_lag = {
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
-static bool xeth_upper_lnko_is_registered(struct rtnl_link_ops *lnko)
+static bool xeth_upper_lnko_registered(struct rtnl_link_ops *lnko)
 {
 	return lnko->list.next || lnko->list.prev;
 }
 
-#define xeth_upper_lnko_register(xpp,name)				\
+#define xeth_upper_lnko_register(xpp,k)					\
 ({									\
-	struct rtnl_link_ops *lnko = &xpp->name##_lnko;			\
+	struct rtnl_link_ops *lnko = &xpp->k##_lnko;			\
 	int _err;							\
-	memcpy(lnko, &xeth_upper_lnko_##name, sizeof(*lnko));		\
-	lnko->kind = xpp->config->driver_name.name;			\
+	memcpy(lnko, &xeth_upper_lnko_##k, sizeof(*lnko));		\
+	scnprintf(xpp->k##_kind, xeth_drvr_kind_sz, "%s-%s",		\
+		  xpp->config->name, #k);				\
+	lnko->kind = xpp->k##_kind;					\
 	_err = rtnl_link_register(lnko);				\
 	if (!_err)							\
-		_err = xeth_upper_lnko_is_registered(lnko) ? 0 : -EINVAL;\
+		_err = xeth_upper_lnko_registered(lnko) ?  0 : -EINVAL;	\
 	(_err);								\
 })
 
@@ -995,10 +997,10 @@ int xeth_upper_register_drivers(struct xeth_platform_priv *xpp)
 	return err;
 }
 
-#define xeth_upper_lnko_unregister(xpp,name)				\
+#define xeth_upper_lnko_unregister(xpp,k)				\
 do {									\
-	if (xeth_upper_lnko_is_registered(&xpp->name##_lnko))		\
-		rtnl_link_unregister(&xpp->name##_lnko);		\
+	if (xeth_upper_lnko_registered(&xpp->k##_lnko))			\
+		rtnl_link_unregister(&xpp->k##_lnko);			\
 } while(0)
 
 void xeth_upper_unregister_drivers(struct xeth_platform_priv *xpp)

@@ -468,7 +468,7 @@ int xeth_mux_register(struct xeth_platform_priv *xpp)
 		atomic64_set(&xpp->mux.counter[i], 0LL);
 
 	xpp->mux.nd = alloc_netdev_mqs(sizeof(*xmp),
-				       xpp->pdev->name,
+				       xpp->config->name,
 				       NET_NAME_USER,
 				       xeth_mux_setup,
 				       xeth_mux_txqs,

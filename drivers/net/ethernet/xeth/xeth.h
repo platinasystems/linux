@@ -44,21 +44,16 @@
 enum {
 	xeth_max_et_flags = 32,
 	xeth_max_et_stats = 512,
-};
-
-enum {
+	xeth_drvr_kind_sz = 32,
 	xeth_et_stat_names_sz = xeth_max_et_stats * ETH_GSTRING_LEN,
-};
-
-enum xeth_encap {
-	XETH_ENCAP_VLAN = 0,
-};
-
-enum {
 	xeth_mux_upper_hash_bits = 4,
 	xeth_mux_upper_hash_bkts = 1 << xeth_mux_upper_hash_bits,
 	xeth_mux_lower_hash_bits = 4,
 	xeth_mux_lower_hash_bkts = 1 << xeth_mux_lower_hash_bits,
+};
+
+enum xeth_encap {
+	XETH_ENCAP_VLAN = 0,
 };
 
 enum xeth_link_stat_index {
@@ -186,6 +181,10 @@ struct xeth_platform_priv {
 		vlan_lnko,
 		bridge_lnko,
 		lag_lnko;
+	char	vlan_kind[xeth_drvr_kind_sz],
+		bridge_kind[xeth_drvr_kind_sz],
+		lag_kind[xeth_drvr_kind_sz],
+		qsfp_kind[xeth_drvr_kind_sz];
 	struct i2c_driver qsfp_driver;
 	char *et_stat_names;
 	/* @provision is a string of "1", "2", or "4" subports per port */
@@ -206,9 +205,7 @@ struct xeth_platform_priv {
 	container_of(ptr, struct xeth_platform_priv, qsfp_driver)
 
 struct xeth_config {
-	struct {
-		char *main, *vlan, *bridge, *lag, *qsfp;
-	} driver_name;
+	const char *name;
 	int (*setup)(struct xeth_platform_priv *);
 	void (*port_label)(struct xeth_platform_priv *, char *, u16);
 	void (*port_setup)(struct ethtool_link_ksettings *);

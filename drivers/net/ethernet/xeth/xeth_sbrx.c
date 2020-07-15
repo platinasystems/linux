@@ -165,7 +165,7 @@ struct task_struct *xeth_sbrx_fork(struct xeth_platform_priv *xpp)
 
 	xeth_flag_set(xpp, sbrx_task);
 	t = xeth_debug_ptr_err(kthread_run(xeth_sbrx_task, xpp, "%s-rx",
-					   xpp->pdev->name));
+					   xpp->config->name));
 	if (IS_ERR(t)) {
 		xeth_flag_clear(xpp, sbrx_task);
 		t = NULL;
