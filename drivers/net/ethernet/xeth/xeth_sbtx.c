@@ -251,8 +251,8 @@ int xeth_sbtx_et_settings(struct xeth_platform_priv *xpp,
 	msg->eth_tp_mdix = ks->base.eth_tp_mdix;
 	msg->eth_tp_mdix_ctrl = ks->base.eth_tp_mdix_ctrl;
 	xeth_sbtx_queue(xpp, entry);
-	return xeth_sbtx_et_link_modes(xpp, kadv, xid,
-				       ks->link_modes.advertising);
+	return xeth_sbtx_et_link_modes(xpp, kadv,
+				       xid, ks->link_modes.advertising);
 }
 
 static const char * const xeth_sbtx_fib_event_names[] = {

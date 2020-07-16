@@ -114,16 +114,15 @@ static int xeth_main(void *data)
 		scnprintf(addr.sun_path+1, UNIX_PATH_MAX-1, "%s",
 			  xpp->config->name);
 
-	err = xeth_debug_err(sock_create_kern(current->nsproxy->net_ns,
-					      AF_UNIX, SOCK_SEQPACKET, 0,
-					      &ln));
+	err = sock_create_kern(current->nsproxy->net_ns,
+			       AF_UNIX, SOCK_SEQPACKET, 0, &ln);
 	if (err)
 		goto xeth_main_exit;
 	SOCK_INODE(ln)->i_mode &= ~(S_IRWXG | S_IRWXO);
-	err = xeth_debug_err(kernel_bind(ln, (struct sockaddr *)&addr, n));
+	err = kernel_bind(ln, (struct sockaddr *)&addr, n);
 	if (err)
 		goto xeth_main_exit;
-	err = xeth_debug_err(kernel_listen(ln, backlog));
+	err = kernel_listen(ln, backlog);
 	if (err)
 		goto xeth_main_exit;
 	xeth_flag_set(xpp, sb_listen);
@@ -137,7 +136,7 @@ static int xeth_main(void *data)
 		}
 		if (!err) {
 			struct task_struct *sbrx;
-			xeth_upper_all_reset_stats(xpp);
+			xeth_upper_reset_all_stats(xpp);
 			xeth_flag_set(xpp, sb_connected);
 			sbrx = xeth_sbrx_fork(xpp);
 			if (sbrx) {
@@ -146,7 +145,7 @@ static int xeth_main(void *data)
 					kthread_stop(sbrx);
 					while (xeth_flag(xpp, sbrx_task)) ;
 				}
-				xeth_upper_all_carrier_off(xpp);
+				xeth_upper_drop_all_carrier(xpp);
 			}
 			sock_release(xpp->sb.conn);
 			xpp->sb.conn = NULL;
@@ -162,7 +161,6 @@ xeth_main_exit:
 	if (ln)
 		sock_release(ln);
 	xeth_flag_clear(xpp, main_task);
-	xeth_debug_err(err);
 	return err;
 }
 
@@ -222,8 +220,6 @@ static int xeth_main_probe(struct platform_device *pdev)
 		xpp->main = NULL;
 		goto xeth_main_probe_err;
 	}
-
-	xeth_debug("%s", xpp->config->name);
 	return 0;
 
 xeth_main_probe_err:
@@ -248,7 +244,6 @@ static int xeth_main_remove(struct platform_device *pdev)
 			while (xeth_flag(xpp, main_task)) ;
 		}
 	}
-	xeth_debug("%s", xpp->config->name);
 	return 0;
 }
 
@@ -350,7 +345,7 @@ static ssize_t xeth_main_store_provision(struct device *dev,
 	int i;
 
 	if (xeth_flag(xpp, provisioned))
-		return -EBUSY;
+		return xeth_debug_err(-EBUSY);
 	for (i = 0; i < sz && i < xpp->config->n_ports; i++)
 		switch (buf[i]) {
 		case '1':

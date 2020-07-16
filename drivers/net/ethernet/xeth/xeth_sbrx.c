@@ -110,7 +110,7 @@ static int xeth_sbrx_service(struct xeth_platform_priv *xpp)
 		xeth_sbrx_link_stat(xpp);
 		break;
 	case XETH_MSG_KIND_DUMP_IFINFO:
-		xeth_upper_all_dump_ifinfo(xpp);
+		xeth_upper_dump_all_ifinfo(xpp);
 		xeth_sbtx_break(xpp);
 		if (xeth_debug_err(xeth_start_notifier(xpp, netdevice)) == 0) {
 			xeth_debug_err(xeth_start_notifier(xpp, inetaddr));

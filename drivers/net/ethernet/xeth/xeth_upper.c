@@ -18,15 +18,16 @@ enum {
 
 struct xeth_upper_priv {
 	struct hlist_node __rcu	node;
-	u32 xid;
-	u8 kind;
+	struct net_device *nd;
 	struct rcu_head rcu;
 	struct xeth_platform_priv *xpp;
 	struct xeth_atomic_link_stats link_stats;
 	struct ethtool_link_ksettings et_settings;
 	struct i2c_client *qsfp;
 	int qsfp_bus;
+	u32 xid;
 	u32 et_priv_flags;
+	u8 kind;
 	atomic64_t et_stats[];
 };
 
@@ -61,7 +62,7 @@ struct net_device *xeth_upper_with_qsfp_bus(struct xeth_platform_priv *xpp,
 	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt))
 		hlist_for_each_entry_rcu(xup, head, node)
 			if (!upper && xup->qsfp_bus == nr)
-				upper = xeth_netdev(xup);
+				upper = xup->nd;
 	rcu_read_unlock();
 	return upper;
 }
@@ -76,7 +77,7 @@ struct net_device *xeth_upper_lookup_rcu(struct xeth_platform_priv *xpp,
 	if (head)
 		hlist_for_each_entry_rcu(xup, head, node)
 			if (xup->xid == xid)
-				return xeth_netdev(xup);
+				return xup->nd;
 	return NULL;
 }
 
@@ -100,25 +101,23 @@ static int xeth_upper_add_rcu(struct net_device *upper)
 	return 0;
 }
 
-static void xeth_upper_cb_carrier_off(struct rcu_head *rcu)
+static void xeth_upper_drop_carrier_cb(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	struct net_device *upper = xeth_netdev(xup);
-	netif_carrier_off(upper);
+	netif_carrier_off(xup->nd);
 }
 
-static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
+static void xeth_upper_dump_ifinfo_cb(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	struct net_device *upper = xeth_netdev(xup);
 	struct in_device *in_dev;
 	struct inet6_dev *in6_dev;
 	struct in_ifaddr *ifa;
 	struct inet6_ifaddr *ifa6;
 
-	xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind, 0,
+	xeth_sbtx_ifinfo(xup->xpp, xup->nd, xup->kind, xup->xid, 0,
 			 XETH_IFINFO_REASON_DUMP);
 
 	if (xup->kind == XETH_DEV_KIND_PORT) {
@@ -129,14 +128,14 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 					   xup->et_priv_flags);
 	}
 
-	in_dev = in_dev_get(upper);
+	in_dev = in_dev_get(xup->nd);
 	if (in_dev) {
 		for (ifa = in_dev->ifa_list; ifa; ifa = ifa->ifa_next)
 			xeth_sbtx_ifa(xup->xpp, ifa, xup->xid, NETDEV_UP);
 		in_dev_put(in_dev);
 	}
 
-	in6_dev = in6_dev_get(upper);
+	in6_dev = in6_dev_get(xup->nd);
 	if (in6_dev) {
 		read_lock_bh(&in6_dev->lock);
 		list_for_each_entry(ifa6, &in6_dev->addr_list, if_list)
@@ -146,21 +145,20 @@ static void xeth_upper_cb_dump_ifinfo(struct rcu_head *rcu)
 	}
 }
 
-static void xeth_upper_cb_dump_lowers(struct rcu_head *rcu)
+static void xeth_upper_dump_lowers_cb(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
-	struct net_device *upper = xeth_netdev(xup);
 	struct net_device *lower;
 	struct list_head *iter;
 
-	netdev_for_each_lower_dev(upper, lower, iter) {
+	netdev_for_each_lower_dev(xup->nd, lower, iter) {
 		struct xeth_upper_priv *xlp = netdev_priv(lower);
 		xeth_sbtx_change_upper(xup->xpp, xup->xid, xlp->xid, true);
 	}
 }
 
-static void xeth_upper_cb_reset_stats(struct rcu_head *rcu)
+static void xeth_upper_reset_stats_cb(struct rcu_head *rcu)
 {
 	struct xeth_upper_priv *xup =
 		container_of(rcu, struct xeth_upper_priv, rcu);
@@ -201,7 +199,7 @@ static int xeth_upper_ndo_open(struct net_device *upper)
 	if (err)
 		return err;
 	netif_carrier_off(upper);
-	return xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind,
+	return xeth_sbtx_ifinfo(xup->xpp, upper, xup->kind, xup->xid,
 				upper->flags, XETH_IFINFO_REASON_UP);
 }
 
@@ -210,7 +208,7 @@ static int xeth_upper_ndo_stop(struct net_device *upper)
 	struct xeth_upper_priv *xup = netdev_priv(upper);
 
 	/* netif_carrier_off() through xeth_sbrx_carrier() */
-	return xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind,
+	return xeth_sbtx_ifinfo(xup->xpp, upper, xup->kind, xup->xid,
 				upper->flags, XETH_IFINFO_REASON_DOWN);
 }
 
@@ -609,7 +607,6 @@ static int xeth_upper_eto_set_fecparam(struct net_device *upper,
 						     FEC_RS);
 		ethtool_link_ksettings_add_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(upper, "set fec auto");
 		break;
 	case ETHTOOL_FEC_OFF:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -622,7 +619,6 @@ static int xeth_upper_eto_set_fecparam(struct net_device *upper,
 						     FEC_RS);
 		ethtool_link_ksettings_del_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(upper, "set fec none");
 		break;
 	case ETHTOOL_FEC_RS:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -635,7 +631,6 @@ static int xeth_upper_eto_set_fecparam(struct net_device *upper,
 						     FEC_RS);
 		ethtool_link_ksettings_del_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(upper, "set fec rs");
 		break;
 	case ETHTOOL_FEC_BASER:
 		if (!ethtool_link_ksettings_test_link_mode(ks, supported,
@@ -648,7 +643,6 @@ static int xeth_upper_eto_set_fecparam(struct net_device *upper,
 						     FEC_RS);
 		ethtool_link_ksettings_add_link_mode(ks, advertising,
 						     FEC_BASER);
-		xeth_debug_nd(upper, "set fec baser");
 		break;
 	default:
 		return -EINVAL;
@@ -746,11 +740,11 @@ static int xeth_upper_register(struct net_device *upper)
 	int err;
 
 	xeth_debug_rcu(xeth_upper_add_rcu(upper));
-	err = xeth_debug_nd_err(upper, register_netdevice(upper));
+	err = register_netdevice(upper);
 	if (err)
 		xeth_del_node(xup->xpp, &xup->node);
 	else
-		err = xeth_sbtx_ifinfo(xup->xpp, upper, xup->xid, xup->kind,
+		err = xeth_sbtx_ifinfo(xup->xpp, upper, xup->kind, xup->xid,
 				       0, XETH_IFINFO_REASON_NEW);
 	return err;
 }
@@ -784,6 +778,7 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 		return -EINVAL;
 	}
 
+	xup->nd = nd;
 	xup->kind = XETH_DEV_KIND_VLAN;
 	xup->xpp = xeth_platform_priv_of_lnko(nd->rtnl_link_ops, vlan);
 	nd->min_mtu = xup->xpp->mux.nd->min_mtu;
@@ -851,6 +846,7 @@ static int xeth_upper_new_bridge_or_lag(struct net *src_net,
 	s64 xid_or_err =
 		xeth_upper_search(xup->xpp, xup->xpp->config->base_xid, range);
 
+	xup->nd = nd;
 	if (kind == XETH_DEV_KIND_BRIDGE)
 		xup->xpp = xeth_platform_priv_of_lnko(lnko, bridge);
 	else
@@ -913,7 +909,7 @@ static void xeth_upper_lnko_del(struct net_device *nd, struct list_head *q)
 	netdev_for_each_upper_dev_rcu(nd, upper, uppers)
 		xeth_upper_ndo_del_lower(upper, nd);
 
-	xeth_sbtx_ifinfo(xup->xpp, nd, xid, kind, 0, XETH_IFINFO_REASON_DEL);
+	xeth_sbtx_ifinfo(xup->xpp, nd, kind, xid, 0, XETH_IFINFO_REASON_DEL);
 	xeth_del_node(xup->xpp, &xup->node);
 	unregister_netdevice_queue(nd, q);
 }
@@ -1018,44 +1014,48 @@ bool xeth_upper_check(struct net_device *nd)
 		nd->netdev_ops->ndo_stop == xeth_upper_ndo_stop;
 }
 
-static void xeth_upper_call_rcu_for_all(struct xeth_platform_priv *xpp,
-					rcu_callback_t cb)
+static void xeth_upper_call_for_all(struct xeth_platform_priv *xpp,
+				    rcu_callback_t cb)
 {
 	int bkt;
-	struct xeth_upper_priv *xup = NULL;
-	struct hlist_head __rcu *head = xeth_indexed_upper_head(xpp, 0);
+	struct hlist_head __rcu *head;
 
 	rcu_read_lock();
-	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt))
+	head = xeth_indexed_upper_head(xpp, 0);
+	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt)) {
+		struct xeth_upper_priv *xup = NULL;
 		hlist_for_each_entry_rcu(xup, head, node)
 			call_rcu(&xup->rcu, cb);
+	}
 	rcu_read_unlock();
 	rcu_barrier();
 }
 
-static void xeth_upper_call_rcu_for_each_kind(struct xeth_platform_priv *xpp,
-					      rcu_callback_t cb,
-					      u8 kind)
+static void xeth_upper_call_for_each_kind(struct xeth_platform_priv *xpp,
+					  rcu_callback_t cb,
+					  u8 kind)
 {
 	int bkt;
-	struct xeth_upper_priv *xup = NULL;
-	struct hlist_head __rcu *head = xeth_indexed_upper_head(xpp, 0);
+	struct hlist_head __rcu *head;
 
 	rcu_read_lock();
-	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt))
+	head = xeth_indexed_upper_head(xpp, 0);
+	for (bkt = 0; head; head = xeth_indexed_upper_head(xpp, ++bkt)) {
+		struct xeth_upper_priv *xup = NULL;
 		hlist_for_each_entry_rcu(xup, head, node)
 			if (xup->kind == kind)
 				call_rcu(&xup->rcu, cb);
+	}
 	rcu_read_unlock();
 	rcu_barrier();
 }
 
-void xeth_upper_all_carrier_off(struct xeth_platform_priv *xpp)
+void xeth_upper_drop_all_carrier(struct xeth_platform_priv *xpp)
 {
-	xeth_upper_call_rcu_for_all(xpp, xeth_upper_cb_carrier_off);
+	xeth_upper_call_for_all(xpp, xeth_upper_drop_carrier_cb);
 }
 
-void xeth_upper_all_dump_ifinfo(struct xeth_platform_priv *xpp)
+void xeth_upper_dump_all_ifinfo(struct xeth_platform_priv *xpp)
 {
 	/* We *must* dump in this order: ports, lags, vlans, then bridges as
 	 * the control daemon needs to know all of the ports before the vlans
@@ -1063,23 +1063,23 @@ void xeth_upper_all_dump_ifinfo(struct xeth_platform_priv *xpp)
 	 * then be muxed to vlans. And finally, bridges that may have any of
 	 * these kinds as members.
 	 */
-	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
-					  XETH_DEV_KIND_PORT);
-	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
-					  XETH_DEV_KIND_LAG);
-	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
+	xeth_upper_call_for_each_kind(xpp, xeth_upper_dump_ifinfo_cb,
+				      XETH_DEV_KIND_PORT);
+	xeth_upper_call_for_each_kind(xpp, xeth_upper_dump_ifinfo_cb,
+				      XETH_DEV_KIND_LAG);
+	xeth_upper_call_for_each_kind(xpp, xeth_upper_dump_ifinfo_cb,
 					  XETH_DEV_KIND_VLAN);
-	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_ifinfo,
-					  XETH_DEV_KIND_BRIDGE);
-	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_lowers,
-					  XETH_DEV_KIND_LAG);
-	xeth_upper_call_rcu_for_each_kind(xpp, xeth_upper_cb_dump_lowers,
-					  XETH_DEV_KIND_BRIDGE);
+	xeth_upper_call_for_each_kind(xpp, xeth_upper_dump_ifinfo_cb,
+				      XETH_DEV_KIND_BRIDGE);
+	xeth_upper_call_for_each_kind(xpp, xeth_upper_dump_lowers_cb,
+				      XETH_DEV_KIND_LAG);
+	xeth_upper_call_for_each_kind(xpp, xeth_upper_dump_lowers_cb,
+				      XETH_DEV_KIND_BRIDGE);
 }
 
-void xeth_upper_all_reset_stats(struct xeth_platform_priv *xpp)
+void xeth_upper_reset_all_stats(struct xeth_platform_priv *xpp)
 {
-	xeth_upper_call_rcu_for_all(xpp, xeth_upper_cb_reset_stats);
+	xeth_upper_call_for_all(xpp, xeth_upper_reset_stats_cb);
 }
 
 void xeth_upper_changemtu(struct xeth_platform_priv *xpp, int mtu, int max_mtu)
@@ -1190,7 +1190,7 @@ void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
 {
 	struct xeth_upper_priv *xup = NULL;
 	hlist_for_each_entry_rcu(xup, head, node)
-		xeth_upper_lnko_del(xeth_netdev(xup), q);
+		xeth_upper_lnko_del(xup->nd, q);
 }
 
 u32 xeth_upper_xid(struct net_device *upper)
@@ -1241,14 +1241,15 @@ int xeth_upper_new_port(struct xeth_platform_priv *xpp,
 	if (IS_ERR(port))
 		return PTR_ERR(port);
 
-	xup = netdev_priv(port);
-	xup->xpp = xpp;
+	port->min_mtu = xpp->mux.nd->min_mtu;
+	port->max_mtu = xpp->mux.nd->max_mtu;
 
+	xup = netdev_priv(port);
+	xup->nd = port;
+	xup->xpp = xpp;
 	xup->xid = xid;
 	xup->kind = XETH_DEV_KIND_PORT;
 	xup->qsfp_bus = qsfp_bus;
-	port->min_mtu = xup->xpp->mux.nd->min_mtu;
-	port->max_mtu = xup->xpp->mux.nd->max_mtu;
 
 	if (ea) {
 		u64_to_ether_addr(ea, port->dev_addr);
@@ -1269,7 +1270,7 @@ int xeth_upper_new_port(struct xeth_platform_priv *xpp,
 		return err;
 	}
 
-	xeth_debug_nd(port, "xid %u mac %pM", xid, port->dev_addr);
+	no_xeth_debug_nd(port, "new: xid %u, mac %pM", xid, port->dev_addr);
 
 	return 0;
 }

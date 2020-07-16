@@ -450,12 +450,6 @@ do {									\
 	}								\
 } while(0)
 
-static inline void *xeth_netdev(const void *priv)
-{
-	const size_t offset = ALIGN(sizeof(struct net_device), NETDEV_ALIGN);
-	return priv ? (char *)priv - offset : NULL;
-}
-
 static inline void xeth_add_node(struct xeth_platform_priv *xpp,
 				 struct hlist_node __rcu *node,
 				 struct hlist_head __rcu *head)
@@ -549,9 +543,9 @@ int xeth_upper_new_port(struct xeth_platform_priv *xpp,
 
 struct net_device *xeth_upper_lookup_rcu(struct xeth_platform_priv *xpp,
 					 u32 xid);
-void xeth_upper_all_carrier_off(struct xeth_platform_priv *);
-void xeth_upper_all_dump_ifinfo(struct xeth_platform_priv *);
-void xeth_upper_all_reset_stats(struct xeth_platform_priv *);
+void xeth_upper_drop_all_carrier(struct xeth_platform_priv *);
+void xeth_upper_dump_all_ifinfo(struct xeth_platform_priv *);
+void xeth_upper_reset_all_stats(struct xeth_platform_priv *);
 void xeth_upper_changemtu(struct xeth_platform_priv *xpp, int mtu, int max_mtu);
 bool xeth_upper_check(struct net_device *);
 void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count);
