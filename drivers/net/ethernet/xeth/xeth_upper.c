@@ -273,10 +273,11 @@ static int xeth_upper_ndo_stop(struct net_device *nd)
 static netdev_tx_t xeth_upper_ndo_xmit(struct sk_buff *skb,
 				       struct net_device *nd)
 {
-	switch (xeth_encap) {
-	case XETH_ENCAP_VLAN:
-		return xeth_upper_encap_vlan(skb, nd);
-	}
+	if (netif_carrier_ok(nd))
+		switch (xeth_encap) {
+		case XETH_ENCAP_VLAN:
+			return xeth_upper_encap_vlan(skb, nd);
+		}
 	kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
