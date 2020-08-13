@@ -217,10 +217,11 @@ static netdev_tx_t xeth_upper_ndo_xmit(struct sk_buff *skb,
 {
 	struct xeth_upper_priv *xup = netdev_priv(upper);
 
-	switch (xup->xpp->config->encap) {
-	case XETH_ENCAP_VLAN:
-		return xeth_upper_encap_vlan(upper, skb);
-	}
+	if (netif_carrier_ok(upper))
+		switch (xup->xpp->config->encap) {
+		case XETH_ENCAP_VLAN:
+			return xeth_upper_encap_vlan(upper, skb);
+		}
 	kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
