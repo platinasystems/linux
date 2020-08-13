@@ -36,7 +36,7 @@
 # define xeth_name "xeth"
 #endif	/* KBUILD_MODNAME */
 
-#define xeth_version "2.0"
+#define xeth_version "2.1"
 
 #include <xeth_debug.h>
 
