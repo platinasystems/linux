@@ -143,7 +143,10 @@ static int xeth_main(void *data)
 				xeth_sbtx_service(xpp);
 				if (xeth_flag(xpp, sbrx_task)) {
 					kthread_stop(sbrx);
-					while (xeth_flag(xpp, sbrx_task)) ;
+					while (xeth_flag(xpp, sbrx_task)) {
+						msleep_interruptible(100);
+						schedule();
+					}
 				}
 				xeth_upper_drop_all_carrier(xpp);
 			}
