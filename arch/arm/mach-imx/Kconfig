@@ -464,7 +464,6 @@ config	SOC_IMX53
 	bool "i.MX53 support"
 	select PINCTRL_IMX53
 	select SOC_IMX5
-
 	help
 	  This enables support for Freescale i.MX53 processor.
 
