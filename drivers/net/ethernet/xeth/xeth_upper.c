@@ -328,11 +328,6 @@ static int xeth_upper_ndo_add_lower(struct net_device *upper_nd,
 	if (err)
 		return err;
 
-	if (upper_priv->kind == XETH_DEV_KIND_BRIDGE)
-		lower_nd->priv_flags |= IFF_BRIDGE_PORT;
-	else if (upper_priv->kind == XETH_DEV_KIND_LAG)
-		lower_nd->priv_flags |= IFF_TEAM_PORT;
-
 	lower_nd->flags |= IFF_SLAVE;
 
 	return xeth_sbtx_change_upper(upper_priv->xid, lower_priv->xid, true);
