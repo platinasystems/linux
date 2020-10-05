@@ -274,15 +274,6 @@ static int xeth_upper_ndo_add_lower(struct net_device *upper,
 	if (err)
 		return err;
 
-	switch (xup->kind) {
-	case XETH_DEV_KIND_BRIDGE:
-		lower->priv_flags |= IFF_BRIDGE_PORT;
-		break;
-	case XETH_DEV_KIND_LAG:
-		lower->priv_flags |= IFF_TEAM_PORT;
-		break;
-	}
-
 	lower->flags |= IFF_SLAVE;
 
 	return xeth_sbtx_change_upper(xup->xpp, xup->xid, xlp->xid, true);
