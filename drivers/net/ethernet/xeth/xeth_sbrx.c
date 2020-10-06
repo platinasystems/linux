@@ -38,7 +38,6 @@ static void xeth_sbrx_carrier(struct xeth_platform_priv *xpp)
 		switch (msg->flag) {
 		case XETH_CARRIER_ON:
 			netif_carrier_on(upper);
-			netdev_notify_peers(upper);
 			break;
 		case XETH_CARRIER_OFF:
 			netif_carrier_off(upper);
