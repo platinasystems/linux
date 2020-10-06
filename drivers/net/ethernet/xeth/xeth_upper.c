@@ -669,6 +669,8 @@ static void xeth_upper_lnko_setup_port(struct net_device *upper)
 	upper->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	upper->priv_flags |= IFF_NO_QUEUE;
 	upper->priv_flags |= IFF_PHONY_HEADROOM;
+	upper->priv_flags |= IFF_DONT_BRIDGE;
+	upper->features |= NETIF_F_VLAN_CHALLENGED;
 }
 
 static void xeth_upper_lnko_setup_vlan(struct net_device *upper)
@@ -681,6 +683,8 @@ static void xeth_upper_lnko_setup_vlan(struct net_device *upper)
 	upper->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	upper->priv_flags |= IFF_NO_QUEUE;
 	upper->priv_flags |= IFF_PHONY_HEADROOM;
+	upper->priv_flags |= IFF_DONT_BRIDGE;
+	upper->features |= NETIF_F_VLAN_CHALLENGED;
 }
 
 static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *upper)
@@ -694,6 +698,8 @@ static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *upper)
 	upper->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	upper->priv_flags |= IFF_NO_QUEUE;
 	upper->priv_flags |= IFF_PHONY_HEADROOM;
+	upper->priv_flags |= IFF_DONT_BRIDGE;
+	upper->features |= NETIF_F_VLAN_CHALLENGED;
 	upper->features |= NETIF_F_NETNS_LOCAL;
 }
 
