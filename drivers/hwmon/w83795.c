@@ -33,6 +33,7 @@
 #include <linux/hwmon.h>
 #include <linux/hwmon-sysfs.h>
 #include <linux/err.h>
+#include <linux/of_device.h>
 #include <linux/mutex.h>
 #include <linux/jiffies.h>
 #include <linux/util_macros.h>
@@ -2161,7 +2162,11 @@ static int w83795_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	i2c_set_clientdata(client, data);
-	data->chip_type = id->driver_data;
+	if (id) {
+		data->chip_type = id->driver_data;
+	} else {
+		data->chip_type = (enum chip_types)of_device_get_match_data(dev);
+	}
 	data->bank = i2c_smbus_read_byte_data(client, W83795_REG_BANKSEL);
 	mutex_init(&data->update_lock);
 
@@ -2265,9 +2270,17 @@ static const struct i2c_device_id w83795_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, w83795_id);
 
+static const struct of_device_id w83795_of_match[] = {
+	{ .compatible = "nuvoton,w83795g", .data = (void *)w83795g, },
+	{ .compatible = "nuvoton,w83795adg", .data = (void *)w83795adg, },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, w83795_of_match);
+
 static struct i2c_driver w83795_driver = {
 	.driver = {
 		   .name = "w83795",
+		   .of_match_table = of_match_ptr(w83795_of_match),
 	},
 	.probe		= w83795_probe,
 	.remove		= w83795_remove,
