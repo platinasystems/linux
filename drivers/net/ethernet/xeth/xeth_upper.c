@@ -739,14 +739,8 @@ static void xeth_upper_lnko_setup_port(struct net_device *nd)
 	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
-#ifdef __FIXME__
-	nd->features |= NETIF_F_LLTX;
-	nd->features |= VETH_FEATURES;
-
-	nd->hw_features = VETH_FEATURES;
-	nd->hw_enc_features = VETH_FEATURES;
-	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
-#endif /* __FIXEME__ */
+	nd->priv_flags |= IFF_DONT_BRIDGE;
+	nd->features |= NETIF_F_VLAN_CHALLENGED;
 	nd->min_mtu = xeth_mux->min_mtu;
 	nd->max_mtu = xeth_mux->max_mtu;
 }
@@ -761,14 +755,8 @@ static void xeth_upper_lnko_setup_vlan(struct net_device *nd)
 	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
-#ifdef __FIXME__
-	nd->features |= NETIF_F_LLTX;
-	nd->features |= VETH_FEATURES;
-
-	nd->hw_features = VETH_FEATURES;
-	nd->hw_enc_features = VETH_FEATURES;
-	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
-#endif /* __FIXEME__ */
+	nd->priv_flags |= IFF_DONT_BRIDGE;
+	nd->features |= NETIF_F_VLAN_CHALLENGED;
 }
 
 static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
@@ -782,15 +770,9 @@ static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
 	nd->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
+	nd->priv_flags |= IFF_DONT_BRIDGE;
+	nd->features |= NETIF_F_VLAN_CHALLENGED;
 	nd->features |= NETIF_F_NETNS_LOCAL;
-#ifdef __FIXME__
-	nd->features |= NETIF_F_LLTX;
-	nd->features |= VETH_FEATURES;
-
-	nd->hw_features = VETH_FEATURES;
-	nd->hw_enc_features = VETH_FEATURES;
-	nd->mpls_features = NETIF_F_HW_CSUM | NETIF_F_GSO_SOFTWARE;
-#endif /* __FIXEME__ */
 }
 
 static int xeth_upper_lnko_validate_vlan(struct nlattr *tb[],
