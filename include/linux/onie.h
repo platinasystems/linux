@@ -9,6 +9,8 @@
 #ifndef __ONIE_H
 #define __ONIE_H
 
+#include <linux/device.h>
+
 #define ONIE_NVMEM_CELL	"onie-data"
 
 enum onie_max {
