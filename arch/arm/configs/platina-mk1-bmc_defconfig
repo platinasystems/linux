@@ -1,10 +1,10 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.25 Kernel Configuration
+# Linux/arm 5.4.74 Kernel Configuration
 #
 
 #
-# Compiler: gcc (Ubuntu 9.3.0-10ubuntu2) 9.3.0
+# Compiler: gcc (Ubuntu 9.3.0-17ubuntu1~20.04) 9.3.0
 #
 CONFIG_CC_IS_GCC=y
 CONFIG_GCC_VERSION=90300
@@ -12,7 +12,6 @@ CONFIG_CLANG_VERSION=0
 CONFIG_CC_CAN_LINK=y
 CONFIG_CC_HAS_ASM_GOTO=y
 CONFIG_CC_HAS_ASM_INLINE=y
-CONFIG_CC_HAS_WARN_MAYBE_UNINITIALIZED=y
 CONFIG_IRQ_WORK=y
 CONFIG_BUILDTIME_EXTABLE_SORT=y
 
@@ -1306,6 +1305,7 @@ CONFIG_SERIAL_MCTRL_GPIO=y
 # CONFIG_TTY_PRINTK is not set
 # CONFIG_HVC_DCC is not set
 # CONFIG_IPMI_HANDLER is not set
+# CONFIG_IPMB_DEVICE_INTERFACE is not set
 CONFIG_HW_RANDOM=y
 # CONFIG_HW_RANDOM_TIMERIOMEM is not set
 CONFIG_HW_RANDOM_IMX_RNGC=y
@@ -1373,7 +1373,8 @@ CONFIG_I2C_IMX=y
 # end of I2C Hardware Bus support
 
 # CONFIG_I2C_STUB is not set
-# CONFIG_I2C_SLAVE is not set
+CONFIG_I2C_SLAVE=y
+CONFIG_I2C_SLAVE_EEPROM=y
 # CONFIG_I2C_DEBUG_CORE is not set
 # CONFIG_I2C_DEBUG_ALGO is not set
 # CONFIG_I2C_DEBUG_BUS is not set
