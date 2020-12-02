@@ -9,6 +9,10 @@
  * Platina Systems MK1 top of rack switch.
  */
 
+enum {
+	xeth_platina_mk1_ports = 32,
+};
+
 struct xeth_platina_mk1_priv {
 	/* @first_port must be 0 or 1 */
 	u16 first_port;
@@ -35,6 +39,7 @@ static void xeth_platina_mk1_port_label(struct xeth_platform_priv *xpp,
 					u16 port);
 static void xeth_platina_mk1_port_setup(struct ethtool_link_ksettings *ks);
 static void xeth_platina_mk1_subport_setup(struct ethtool_link_ksettings *ks);
+static size_t xeth_platina_mk1_provision(u16 port);
 
 const struct xeth_config xeth_platina_mk1_config = {
 	.name = "platina-mk1",
@@ -42,19 +47,28 @@ const struct xeth_config xeth_platina_mk1_config = {
 	.port_label = xeth_platina_mk1_port_label,
 	.port_setup = xeth_platina_mk1_port_setup,
 	.subport_setup = xeth_platina_mk1_subport_setup,
+	.provision = xeth_platina_mk1_provision,
 	.et_flag_names = xeth_platina_mk1_et_flag_names,
 	.qsfp_bus = xeth_platina_mk1_qsfp_bus,
 	.qsfp_i2c_address_list = I2C_ADDRS(0x50, 0x51),
 	.top_xid = 3999,
 	.base_xid = 3000,
 	.max_et_stats = 512,
-	.n_ports = 32,
+	.n_ports = xeth_platina_mk1_ports,
 	.n_mux_bits = 12,
 	.n_rxqs = 1,
 	.n_txqs = 1,
 	.n_et_flags = 3,
 	.encap = XETH_ENCAP_VLAN,
 };
+
+static int xeth_platina_mk1_provision_param[xeth_platina_mk1_ports];
+static int xeth_platina_mk1_provisioned;
+module_param_array_named(platina_mk1_provision,
+			 xeth_platina_mk1_provision_param, int,
+			 &xeth_platina_mk1_provisioned, 0644);
+MODULE_PARM_DESC(platina_mk1_provision,
+		 " 1 (default), 2, or 4 subports per port");
 
 static struct net_device *xeth_platina_mk1_get_lower(const char * const akas[])
 {
@@ -178,4 +192,15 @@ static void xeth_platina_mk1_subport_setup(struct ethtool_link_ksettings *ks)
 	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_BASER);
 	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
 		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static size_t xeth_platina_mk1_provision(u16 port)
+{
+	size_t n = 1;
+	if (port < xeth_platina_mk1_provisioned) {
+		size_t provision = xeth_platina_mk1_provision_param[port];
+		if (provision == 2 || provision == 4)
+			n = provision;
+	}
+	return n;
 }

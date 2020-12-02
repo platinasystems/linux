@@ -39,7 +39,6 @@ static const char *const xeth_mux_counter_names[] = {
 static const char *const xeth_mux_priv_flag_names[] = {
 #define xeth_mux_priv_flag_name(name)	[xeth_mux_priv_flag_##name] = #name
 	xeth_mux_priv_flag_name(main_task),
-	xeth_mux_priv_flag_name(provisioned),
 	xeth_mux_priv_flag_name(sb_listen),
 	xeth_mux_priv_flag_name(sb_connected),
 	xeth_mux_priv_flag_name(sbrx_task),

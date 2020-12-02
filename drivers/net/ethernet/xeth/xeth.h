@@ -104,7 +104,6 @@ enum xeth_mux_counter {
 
 enum xeth_mux_priv_flag {
 	xeth_mux_priv_flag_main_task,
-	xeth_mux_priv_flag_provisioned,
 	xeth_mux_priv_flag_sb_listen,
 	xeth_mux_priv_flag_sb_connected,
 	xeth_mux_priv_flag_sbrx_task,
@@ -187,8 +186,6 @@ struct xeth_platform_priv {
 		qsfp_kind[xeth_drvr_kind_sz];
 	struct i2c_driver qsfp_driver;
 	char *et_stat_names;
-	/* @provision is a string of "1", "2", or "4" subports per port */
-	char *provision;
 	/* assign random mac if @base_mac is zero */
 	u64 base_mac;
 	u16 n_et_stats;
@@ -210,6 +207,7 @@ struct xeth_config {
 	void (*port_label)(struct xeth_platform_priv *, char *, u16);
 	void (*port_setup)(struct ethtool_link_ksettings *);
 	void (*subport_setup)(struct ethtool_link_ksettings *);
+	size_t (*provision)(u16);
 	/* @et_flag_names is a NULL terminated list */
 	const char * const *et_flag_names;
 	/* @qsfp_bus is a -1 terminated list */
@@ -219,19 +217,6 @@ struct xeth_config {
 	u8 n_mux_bits, n_rxqs, n_txqs, n_et_flags;
 	enum xeth_encap encap;
 };
-
-static inline ssize_t xeth_provision(struct xeth_platform_priv *xpp, u16 port)
-{
-	if (port >= xpp->config->n_ports)
-		return -EINVAL;
-	switch (xpp->provision[port]) {
-	case '2':
-		return 2;
-	case '4':
-		return 4;
-	}
-	return 1;
-}
 
 static inline long long _xeth_counter(struct xeth_platform_priv *xpp,
 				      enum xeth_mux_counter index)

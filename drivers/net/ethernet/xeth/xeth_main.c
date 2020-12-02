@@ -73,23 +73,9 @@ static int xeth_main(void *data)
 	get_task_comm(name, current);
 	allow_signal(SIGKILL);
 
-	/**
-	 * reg mux before waiting for provisioned so admin can see state w/
-	 *	ethtool --show-priv-flags platina-mk1
-	 */
 	err = xeth_mux_register(xpp);
 	if (err)
 		return err;
-
-	while(!xeth_flag(xpp, provisioned))
-		if (signal_pending(current)) {
-			xeth_mux_unregister(xpp);
-			return 0;
-		} else {
-			msleep_interruptible(100);
-			schedule();
-			continue;
-		}
 
 	err = xeth_upper_register_drivers(xpp);
 	if (err) {
@@ -184,10 +170,6 @@ static int xeth_main_probe(struct platform_device *pdev)
 	if (!xpp)
 		goto xeth_main_probe_err;
 
-	xpp->provision = devm_kzalloc(&pdev->dev, PAGE_SIZE, GFP_KERNEL);
-	if (!xpp->provision)
-		goto xeth_main_probe_err;
-
 	xpp->et_stat_names = devm_kzalloc(&pdev->dev,
 					  ETH_GSTRING_LEN*config->max_et_stats,
 					  GFP_KERNEL);
@@ -253,7 +235,6 @@ static int xeth_main_remove(struct platform_device *pdev)
 static int xeth_main_ports(struct xeth_platform_priv *xpp)
 {
 	char ifname[IFNAMSIZ];
-	ssize_t provision;
 	u64 ea;
 	u32 o, xid;
 	u16 port;
@@ -262,9 +243,8 @@ static int xeth_main_ports(struct xeth_platform_priv *xpp)
 	void (*setup)(struct ethtool_link_ksettings *);
 
 	for (port = 0; port < xpp->config->n_ports; port++) {
-		provision = xeth_provision(xpp, port);
-		if (provision < 0)
-			return provision;
+		size_t provision = xpp->config->provision ?
+			xpp->config->provision(port) : 1;
 
 		xpp->config->port_label(xpp, ifname, port);
 
@@ -307,27 +287,6 @@ static int xeth_main_ports(struct xeth_platform_priv *xpp)
 	return 0;
 }
 
-static ssize_t xeth_main_show_provision(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
-{
-	struct xeth_platform_priv *xpp = dev_get_drvdata(dev);
-	int i;
-
-	for (i = 0; i < xpp->config->n_ports; i++)
-		switch (xpp->provision[i]) {
-		case '2':
-			buf[i] = '2';
-			break;
-		case '4':
-			buf[i] = '4';
-			break;
-		default:
-			buf[i] = '1';
-		}
-	return i;
-}
-
 static ssize_t xeth_main_show_stat_name(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
@@ -338,27 +297,6 @@ static ssize_t xeth_main_show_stat_name(struct device *dev,
 	return strlcpy(buf, xpp->et_stat_names +
 		       ((xpp->n_et_stats - 1) * ETH_GSTRING_LEN),
 		       ETH_GSTRING_LEN);
-}
-
-static ssize_t xeth_main_store_provision(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t sz)
-{
-	struct xeth_platform_priv *xpp = dev_get_drvdata(dev);
-	int i;
-
-	if (xeth_flag(xpp, provisioned))
-		return xeth_debug_err(-EBUSY);
-	for (i = 0; i < sz && i < xpp->config->n_ports; i++)
-		switch (buf[i]) {
-		case '1':
-		case '2':
-		case '4':
-			xpp->provision[i] = buf[i];
-			break;
-		}
-	xeth_flag_set(xpp, provisioned);
-	return sz;
 }
 
 static ssize_t xeth_main_store_stat_name(struct device *dev,
@@ -387,16 +325,11 @@ static ssize_t xeth_main_store_stat_name(struct device *dev,
 	return sz;
 }
 
-struct device_attribute xeth_main_attr_provision =
-	__ATTR(provision, 0644,
-	       xeth_main_show_provision, xeth_main_store_provision);
-
 struct device_attribute xeth_main_attr_stat_name =
 	__ATTR(stat_name, 0644,
 	       xeth_main_show_stat_name, xeth_main_store_stat_name);
 
 static struct attribute *xeth_main_attrs[] = {
-	&xeth_main_attr_provision.attr,
 	&xeth_main_attr_stat_name.attr,
 	NULL,
 };
