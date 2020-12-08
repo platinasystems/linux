@@ -63,6 +63,7 @@ const struct xeth_config xeth_platina_mk1_config = {
 	.n_rxqs = 1,
 	.n_txqs = 1,
 	.n_et_flags = 3,
+	.n_lag_ports = 8,
 	.encap = XETH_ENCAP_VLAN,
 };
 

@@ -31,6 +31,11 @@ struct xeth_upper_priv {
 	atomic64_t et_stats[];
 };
 
+static bool xeth_upper_is_xeth_port(struct net_device *nd);
+static bool xeth_upper_is_xeth_vlan(struct net_device *nd);
+static bool xeth_upper_is_xeth_bridge(struct net_device *nd);
+static bool xeth_upper_is_xeth_lag(struct net_device *nd);
+
 int xeth_upper_qsfp_bus(struct net_device *upper)
 {
 	struct xeth_upper_priv *xup = netdev_priv(upper);
@@ -248,23 +253,49 @@ static void xeth_upper_ndo_get_stats64(struct net_device *upper,
 	xeth_get_link_stats(dst, &xup->link_stats);
 }
 
+static int xeth_upper_n_lowers(struct net_device *upper)
+{
+	struct net_device *lower;
+	struct list_head *lowers;
+	int i = 0;
+
+	netdev_for_each_lower_dev(upper, lower, lowers)
+		i++;
+	return i;
+}
+
 static int xeth_upper_ndo_add_lower(struct net_device *upper,
 				    struct net_device *lower,
 				    struct netlink_ext_ack *extack)
 {
 	struct xeth_upper_priv *xup = netdev_priv(upper);
-	struct xeth_upper_priv *xlp;
+	struct xeth_upper_priv *xlp = netdev_priv(lower);
 	int err = 0;
 
-	if (!xeth_upper_check(lower)) {
-		NL_SET_ERR_MSG(extack, "This device may only enslave another xeth");
-		return -EOPNOTSUPP;
+	if (xeth_upper_is_xeth_lag(upper)) {
+		if (!xeth_upper_is_xeth_port(lower)) {
+			NL_SET_ERR_MSG(extack, "xeth-lag may only master "
+				       "xeth-port");
+			return -EINVAL;
+		}
+		if (xeth_upper_n_lowers(upper) >=
+		    xup->xpp->config->n_lag_ports) {
+			NL_SET_ERR_MSG(extack, "xeth-lag full of lowers");
+			return -ERANGE;
+		}
+	} else if (xeth_upper_is_xeth_bridge(upper)) {
+		if (!xeth_upper_is_xeth_port(lower) &&
+		    !xeth_upper_is_xeth_vlan(lower) &&
+		    !xeth_upper_is_xeth_lag(lower)) {
+			NL_SET_ERR_MSG(extack, "xeth-bridge may only master "
+				       "xeth-port,vlan,lag");
+			return -EINVAL;
+		}
+	} else {
+		NL_SET_ERR_MSG(extack, "unsupported master");
+		return -EINVAL;
 	}
-	xlp = netdev_priv(lower);
-	if (xlp->kind == XETH_DEV_KIND_BRIDGE) {
-		NL_SET_ERR_MSG(extack, "Cannot enslave a bridge");
-		return -EOPNOTSUPP;
-	}
+
 	if (netdev_master_upper_dev_get(lower))
 		return -EBUSY;
 
@@ -312,6 +343,11 @@ static const struct net_device_ops xeth_upper_ndo_port = {
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
 	.ndo_change_mtu = xeth_upper_ndo_change_mtu,
 };
+
+static bool xeth_upper_is_xeth_port(struct net_device *nd)
+{
+	return nd->netdev_ops != &xeth_upper_ndo_port;
+}
 
 static const struct net_device_ops xeth_upper_ndo_vlan = {
 	.ndo_open = xeth_upper_ndo_open,
@@ -785,8 +821,12 @@ static int xeth_upper_lnko_new_vlan(struct net *src_net, struct net_device *nd,
 	li = nla_get_u32(tb[IFLA_LINK]);
 	link = dev_get_by_index_rcu(dev_net(nd), li);
 	if (IS_ERR_OR_NULL(link)) {
-		NL_SET_ERR_MSG(extack, "link must be an XETH_PORT");
+		NL_SET_ERR_MSG(extack, "can't get link");
 		return PTR_ERR(link);
+	}
+	if (!xeth_upper_is_xeth_port(link) && !xeth_upper_is_xeth_lag(link)) {
+		NL_SET_ERR_MSG(extack, "link must be an xeth port or lag");
+		return -EINVAL;
 	}
 	linkpriv = netdev_priv(link);
 	muxbits = xup->xpp->config->n_mux_bits;
@@ -944,6 +984,11 @@ const static struct rtnl_link_ops xeth_upper_lnko_vlan = {
 	.maxtype	= XETH_VLAN_N_IFLA - 1,
 };
 
+static bool xeth_upper_is_xeth_vlan(struct net_device *nd)
+{
+	return nd->rtnl_link_ops == &xeth_upper_lnko_vlan;
+}
+
 const static struct rtnl_link_ops xeth_upper_lnko_bridge = {
 	.priv_size	= sizeof(struct xeth_upper_priv),
 	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
@@ -953,6 +998,11 @@ const static struct rtnl_link_ops xeth_upper_lnko_bridge = {
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
 
+static bool xeth_upper_is_xeth_bridge(struct net_device *nd)
+{
+	return nd->rtnl_link_ops == &xeth_upper_lnko_bridge;
+}
+
 const static struct rtnl_link_ops xeth_upper_lnko_lag = {
 	.priv_size	= sizeof(struct xeth_upper_priv),
 	.setup		= xeth_upper_lnko_setup_bridge_or_lag,
@@ -961,6 +1011,11 @@ const static struct rtnl_link_ops xeth_upper_lnko_lag = {
 	.dellink	= xeth_upper_lnko_del_bridge_or_lag,
 	.get_link_net	= xeth_upper_lnko_get_net,
 };
+
+static bool xeth_upper_is_xeth_lag(struct net_device *nd)
+{
+	return nd->rtnl_link_ops == &xeth_upper_lnko_lag;
+}
 
 static bool xeth_upper_lnko_registered(struct rtnl_link_ops *lnko)
 {

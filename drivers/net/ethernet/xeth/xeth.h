@@ -214,7 +214,7 @@ struct xeth_config {
 	const int *qsfp_bus;
 	const unsigned short *qsfp_i2c_address_list;
 	u16 base_xid, top_xid, max_et_stats, n_ports;
-	u8 n_mux_bits, n_rxqs, n_txqs, n_et_flags;
+	u8 n_mux_bits, n_rxqs, n_txqs, n_et_flags, n_lag_ports;
 	enum xeth_encap encap;
 };
 
