@@ -12,37 +12,8 @@
 
 #include <xeth_platina.h>
 
-struct platform_device *xeth_platform_device;
-static struct platform_driver xeth_main_platform_driver;
-module_platform_driver(xeth_main_platform_driver);
-
-MODULE_DESCRIPTION("mux proxy netdevs with a remote switch");
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Platina Systems");
-MODULE_VERSION(xeth_version);
-MODULE_SOFTDEP("pre: nvmem-onie");
-
 int xeth_encap = XETH_ENCAP_VLAN;
 int xeth_base_xid = 3000;
-
-static int xeth_main(void *);
-static int xeth_main_probe(struct platform_device *);
-static int xeth_main_remove(struct platform_device *);
-static int xeth_main_ports(struct xeth_platform_priv *xpp);
-
-static const struct platform_device_id xeth_main_device_ids[] = {
-	xeth_platina_device_ids,
-	{},
-};
-
-MODULE_DEVICE_TABLE(platform, xeth_main_device_ids);
-
-static struct platform_driver xeth_main_platform_driver = {
-	.driver		= { .name = KBUILD_MODNAME },
-	.probe		= xeth_main_probe,
-	.remove		= xeth_main_remove,
-	.id_table	= xeth_main_device_ids,
-};
 
 static const struct xeth_config * const xeth_main_configs[] = {
 	xeth_platina_configs,
@@ -60,6 +31,8 @@ static const struct attribute_group *xeth_main_attr_groups[] = {
 	NULL,
 };
 
+static int xeth_main_ports(struct xeth_platform_priv *);
+
 static int xeth_main(void *data)
 {
 	struct xeth_platform_priv *xpp = data;
@@ -68,6 +41,7 @@ static int xeth_main(void *data)
 	struct sockaddr_un addr;
 	char name[TASK_COMM_LEN];
 	int n, err;
+
 
 	xeth_flag_set(xpp, main_task);
 	get_task_comm(name, current);
@@ -185,7 +159,7 @@ static int xeth_main_probe(struct platform_device *pdev)
 	xpp->pdev = pdev;
 	xpp->config = config;
 
-	err = devm_device_add_groups(&pdev->dev, onie_attr_groups);
+	err = onie_add_attrs(&pdev->dev);
 	if (err)
 		goto xeth_main_probe_err;
 
@@ -333,3 +307,35 @@ static struct attribute *xeth_main_attrs[] = {
 	&xeth_main_attr_stat_name.attr,
 	NULL,
 };
+
+static const struct platform_device_id xeth_main_device_ids[] = {
+	xeth_platina_device_ids,
+	{},
+};
+
+MODULE_DEVICE_TABLE(platform, xeth_main_device_ids);
+
+static struct platform_driver xeth_main_platform_driver = {
+	.driver		= { .name = KBUILD_MODNAME },
+	.probe		= xeth_main_probe,
+	.remove		= xeth_main_remove,
+	.id_table	= xeth_main_device_ids,
+};
+
+static int __init xeth_main_init(void)
+{
+	return platform_driver_register(&xeth_main_platform_driver);
+}
+module_init(xeth_main_init);
+
+static void __exit xeth_main_exit(void)
+{
+	platform_driver_unregister(&xeth_main_platform_driver);
+}
+module_exit(xeth_main_exit);
+
+MODULE_DESCRIPTION("mux proxy netdevs with a remote switch");
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Platina Systems");
+MODULE_VERSION(xeth_version);
+MODULE_SOFTDEP("pre: nvmem-onie");

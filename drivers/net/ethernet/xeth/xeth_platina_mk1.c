@@ -33,6 +33,10 @@ static const int const xeth_platina_mk1_qsfp_bus[] = {
 	-1,
 };
 
+static const char * const xeth_platina_mk1_onie_product_akas[] = {
+	NULL,
+};
+
 static int xeth_platina_mk1_setup(struct xeth_platform_priv *);
 static void xeth_platina_mk1_port_label(struct xeth_platform_priv *xpp,
 					char *ifname,

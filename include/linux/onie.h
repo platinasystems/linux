@@ -13,6 +13,8 @@
 
 #define ONIE_NVMEM_CELL	"onie-data"
 
+static const char onie_driver_name[] = "onie";
+
 enum onie_max {
 	onie_max_data	= 2048,
 	onie_max_tlv	=  255,
@@ -40,16 +42,67 @@ enum onie_type {
 	onie_type_crc			= 0xfe,
 };
 
-extern const struct attribute_group *onie_attr_groups[];
+/**
+ * onie_match - platform device match for the ONIE probe.
+ * @name: matching platform device name
+ * @vendor: matching ONIE vendor string followed by comma separated aliases
+ * @match: matching field string followed by comma separated aliases
+ * @type: matching ONIE field type (e.g. onie_type_product_name or part_number)
+ */
+struct onie_match {
+	const char *name;
+	const char *vendor;
+	const char *match;
+	enum onie_type type;
+};
+
+#define ONIE_MATCH(NAME, VENDOR, MATCH, TYPE)				\
+{									\
+	.name = NAME,							\
+	.vendor = VENDOR,						\
+	.match = MATCH,							\
+	.type = TYPE,							\
+}
+
+struct onie_ops {
+	ssize_t (*get_tlv)(struct device *, enum onie_type, size_t, u8 *);
+	int (*set_tlv)(struct device *, enum onie_type, size_t, const u8 *);
+	int (*add_attrs)(struct device *);
+};
 
 /**
- * onie_get_tlv() - get cached ONIE EEPROM value.
+ * onie_dev() - returns ONIE ancester of given device.
+ */
+static inline struct device *onie_dev(struct device *dev)
+{
+	for (;dev && dev->driver; dev = dev->parent)
+		if (!strcmp(onie_driver_name, dev->driver->name))
+			return dev;
+	return NULL;
+}
+
+/**
+ * onie_get_ops() - returns ops of ONIE ancester.
+ */
+static inline struct onie_ops const *onie_get_ops(struct device *dev)
+{
+	struct device *onie = onie_dev(dev);
+	struct onie_ops const **pops;
+
+	if (!onie)
+		return NULL;
+	pops = (struct onie_ops const **)(dev_get_drvdata(onie));
+	return pops ? *pops : NULL;
+}
+
+/**
+ * onie_get_tlv() - get a cached ONIE NVMEM value.
  * @dev: onie client
  * @t: &enum onie_type
  * @l: sizeof destination
  * @v: destination buffer
  *
- * This expects these @sz sized destinations per @t type::
+ * This expects these @l sized destinations per @t type::
  *
  *	onie_max_tlv	onie_type_product_name,
  *			onie_type_part_number,
@@ -75,10 +128,54 @@ extern const struct attribute_group *onie_attr_groups[];
  *	onie_max_data	onie_type_vendor_extension
  *
  * Return:
- * * -ENOMSG	- type not present
- * * -EINVAL	- @sz insufficient for value
+ * * -ENODEV	- @dev isn't an onie client
+ * * -ENOMSG	- type @t unavailable
+ * * -EINVAL	- size @l insufficient for value
  * * >=0	- value length
  */
-ssize_t onie_get_tlv(struct device *dev, enum onie_type t, size_t l, u8 *v);
+static inline ssize_t onie_get_tlv(struct device *dev,
+				   enum onie_type t, size_t l, u8 *v)
+{
+	struct onie_ops const *ops = onie_get_ops(dev);
+
+	return ops ? ops->get_tlv(dev, t, l, v) : -ENODEV;
+}
+
+/**
+ * onie_set_tlv() - set a ONIE NVMEM value.
+ * @dev: onie client
+ * @t: &enum onie_type
+ * @l: sizeof destination
+ * @v: destination buffer
+ *
+ * This expects these @l sized destinations per @t type as @onie_get_tlv.
+ *
+ * Return:
+ * * -ENODEV	- @dev isn't an onie client
+ * * -ERANGE	- @v exceeds range of type @t
+ * * -EINVAL	- size @l insufficient for value
+ * * >=0	- value length
+ */
+static inline ssize_t onie_set_tlv(struct device *dev,
+				   enum onie_type t, size_t l, u8 *v)
+{
+	struct onie_ops const *ops = onie_get_ops(dev);
+
+	return ops ? ops->set_tlv(dev, t, l, v) : -ENODEV;
+}
+
+/**
+ * onie_add_attrs() - add ONIE sysfs attributes to given client device.
+ * @dev: onie client
+ *
+ * Returns 0 on success or error code from sysfs_create_group on failure.
+ */
+static inline ssize_t onie_add_attrs(struct device *dev)
+{
+	struct onie_ops const *ops = onie_get_ops(dev);
+
+	/* add attrs to client dev, not onie provider */
+	return ops ? ops->add_attrs(dev) : -ENODEV;
+}
 
 #endif /* __ONIE_H */
