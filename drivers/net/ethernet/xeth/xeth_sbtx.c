@@ -424,6 +424,7 @@ int xeth_sbtx_ifinfo(struct xeth_platform_priv *xpp,
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
 	msg->kind = kind;
 	msg->reason = reason;
+	msg->features = nd->features;
 	xeth_sbtx_queue(xpp, entry);
 	return 0;
 }

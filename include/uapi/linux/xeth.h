@@ -95,6 +95,7 @@ enum xeth_msg_ifinfo_reason {
 	XETH_IFINFO_REASON_DUMP,
 	XETH_IFINFO_REASON_REG,
 	XETH_IFINFO_REASON_UNREG,
+	XETH_IFINFO_REASON_FEATURES,
 };
 
 struct xeth_msg_header {
@@ -235,6 +236,7 @@ struct xeth_msg_ifinfo {
 	uint8_t addr[XETH_ALEN];
 	uint8_t kind;
 	uint8_t reason;
+	uint64_t features;
 };
 
 struct xeth_msg_neigh_update {
