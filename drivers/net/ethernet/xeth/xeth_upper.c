@@ -346,7 +346,7 @@ static const struct net_device_ops xeth_upper_ndo_port = {
 
 static bool xeth_upper_is_xeth_port(struct net_device *nd)
 {
-	return nd->netdev_ops != &xeth_upper_ndo_port;
+	return nd->netdev_ops == &xeth_upper_ndo_port;
 }
 
 static const struct net_device_ops xeth_upper_ndo_vlan = {
