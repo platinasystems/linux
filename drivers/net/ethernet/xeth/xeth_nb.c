@@ -66,7 +66,7 @@ int xeth_nb_inetaddr(struct notifier_block *nb, unsigned long event, void *ptr)
 	if (!ifa->ifa_dev)
 		goto xeth_nb_inetaddr_done;
 	nd = ifa->ifa_dev->dev;
-	if (!xeth_upper_check(nd))
+	if (!xeth_is_upper(nd))
 		goto xeth_nb_inetaddr_done;
 	xid = xeth_upper_xid(nd);
 	if (!xid)
@@ -89,7 +89,7 @@ int xeth_nb_inet6addr(struct notifier_block *nb, unsigned long event, void *ptr)
 	if (!ifa6->idev)
 		goto xeth_nb_inet6addr_done;
 	nd = ifa6->idev->dev;
-	if (!xeth_upper_check(nd))
+	if (!xeth_is_upper(nd))
 		goto xeth_nb_inet6addr_done;
 	xid = xeth_upper_xid(nd);
 	if (!xid)
@@ -122,7 +122,7 @@ int xeth_nb_netdevice(struct notifier_block *nb, unsigned long event, void *ptr)
 		}
 		goto xeth_nb_netdevice_done;
 	}
-	if (!xeth_upper_check(nd))
+	if (!xeth_is_upper(nd))
 		goto xeth_nb_netdevice_done;
 	kind = xeth_upper_kind(nd);
 	xid = xeth_upper_xid(nd);

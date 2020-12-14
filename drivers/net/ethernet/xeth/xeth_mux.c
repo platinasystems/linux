@@ -50,13 +50,13 @@ static const char *const xeth_mux_priv_flag_names[] = {
 	[xeth_mux_n_priv_flags] = NULL,
 };
 
-static const struct net_device_ops xeth_mux_netdev_ops;
+static const struct net_device_ops xeth_mux_ndo;
 static const struct ethtool_ops xeth_mux_ethtool_ops;
 static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb);
 
 static void xeth_mux_setup(struct net_device *mux)
 {
-	mux->netdev_ops = &xeth_mux_netdev_ops;
+	mux->netdev_ops = &xeth_mux_ndo;
 	mux->ethtool_ops = &xeth_mux_ethtool_ops;
 	mux->needs_free_netdev = true;
 	mux->priv_destructor = NULL;
@@ -369,7 +369,7 @@ static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
 	return RX_HANDLER_CONSUMED;
 }
 
-static const struct net_device_ops xeth_mux_netdev_ops = {
+static const struct net_device_ops xeth_mux_ndo = {
 	.ndo_open	= xeth_mux_open,
 	.ndo_stop	= xeth_mux_stop,
 	.ndo_start_xmit	= xeth_mux_xmit,
@@ -377,6 +377,11 @@ static const struct net_device_ops xeth_mux_netdev_ops = {
 	.ndo_del_slave	= xeth_mux_del_lower,
 	.ndo_get_stats64= xeth_mux_get_stats64,
 };
+
+bool xeth_is_mux(struct net_device *nd)
+{
+	return nd->netdev_ops == &xeth_mux_ndo;
+}
 
 static void xeth_mux_eto_get_drvinfo(struct net_device *nd,
 				     struct ethtool_drvinfo *drvinfo)
@@ -536,7 +541,7 @@ bool xeth_mux_is_lower_rcu(struct net_device *nd)
 	struct list_head *uppers;
 
 	netdev_for_each_upper_dev_rcu(nd, upper, uppers)
-		if (upper->netdev_ops == &xeth_mux_netdev_ops)
+		if (xeth_is_mux(upper))
 			return true;
 	return false;
 }
@@ -548,7 +553,7 @@ int xeth_mux_queue_xmit(struct sk_buff *skb)
 	struct list_head *lowers;
 
 	netdev_for_each_lower_dev(skb->dev, lower, lowers)
-		if (lower->netdev_ops == &xeth_mux_netdev_ops) {
+		if (xeth_is_mux(lower)) {
 			mux = lower;
 			break;
 		}

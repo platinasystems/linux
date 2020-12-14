@@ -51,17 +51,10 @@ static int xeth_main(void *data)
 	if (err)
 		return err;
 
-	err = xeth_upper_register_drivers(xpp);
-	if (err) {
-		xeth_mux_unregister(xpp);
-		return err;
-	}
-
 	err = xeth_main_ports(xpp);
 	if (!err)
 		err = xeth_qsfp_register_driver(xpp);
 	if (err) {
-		xeth_upper_unregister_drivers(xpp);
 		xeth_mux_unregister(xpp);
 		return err;
 	}
@@ -119,7 +112,6 @@ static int xeth_main(void *data)
 	xeth_flag_clear(xpp, sb_listen);
 xeth_main_exit:
 	xeth_qsfp_unregister_driver(xpp);
-	xeth_upper_unregister_drivers(xpp);
 	xeth_mux_unregister(xpp);
 	if (ln)
 		sock_release(ln);
@@ -324,12 +316,16 @@ static struct platform_driver xeth_main_platform_driver = {
 
 static int __init xeth_main_init(void)
 {
-	return platform_driver_register(&xeth_main_platform_driver);
+	int err = xeth_upper_register_drivers();
+	if (!err)
+		err = platform_driver_register(&xeth_main_platform_driver);
+	return err;
 }
 module_init(xeth_main_init);
 
 static void __exit xeth_main_exit(void)
 {
+	xeth_upper_unregister_drivers();
 	platform_driver_unregister(&xeth_main_platform_driver);
 }
 module_exit(xeth_main_exit);

@@ -176,14 +176,7 @@ struct xeth_platform_priv {
 		inet6addr_nb,
 		netdevice_nb,
 		netevent_nb;
-	struct rtnl_link_ops
-		vlan_lnko,
-		bridge_lnko,
-		lag_lnko;
-	char	vlan_kind[xeth_drvr_kind_sz],
-		bridge_kind[xeth_drvr_kind_sz],
-		lag_kind[xeth_drvr_kind_sz],
-		qsfp_kind[xeth_drvr_kind_sz];
+	char	qsfp_kind[xeth_drvr_kind_sz];
 	struct i2c_driver qsfp_driver;
 	char *et_stat_names;
 	/* assign random mac if @base_mac is zero */
@@ -194,9 +187,6 @@ struct xeth_platform_priv {
 
 #define xeth_platform_priv_of_nb(ptr, name)				\
 	container_of(ptr, struct xeth_platform_priv, name##_nb)
-
-#define xeth_platform_priv_of_lnko(ptr, name)				\
-	container_of(ptr, struct xeth_platform_priv, name##_lnko)
 
 #define xeth_platform_priv_of_qsfp_driver(ptr)				\
 	container_of(ptr, struct xeth_platform_priv, qsfp_driver)
@@ -518,8 +508,16 @@ int xeth_sbtx_neigh_update(struct xeth_platform_priv *,
 int xeth_sbtx_netns(struct xeth_platform_priv *,
 		    struct net *ndnet, bool add);
 
-int xeth_upper_register_drivers(struct xeth_platform_priv *);
-void xeth_upper_unregister_drivers(struct xeth_platform_priv *);
+bool xeth_is_mux(struct net_device *);
+bool xeth_is_upper(struct net_device *);
+bool xeth_is_port(struct net_device *nd);
+bool xeth_is_vlan(struct net_device *nd);
+bool xeth_is_bridge(struct net_device *nd);
+bool xeth_is_lag(struct net_device *nd);
+
+
+int xeth_upper_register_drivers(void);
+void xeth_upper_unregister_drivers(void);
 
 int xeth_upper_new_port(struct xeth_platform_priv *xpp,
 			const char *name, u32 xid, u64 ea,
@@ -532,7 +530,6 @@ void xeth_upper_drop_all_carrier(struct xeth_platform_priv *);
 void xeth_upper_dump_all_ifinfo(struct xeth_platform_priv *);
 void xeth_upper_reset_all_stats(struct xeth_platform_priv *);
 void xeth_upper_changemtu(struct xeth_platform_priv *xpp, int mtu, int max_mtu);
-bool xeth_upper_check(struct net_device *);
 void xeth_upper_et_stat(struct net_device *nd, u32 index, u64 count);
 void xeth_upper_link_stat(struct net_device *nd, u32 index, u64 count);
 void xeth_upper_queue_unregister(struct hlist_head __rcu *head,
