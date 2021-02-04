@@ -1,16 +1,6 @@
-menuconfig NET_XETH
+config NET_XETH
 	tristate "XETH ethernet switch proxy"
 	default n
 	depends on ETHERNET && NET_SWITCHDEV && VLAN_8021Q
 	---help---
 	  This virtual mux device proxy's an ethernet switch.
-
-if NET_XETH
-
-config NET_XETH_VENDOR_PLATINA
-	bool "Platina Systems"
-	default n
-	help
-	  This includes ONIE probed configuration of Platina's Switches.
-
-endif

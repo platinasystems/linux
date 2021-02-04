@@ -12,6 +12,8 @@
 #ifndef __XETH_UAPI_H
 #define __XETH_UAPI_H
 
+#include <linux/types.h>
+
 #ifdef IFNAMSIZE
 # define XETH_IFNAMSIZ IFNAMSIZ
 #else
@@ -42,6 +44,12 @@ enum xeth_msg_version {
 
 enum {
 	XETH_SIZEOF_JUMBO_FRAME = 9728,
+};
+
+enum xeth_port_ifla {
+	XETH_PORT_IFLA_UNSPEC,
+	XETH_PORT_IFLA_XID,
+	XETH_PORT_N_IFLA,
 };
 
 enum xeth_vlan_ifla {
@@ -82,6 +90,34 @@ enum xeth_msg_kind {
 	XETH_MSG_KIND_NETNS_DEL,
 };
 
+enum xeth_link_stat {
+	XETH_LINK_STAT_RX_PACKETS,
+	XETH_LINK_STAT_TX_PACKETS,
+	XETH_LINK_STAT_RX_BYTES,
+	XETH_LINK_STAT_TX_BYTES,
+	XETH_LINK_STAT_RX_ERRORS,
+	XETH_LINK_STAT_TX_ERRORS,
+	XETH_LINK_STAT_RX_DROPPED,
+	XETH_LINK_STAT_TX_DROPPED,
+	XETH_LINK_STAT_MULTICAST,
+	XETH_LINK_STAT_COLLISIONS,
+	XETH_LINK_STAT_RX_LENGTH_ERRORS,
+	XETH_LINK_STAT_RX_OVER_ERRORS,
+	XETH_LINK_STAT_RX_CRC_ERRORS,
+	XETH_LINK_STAT_RX_FRAME_ERRORS,
+	XETH_LINK_STAT_RX_FIFO_ERRORS,
+	XETH_LINK_STAT_RX_MISSED_ERRORS,
+	XETH_LINK_STAT_TX_ABORTED_ERRORS,
+	XETH_LINK_STAT_TX_CARRIER_ERRORS,
+	XETH_LINK_STAT_TX_FIFO_ERRORS,
+	XETH_LINK_STAT_TX_HEARTBEAT_ERRORS,
+	XETH_LINK_STAT_TX_WINDOW_ERRORS,
+	XETH_LINK_STAT_RX_COMPRESSED,
+	XETH_LINK_STAT_TX_COMPRESSED,
+	XETH_LINK_STAT_RX_NOHANDLER,
+	XETH_N_LINK_STAT,
+};
+
 enum xeth_msg_carrier_flag {
 	XETH_CARRIER_OFF,
 	XETH_CARRIER_ON,
@@ -109,6 +145,37 @@ struct xeth_msg_header {
 struct xeth_msg {
 	struct xeth_msg_header header;
 };
+
+static inline bool xeth_is_msg(void *data)
+{
+	struct xeth_msg *msg = data;
+
+	return	msg->header.z64 == 0 &&
+		msg->header.z32 == 0 &&
+		msg->header.z16 == 0;
+}
+
+static inline enum xeth_msg_kind xeth_msg_kind(void *data)
+{
+	struct xeth_msg *msg = data;
+	return msg->header.kind;
+}
+
+static inline bool xeth_msg_version_match(void *data)
+{
+	struct xeth_msg *msg = data;
+	return msg->header.version == XETH_MSG_VERSION;
+}
+
+static inline void xeth_msg_init(void *data, enum xeth_msg_kind kind)
+{
+	struct xeth_msg *msg = data;
+	msg->header.z64 = 0;
+	msg->header.z32 = 0;
+	msg->header.z16 = 0;
+	msg->header.version = XETH_MSG_VERSION;
+	msg->header.kind = kind;
+}
 
 struct xeth_msg_break {
 	struct xeth_msg_header header;

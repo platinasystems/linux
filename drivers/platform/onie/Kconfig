@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# ONIE Platform Drivers
+#
+
+menuconfig ONIE_VENDORS
+	bool "Platform support for ONIE hardware"
+	default y if NVMEM_ONIE
+	depends on NVMEM_ONIE
+	---help---
+	  Say Y here to select ONIE vendor platform drivers.
+	  See,
+
+	    Device Drivers ---> NVMEM Support ---> ONIE Format Support
+
+	  If you say N, all vendors in this submenu are skipped and disabled.
+
+if ONIE_VENDORS
+
+config ONIE_VENDOR_PLATINA
+	tristate "Platina Systems"
+	default n
+	depends on NVMEM_ONIE && NET_XETH
+	help
+	  This platform driver matches "platina" client devices. Its probe
+	  matches the part-number field to a config; then creates the
+	  respective XETH platform grand-child device; which, within its probe,
+	  creates mux and proxy port network devices.  See,
+
+	    Device Drivers ---> Network device support --->
+	    Ethernet driver support ---> XETH ethernet switch proxy
+
+endif # ONIE_VENDORS

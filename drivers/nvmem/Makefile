@@ -51,4 +51,4 @@ nvmem-sc27xx-efuse-y		:= sc27xx-efuse.o
 obj-$(CONFIG_NVMEM_ZYNQMP)	+= nvmem_zynqmp_nvmem.o
 nvmem_zynqmp_nvmem-y		:= zynqmp_nvmem.o
 obj-$(CONFIG_NVMEM_ONIE)	+= nvmem-onie.o
-nvmem-onie-y			:= onie.o
+nvmem-onie-y			:= onie.o onie_client_name.o

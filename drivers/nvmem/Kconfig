@@ -231,13 +231,23 @@ config NVMEM_ZYNQMP
 	  If sure, say yes. If unsure, say no.
 
 config NVMEM_ONIE
-	tristate "Platform driver for ONIE format NVMEM"
+	tristate "ONIE Format Support"
 	default n
 	help
-	  This platform driver is an NVMEM client that makes
-	  /sys/devices/platform/onie/data interface files
-	  for an ONIE format NVMEM device or cell.  See,
+	  This platform driver is an NVMEM client for an ONIE format device or cell.
+	  See,
+
 	  <https://opencomputeproject.github.io/onie/design-spec/hw_requirements.html>
+
+	  After validation, this driver parses the ONIE vendor field to create
+	  a child platform device named "onie:VENDOR".
+
+	  A vendor platform driver registers id_table matches for the supported
+	  names; then within its probe, matches the appropriate sub-fields (e.g.
+	  part-number or product-name) to create an grand-child platform device.
+	  See,
+
+	    Device Drivers ---> Platform support for ONIE hardware
 
 	  If unsure, say N.
 

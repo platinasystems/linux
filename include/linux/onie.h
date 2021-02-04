@@ -11,9 +11,58 @@
 
 #include <linux/device.h>
 
-#define ONIE_NVMEM_CELL	"onie-data"
+/**
+ * %ONIE_ID driver interface identifier
+ *
+ * Regenerate this after any change to &struct onie using,
+ * ``dd if=/dev/urandom bs=8 count=1 status=none |
+ * 	hexdump -v -e '"0x" 8/1 "%02x"'``
+ */
+#define ONIE_ID 0x1197725bde48d46eULL
 
-static const char onie_driver_name[] = "onie";
+enum onie_type;
+
+/* struct onie - provider interface */
+struct onie {
+	u64 id;
+	ssize_t (*get_tlv)(const struct onie *,
+			   enum onie_type, size_t, u8 *);
+	int (*set_tlv)(const struct onie *,
+		       enum onie_type, size_t, const u8 *);
+	u64 (*mac_base)(const struct onie *);
+	u16 (*num_macs)(const struct onie *);
+	u8 (*device_version)(const struct onie *);
+};
+
+static const char onie_driver_name[] = "nvmem_onie";
+
+static inline bool onie_driver_match(const char *name)
+{
+	return !memcmp(name, onie_driver_name, sizeof(onie_driver_name));
+}
+
+/**
+ * onie_provider() - finds the ONIE provider ancestor
+ */
+static inline struct device *onie_provider(struct device *dev)
+{
+	for (;dev && dev->driver; dev = dev->parent)
+		if (onie_driver_match(dev->driver->name))
+			return dev;
+	return NULL;
+}
+
+/**
+ * onie() - returns ONIE ancestor or NULL if missing or mismatched
+ */
+static inline const struct onie *onie(struct device *dev)
+{
+	if (dev = onie_provider(dev), dev) {
+		const struct onie *o = dev_get_drvdata(dev);
+		return o && o->id == ONIE_ID ? o : NULL;
+	}
+	return NULL;
+}
 
 enum onie_max {
 	onie_max_data	= 2048,
@@ -43,61 +92,8 @@ enum onie_type {
 };
 
 /**
- * onie_match - platform device match for the ONIE probe.
- * @name: matching platform device name
- * @vendor: matching ONIE vendor string followed by comma separated aliases
- * @match: matching field string followed by comma separated aliases
- * @type: matching ONIE field type (e.g. onie_type_product_name or part_number)
- */
-struct onie_match {
-	const char *name;
-	const char *vendor;
-	const char *match;
-	enum onie_type type;
-};
-
-#define ONIE_MATCH(NAME, VENDOR, MATCH, TYPE)				\
-{									\
-	.name = NAME,							\
-	.vendor = VENDOR,						\
-	.match = MATCH,							\
-	.type = TYPE,							\
-}
-
-struct onie_ops {
-	ssize_t (*get_tlv)(struct device *, enum onie_type, size_t, u8 *);
-	int (*set_tlv)(struct device *, enum onie_type, size_t, const u8 *);
-	int (*add_attrs)(struct device *);
-};
-
-/**
- * onie_dev() - returns ONIE ancester of given device.
- */
-static inline struct device *onie_dev(struct device *dev)
-{
-	for (;dev && dev->driver; dev = dev->parent)
-		if (!strcmp(onie_driver_name, dev->driver->name))
-			return dev;
-	return NULL;
-}
-
-/**
- * onie_get_ops() - returns ops of ONIE ancester.
- */
-static inline struct onie_ops const *onie_get_ops(struct device *dev)
-{
-	struct device *onie = onie_dev(dev);
-	struct onie_ops const **pops;
-
-	if (!onie)
-		return NULL;
-	pops = (struct onie_ops const **)(dev_get_drvdata(onie));
-	return pops ? *pops : NULL;
-}
-
-/**
- * onie_get_tlv() - get a cached ONIE NVMEM value.
- * @dev: onie client
+ * onie_get_tlv() - get cached ONIE NVMEM value.
+ * @dev: onie ancestor or descendant
  * @t: &enum onie_type
  * @l: sizeof destination
  * @v: destination buffer
@@ -133,22 +129,21 @@ static inline struct onie_ops const *onie_get_ops(struct device *dev)
  * * -EINVAL	- size @l insufficient for value
  * * >=0	- value length
  */
-static inline ssize_t onie_get_tlv(struct device *dev,
-				   enum onie_type t, size_t l, u8 *v)
+static inline ssize_t onie_get_tlv(struct device *dev, enum onie_type t,
+				   size_t l, u8 *v)
 {
-	struct onie_ops const *ops = onie_get_ops(dev);
-
-	return ops ? ops->get_tlv(dev, t, l, v) : -ENODEV;
+	const struct onie *o = onie(dev);
+	return o ? o->get_tlv(o, t, l, v) : -ENODEV;
 }
 
 /**
- * onie_set_tlv() - set a ONIE NVMEM value.
- * @dev: onie client
+ * onie_set_tlv() - set ONIE NVMEM value.
+ * @dev: onie ancestor or descendant
  * @t: &enum onie_type
  * @l: sizeof destination
  * @v: destination buffer
  *
- * This expects these @l sized destinations per @t type as @onie_get_tlv.
+ * This expects @l sized destinations per @t type as @onie_get_tlv.
  *
  * Return:
  * * -ENODEV	- @dev isn't an onie client
@@ -156,26 +151,46 @@ static inline ssize_t onie_get_tlv(struct device *dev,
  * * -EINVAL	- size @l insufficient for value
  * * >=0	- value length
  */
-static inline ssize_t onie_set_tlv(struct device *dev,
-				   enum onie_type t, size_t l, u8 *v)
+static inline ssize_t onie_set_tlv(struct device *dev, enum onie_type t,
+				   size_t l, u8 *v)
 {
-	struct onie_ops const *ops = onie_get_ops(dev);
-
-	return ops ? ops->set_tlv(dev, t, l, v) : -ENODEV;
+	const struct onie *o = onie(dev);
+	return o ? o->set_tlv(o, t, l, v) : -ENODEV;
 }
 
 /**
- * onie_add_attrs() - add ONIE sysfs attributes to given client device.
- * @dev: onie client
+ * onie_mac_base() - returns the mac_base field from ONIE
+ * @dev: onie ancestor or descendant
  *
- * Returns 0 on success or error code from sysfs_create_group on failure.
+ * Returns 0 if unavailable.
  */
-static inline ssize_t onie_add_attrs(struct device *dev)
+static inline u64 onie_mac_base(struct device *dev)
 {
-	struct onie_ops const *ops = onie_get_ops(dev);
-
-	/* add attrs to client dev, not onie provider */
-	return ops ? ops->add_attrs(dev) : -ENODEV;
+	const struct onie *o = onie(dev);
+	return o ? o->mac_base(o) : 0;
 }
 
+/**
+ * onie_num_macs() - returns the num_macs field from ONIE
+ * @dev: onie ancestor or descendant
+ *
+ * Returns 0 if unavailable.
+ */
+static inline u16 onie_num_macs(struct device *dev)
+{
+	const struct onie *o = onie(dev);
+	return o ? o->num_macs(o) : 0;
+}
+
+/**
+ * onie_device_version() - returns the device_version field from ONIE
+ * @dev: onie ancestor or descendant
+ *
+ * Returns 0 if unavailable.
+ */
+static inline u8 onie_device_version(struct device *dev)
+{
+	const struct onie *o = onie(dev);
+	return o ? o->device_version(o) : 0;
+}
 #endif /* __ONIE_H */

@@ -66,6 +66,9 @@ do {									\
 	(_ptr);								\
 })
 
+#define xeth_debug_container_of(ptr, type, member)			\
+	xeth_debug_ptr_err(container_of(ptr, type, member))
+
 #define xeth_debug_nd_ptr_err(nd, expr)					\
 ({									\
 	void *_ptr = (expr);						\
