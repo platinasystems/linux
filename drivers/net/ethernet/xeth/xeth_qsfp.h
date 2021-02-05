@@ -10,15 +10,12 @@
 #ifndef __NET_ETHERNET_XETH_QSFP_H
 #define __NET_ETHERNET_XETH_QSFP_H
 
-#include <linux/netdevice.h>
 #include <linux/ethtool.h>
 #include <linux/i2c.h>
 
-void xeth_qsfp_register(struct i2c_client **clients, const int *nrs,
-			const unsigned short const *addrs);
-void xeth_qsfp_unregister(void);
-
-int xeth_qsfp_get_module_info(int port, struct ethtool_modinfo *emi);
-int xeth_qsfp_get_module_eeprom(int port, struct ethtool_eeprom *ee, u8 *data);
+int xeth_qsfp_get_module_info(struct i2c_client *qsfp,
+			      struct ethtool_modinfo *emi);
+int xeth_qsfp_get_module_eeprom(struct i2c_client *qsfp,
+				struct ethtool_eeprom *ee, u8 *data);
 
 #endif /* __NET_ETHERNET_XETH_QSFP_H */

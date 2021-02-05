@@ -14,6 +14,7 @@
 #include <linux/etherdevice.h>
 #include <linux/platform_device.h>
 #include <linux/netdevice.h>
+#include <linux/i2c.h>
 
 enum xeth_encap {
 	XETH_ENCAP_VLAN = 0,
@@ -92,18 +93,6 @@ struct xeth_vendor {
 				struct device_attribute attr;
 			} stat;
 		} ethtool;
-		struct xeth_vendor_port_qsfp {
-			/**
-			 * @nrs: a -1 terminated list of bus number per port
-			 */
-			const int const *nrs;
-			/**
-			 * @addrs:
-			 *	a NULL terminated list, e.g.
-			 *	I2C_ADDRS(0x50, 0x51)
-			 */
-			const unsigned short const *addrs;
-		} qsfp;
 	} port;
 	/**
 	 * @ifname:
@@ -124,6 +113,10 @@ struct xeth_vendor {
 	 *	port is -1.
 	 */
 	u32 (*xid)(const struct xeth_vendor *vendor, int port, int subport);
+	/**
+	 * @qsfp: returns i2c_client of port's QSFP or NULL if none.
+	 */
+	struct i2c_client *(*qsfp)(const struct xeth_vendor *vendor, int port);
 	/**
 	 * @port_ksettings:
 	 *	Assigns port's @ethtool_link_ksettings
@@ -192,6 +185,13 @@ xeth_vendor_xid(const struct platform_device *xeth, int port, int subport)
 		return 3999 - port;
 	else
 		return 3999 - port - (vendor->n_ports * subport);
+}
+
+static inline struct i2c_client *
+xeth_vendor_qsfp(const struct platform_device *xeth, int port)
+{
+	const struct xeth_vendor *vendor = xeth_vendor(xeth);
+	return (vendor && vendor->qsfp) ? vendor->qsfp(vendor, port) : NULL;
 }
 
 static inline enum xeth_encap

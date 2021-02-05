@@ -55,6 +55,7 @@ struct platina_priv {
 	enum platina_base base;
 	u64 mac_base;
 	u16 n_macs;
+	struct i2c_client **qsfps;
 	struct xeth_vendor vendor;
 };
 
@@ -100,8 +101,8 @@ static void platina_mk1_hw_addr(const struct xeth_vendor *vendor,
 	u64_to_ether_addr(mac, nd->dev_addr);
 }
 
-static inline u32 platina_mk1_xid(const struct xeth_vendor *vendor,
-				  int port, int subport)
+static u32 platina_mk1_xid(const struct xeth_vendor *vendor,
+			   int port, int subport)
 {
 	if (port < 0)
 		return 3000;
@@ -109,6 +110,70 @@ static inline u32 platina_mk1_xid(const struct xeth_vendor *vendor,
 		return 3999 - port;
 	else
 		return 3999 - port - (vendor->n_ports * subport);
+}
+
+static int platina_qsfp_peek(struct i2c_adapter *adapter, unsigned short addr)
+{
+	int err;
+	union i2c_smbus_data data;
+
+	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_READ_BYTE_DATA))
+		return -ENXIO;
+	err = i2c_smbus_xfer(adapter, addr, 0, I2C_SMBUS_READ, 0,
+			     I2C_SMBUS_BYTE_DATA, &data);
+	if (err < 0)
+		return -ENXIO;
+	switch (data.byte) {
+	case 0x03:	/* SFP    */
+	case 0x0C:	/* QSFP   */
+	case 0x0D:	/* QSFP+  */
+	case 0x11:	/* QSFP28 */
+		break;
+	default:
+		return -ENXIO;
+	}
+	return data.byte;
+}
+
+static struct i2c_client *platina_mk1_qsfp(const struct xeth_vendor *vendor,
+					   int port)
+{
+	static const int const nrs[] = {
+		 3,  2,  5,  4,  7,  6,  9,  8,
+		12, 11, 14, 13, 16, 15, 18, 17,
+		21, 20, 23, 22, 25, 24, 27, 26,
+		30, 29, 32, 31, 34, 33, 36, 35,
+		-1,
+	};
+	static const unsigned short const addrs[] = I2C_ADDRS(0x50, 0x51);
+	struct platina_priv *priv = platina_priv(vendor);
+	struct i2c_adapter *adapter;
+	struct i2c_board_info info;
+	int id, i;
+
+	if (port >= vendor->n_ports)
+		return NULL;
+	if (priv->qsfps[port])
+		return priv->qsfps[port];
+	memset(&info, 0, sizeof(info));
+	strscpy(info.type, "qsfp", sizeof(info.type));
+	adapter = i2c_get_adapter(nrs[port]);
+	for (i = 0; addrs[i] != I2C_CLIENT_END; i++) {
+		id = platina_qsfp_peek(adapter, addrs[i]);
+		if (id > 0) {
+			info.addr = addrs[i];
+			priv->qsfps[port] =
+				i2c_new_client_device(adapter, &info);
+			if (IS_ERR(priv->qsfps[port]))
+				priv->qsfps[port] = NULL;
+			else if (1)
+				pr_debug("qsfp%d @ %d, 0x%02x\n",
+					 port, nrs[port], addrs[i]);
+			break;
+		}
+	}
+	i2c_put_adapter(adapter);
+	return priv->qsfps[port];
 }
 
 static void platina_mk1_port_ksettings(struct ethtool_link_ksettings *ks)
@@ -203,15 +268,6 @@ static int platina_mk1_probe(struct platform_device *platina)
 		eth2_akas,
 		NULL,
 	};
-	static const int const port_qsfp_nrs[] = {
-		 3,  2,  5,  4,  7,  6,  9,  8,
-		12, 11, 14, 13, 16, 15, 18, 17,
-		21, 20, 23, 22, 25, 24, 27, 26,
-		30, 29, 32, 31, 34, 33, 36, 35,
-		-1,
-	};
-	static const unsigned short const port_qsfp_addrs[] =
-		I2C_ADDRS(0x50, 0x51);
 	struct device *dev = &platina->dev;
 	const struct onie *o = onie(dev);
 	struct platina_priv *priv;
@@ -219,6 +275,10 @@ static int platina_mk1_probe(struct platform_device *platina)
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
+		return -ENOMEM;
+	priv->qsfps = devm_kcalloc(dev, n_ports, sizeof(struct i2c_client*),
+				   GFP_KERNEL);
+	if (!priv->qsfps)
 		return -ENOMEM;
 	platform_set_drvdata(platina, &priv->vendor);
 
@@ -234,8 +294,6 @@ static int platina_mk1_probe(struct platform_device *platina)
 	priv->vendor.n_txqs = 1;
 	priv->vendor.links = links;
 	priv->vendor.port.provision.subports = platina_provision_param;
-	priv->vendor.port.qsfp.nrs = port_qsfp_nrs;
-	priv->vendor.port.qsfp.addrs = port_qsfp_addrs;
 
 	err = xeth_create_port_provision(dev,
 					 &priv->vendor.port.provision.attr,
@@ -251,6 +309,8 @@ static int platina_mk1_probe(struct platform_device *platina)
 
 	priv->vendor.ifname = platina_ifname;
 	priv->vendor.hw_addr = platina_mk1_hw_addr;
+	priv->vendor.xid = platina_mk1_xid;
+	priv->vendor.qsfp = platina_mk1_qsfp;
 	priv->vendor.port.ethtool.flag_names = port_et_flag_names;
 	priv->vendor.port_ksettings = platina_mk1_port_ksettings;
 	priv->vendor.subport_ksettings = platina_mk1_subport_ksettings;
@@ -288,7 +348,7 @@ static int platina_probe(struct platform_device *pdev)
 	char part_number[onie_max_tlv];
 	ssize_t n = onie_get_tlv(dev, onie_type_part_number,
 				 onie_max_tlv, part_number);
-	int i;
+	int probe;
 
 	if (n < 0)
 		return n;
@@ -296,9 +356,9 @@ static int platina_probe(struct platform_device *pdev)
 		n = onie_max_tlv-1;
 	part_number[n] = '\0';
 
-	for (i = 0; i < ARRAY_SIZE(probes); i++)
-		if (!strcmp(part_number, probes[i].part_number))
-			return probes[i].probe(pdev);
+	for (probe = 0; probe < ARRAY_SIZE(probes); probe++)
+		if (!strcmp(part_number, probes[probe].part_number))
+			return probes[probe].probe(pdev);
 
 	return -ENXIO;
 }
@@ -306,7 +366,14 @@ static int platina_probe(struct platform_device *pdev)
 static int platina_remove(struct platform_device *pdev)
 {
 	struct xeth_vendor *vendor = dev_get_drvdata(&pdev->dev);
-	if (vendor && vendor->xeth.dev)
+	if (vendor && vendor->xeth.dev) {
+		struct platina_priv *priv = platina_priv(vendor);
+		if (priv->qsfps) {
+			int port;
+			for (port = 0; port < vendor->n_ports; port++)
+				i2c_unregister_device(priv->qsfps[port]);
+		}
 		platform_device_unregister(vendor->xeth.dev);
+	}
 	return 0;
 }

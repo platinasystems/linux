@@ -33,6 +33,7 @@ struct xeth_port_priv {
 		} priv_flag;
 		struct ethtool_link_ksettings ksettings;
 	} ethtool;
+	struct i2c_client *qsfp;
 	int port, subport;
 };
 
@@ -408,16 +409,15 @@ int xeth_port_get_module_info(struct net_device *nd,
 			      struct ethtool_modinfo *emi)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	return (priv->port >= 0 && priv->subport == -1) ?
-		xeth_qsfp_get_module_info(priv->port, emi) : -ENXIO;
+	return priv->qsfp ? xeth_qsfp_get_module_info(priv->qsfp, emi) : -ENXIO;
 }
 
 int xeth_port_get_module_eeprom(struct net_device *nd,
 				struct ethtool_eeprom *ee, u8 *data)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	return (priv->port >= 0 && priv->subport == -1) ?
-		xeth_qsfp_get_module_eeprom(priv->port, ee, data) : -ENXIO;
+	return priv->qsfp ? xeth_qsfp_get_module_eeprom(priv->qsfp, ee, data) :
+		-ENXIO;
 }
 
 static const struct ethtool_ops xeth_port_eto = {
@@ -491,6 +491,9 @@ struct net_device *xeth_port_probe(struct platform_device *xeth,
 
 	priv->port = port;
 	priv->subport = subport;
+
+	if (subport <= 0)
+		priv->qsfp = xeth_vendor_qsfp(xeth, port);
 
 	if (subport < 0)
 		xeth_vendor_port_ksettings(xeth, &priv->ethtool.ksettings);

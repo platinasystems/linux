@@ -13,7 +13,6 @@
 #include "xeth_qsfp.h"
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
-#include <linux/i2c.h>
 #include <linux/xeth.h>
 
 static int xeth_platform_probe(struct platform_device *xeth)
@@ -33,14 +32,6 @@ static int xeth_platform_probe(struct platform_device *xeth)
 
 	dev_set_drvdata(&xeth->dev, mux);
 
-	if (vendor->port.qsfp.nrs) {
-		struct i2c_client **clients =
-			devm_kcalloc(&xeth->dev, vendor->n_ports,
-				     sizeof(struct i2c_client*), GFP_KERNEL);
-		xeth_qsfp_register(clients, vendor->port.qsfp.nrs,
-				   vendor->port.qsfp.addrs);
-	}
-
 	for (port = 0; port < vendor->n_ports; port++) {
 		int subports = vendor->port.provision.subports[port];
 		if (subports == 2 || subports == 4) {
@@ -56,19 +47,16 @@ static int xeth_platform_probe(struct platform_device *xeth)
 
 static int xeth_platform_remove(struct platform_device *xeth)
 {
-	const struct xeth_vendor *vendor = xeth_vendor(xeth);
 	struct net_device *mux = dev_get_drvdata(&xeth->dev);
 	LIST_HEAD(q);
 
-	if (vendor->port.qsfp.nrs)
-		xeth_qsfp_unregister();
-	if (mux) {
-		rtnl_lock();
-		xeth_mux_lnko.dellink(mux, &q);
-		unregister_netdevice_many(&q);
-		rtnl_unlock();
-		rcu_barrier();
-	}
+	if (!mux)
+		return 0;
+	rtnl_lock();
+	xeth_mux_lnko.dellink(mux, &q);
+	unregister_netdevice_many(&q);
+	rtnl_unlock();
+	rcu_barrier();
 	return 0;
 }
 
