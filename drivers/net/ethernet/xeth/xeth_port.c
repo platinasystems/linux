@@ -436,6 +436,13 @@ static const struct ethtool_ops xeth_port_eto = {
 	.get_module_eeprom = xeth_port_get_module_eeprom,
 };
 
+static const struct ethtool_ops xeth_subport_eto = {
+	.get_drvinfo = xeth_port_get_drvinfo,
+	.get_link = ethtool_op_get_link,
+	.get_link_ksettings = xeth_port_get_link_ksettings,
+	.set_link_ksettings = xeth_port_set_link_ksettings,
+};
+
 static void xeth_port_setup(struct net_device *nd)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
@@ -447,7 +454,6 @@ static void xeth_port_setup(struct net_device *nd)
 	netif_carrier_off(nd);
 	priv->proxy.kind = XETH_DEV_KIND_PORT;
 	nd->netdev_ops = &xeth_port_ndo;
-	nd->ethtool_ops = &xeth_port_eto;
 	nd->needs_free_netdev = true;
 	nd->priv_destructor = NULL;
 	ether_setup(nd);
@@ -475,6 +481,8 @@ struct net_device *xeth_port_probe(struct platform_device *xeth,
 						 xeth_vendor_n_rxqs(xeth)));
 	if (IS_ERR(nd))
 		return nd;
+
+	nd->ethtool_ops = subport <= 0 ? &xeth_port_eto : &xeth_subport_eto;
 
 	xeth_vendor_hw_addr(xeth, nd, port, subport);
 
