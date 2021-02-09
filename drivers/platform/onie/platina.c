@@ -12,9 +12,11 @@
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
 #include <linux/etherdevice.h>
-#include <linux/i2c.h>
-#include <linux/onie.h>
 #include <linux/slab.h>
+#include <linux/i2c.h>
+#include <linux/gpio/consumer.h>
+#include <linux/gpio/machine.h>
+#include <linux/onie.h>
 #include <linux/xeth.h>
 
 MODULE_LICENSE("GPL");
@@ -155,6 +157,7 @@ static struct i2c_client *platina_mk1_qsfp(const struct xeth_vendor *vendor,
 		return NULL;
 	if (priv->qsfps[port])
 		return priv->qsfps[port];
+
 	memset(&info, 0, sizeof(info));
 	strscpy(info.type, "qsfp", sizeof(info.type));
 	adapter = i2c_get_adapter(nrs[port]);
@@ -268,10 +271,13 @@ static int platina_mk1_probe(struct platform_device *platina)
 		eth2_akas,
 		NULL,
 	};
+	static const unsigned gpios[] = { 400, 384 };
+	static const char port_provision[] = "port_provision";
+	static const char stat_name[] = "stat_name";
 	struct device *dev = &platina->dev;
 	const struct onie *o = onie(dev);
 	struct platina_priv *priv;
-	int err;
+	int i, err;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -297,15 +303,15 @@ static int platina_mk1_probe(struct platform_device *platina)
 
 	err = xeth_create_port_provision(dev,
 					 &priv->vendor.port.provision.attr,
-					 "port_provision");
+					 port_provision);
 	if (err < 0)
-		return err;
+		pr_err("create %s: %d", port_provision, err);
 
 	err = xeth_create_port_et_stat_name(dev,
 					    &priv->vendor.port.ethtool.stat.attr,
-					    "stat_name");
+					    stat_name);
 	if (err < 0)
-		return err;
+		pr_err("create %s: %d", stat_name, err);
 
 	priv->vendor.ifname = platina_ifname;
 	priv->vendor.hw_addr = platina_mk1_hw_addr;
@@ -315,26 +321,35 @@ static int platina_mk1_probe(struct platform_device *platina)
 	priv->vendor.port_ksettings = platina_mk1_port_ksettings;
 	priv->vendor.subport_ksettings = platina_mk1_subport_ksettings;
 
-	priv->vendor.xeth.info.parent = dev;
-	priv->vendor.xeth.info.name = "xeth";
-	priv->vendor.xeth.info.id = -1;
-	priv->vendor.xeth.info.res = NULL;
-	priv->vendor.xeth.info.num_res = 0;
-
-	priv->vendor.xeth.dev =
-		platform_device_register_full(&priv->vendor.xeth.info);
-	if (IS_ERR(priv->vendor.xeth.dev)) {
-		err = PTR_ERR(priv->vendor.xeth.dev);
-		priv->vendor.xeth.dev = NULL;
-		pr_err("platina-mk1 register %s: %d\n",
-		       priv->vendor.xeth.info.name, err);
+	/* toggle all PORT*_RST_L gpio pins to start optical qsfps */
+	for (i = 0; i < ARRAY_SIZE(gpios); i++) {
+		struct gpio_desc *gd = gpio_to_desc(gpios[i]);
+		if (!gd)
+			pr_err("gpio_to_desc(%u) failure\n", gpios[i]);
+		else if (IS_ERR(gd))
+			pr_err("gpio_to_desc(%u): %ld\n", gpios[i],
+			       PTR_ERR(gd));
+		else {
+			gpiod_set_value_cansleep(gd, 0xffff);
+			gpiod_set_value_cansleep(gd, 0x0000);
+			gpiod_set_value_cansleep(gd, 0xffff);
+			gpiod_put(gd);
+		}
 	}
-	return err < 0 ? err : 0;
+
+	priv->vendor.xeth.pd =
+		platform_device_register_full(&priv->vendor.xeth.info);
+	if (!priv->vendor.xeth.pd)
+		pr_err("register %s failure\n", priv->vendor.xeth.info.name);
+	else if (IS_ERR(priv->vendor.xeth.pd))
+		pr_err("register %s: %ld\n", priv->vendor.xeth.info.name,
+		       PTR_ERR(priv->vendor.xeth.pd));
+	return 0;
 }
 
-static int platina_probe(struct platform_device *pdev)
+static int platina_probe(struct platform_device *platina)
 {
-	struct device *dev = &pdev->dev;
+	struct device *dev = &platina->dev;
 
 	static const struct {
 		const char *part_number;
@@ -358,22 +373,27 @@ static int platina_probe(struct platform_device *pdev)
 
 	for (probe = 0; probe < ARRAY_SIZE(probes); probe++)
 		if (!strcmp(part_number, probes[probe].part_number))
-			return probes[probe].probe(pdev);
+			return probes[probe].probe(platina);
 
 	return -ENXIO;
 }
 
-static int platina_remove(struct platform_device *pdev)
+static int platina_remove(struct platform_device *platina)
 {
-	struct xeth_vendor *vendor = dev_get_drvdata(&pdev->dev);
-	if (vendor && vendor->xeth.dev) {
-		struct platina_priv *priv = platina_priv(vendor);
-		if (priv->qsfps) {
-			int port;
-			for (port = 0; port < vendor->n_ports; port++)
-				i2c_unregister_device(priv->qsfps[port]);
-		}
-		platform_device_unregister(vendor->xeth.dev);
-	}
+	int port;
+	struct platina_priv *priv;
+	struct device *dev = &platina->dev;
+	struct xeth_vendor *vendor = dev_get_drvdata(dev);
+
+	if (!vendor)
+		return 0;
+	priv = platina_priv(vendor);
+	device_remove_file(dev, &priv->vendor.port.provision.attr);
+	device_remove_file(dev, &priv->vendor.port.ethtool.stat.attr);
+	if (priv->qsfps)
+		for (port = 0; port < vendor->n_ports; port++)
+			i2c_unregister_device(priv->qsfps[port]);
+	if (!IS_ERR_OR_NULL(vendor->xeth.pd))
+		platform_device_unregister(vendor->xeth.pd);
 	return 0;
 }

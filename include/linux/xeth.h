@@ -128,7 +128,7 @@ struct xeth_vendor {
 	 */
 	void (*subport_ksettings)(struct ethtool_link_ksettings *);
 	struct {
-		struct	platform_device *dev;
+		struct	platform_device *pd;
 		struct	platform_device_info info;
 	} xeth;
 };
