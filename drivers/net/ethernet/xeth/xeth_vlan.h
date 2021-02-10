@@ -19,4 +19,7 @@ static inline bool is_xeth_vlan(struct net_device *nd)
 	return nd->rtnl_link_ops == &xeth_vlan_lnko;
 }
 
+bool xeth_vlan_has_link(const struct net_device *nd,
+			const struct net_device *link);
+
 #endif /* __NET_ETHERNET_XETH_VLAN_H */

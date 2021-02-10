@@ -15,6 +15,7 @@
 #include "xeth_sbtx.h"
 #include "xeth_port.h"
 #include "xeth_bridge.h"
+#include "xeth_vlan.h"
 #include "xeth_debug.h"
 #include "xeth_version.h"
 #include <linux/xeth.h>
@@ -220,6 +221,21 @@ do {									\
 	xeth_mux_reset_kin_link_stats(vlans);
 	xeth_mux_reset_kin_link_stats(bridges);
 	xeth_link_stat_init(priv->link_stats);
+}
+
+void xeth_mux_del_vlans(struct net_device *mux, struct net_device *nd,
+			struct list_head *unregq)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	struct list_head *vlan;
+
+	spin_lock(&priv->vlans.mutex);
+	list_for_each(vlan, &priv->vlans.list) {
+		struct xeth_proxy *proxy = xeth_proxy_of_kin(vlan);
+		if (xeth_vlan_has_link(proxy->nd, nd))
+			unregister_netdevice_queue(proxy->nd, unregq);
+	}
+	spin_unlock(&priv->vlans.mutex);
 }
 
 void xeth_mux_dump_all_ifinfo(struct net_device *mux)

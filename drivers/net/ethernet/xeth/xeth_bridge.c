@@ -185,7 +185,9 @@ static int xeth_bridge_newlink(struct net *src_net, struct net_device *br,
 	struct net_device *link;
 	int err;
 
+	rcu_read_lock();
 	link = dev_get_by_index_rcu(dev_net(br), nla_get_u32(tb[IFLA_LINK]));
+	rcu_read_unlock();
 	if (IS_ERR_OR_NULL(link)) {
 		err = PTR_ERR(link);
 		NL_SET_ERR_MSG(extack, "unkown link");

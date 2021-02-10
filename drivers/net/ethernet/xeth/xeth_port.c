@@ -575,9 +575,11 @@ static int xeth_port_newlink(struct net *src_net, struct net_device *nd,
 	return xeth_sbtx_ifinfo(&priv->proxy, 0, XETH_IFINFO_REASON_NEW);
 }
 
-static void xeth_port_dellink(struct net_device *nd, struct list_head *q)
+static void xeth_port_dellink(struct net_device *nd, struct list_head *unregq)
 {
-	unregister_netdevice_queue(nd, q);
+	struct xeth_port_priv *priv = netdev_priv(nd);
+	xeth_mux_del_vlans(priv->proxy.mux, nd, unregq);
+	unregister_netdevice_queue(nd, unregq);
 }
 
 static struct net *xeth_port_get_link_net(const struct net_device *nd)

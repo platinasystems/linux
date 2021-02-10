@@ -197,7 +197,9 @@ static int xeth_lag_newlink(struct net *src_net, struct net_device *lag,
 	struct net_device *link;
 	int err;
 
+	rcu_read_lock();
 	link = dev_get_by_index_rcu(dev_net(lag), nla_get_u32(tb[IFLA_LINK]));
+	rcu_read_unlock();
 	if (IS_ERR_OR_NULL(link)) {
 		err = PTR_ERR(link);
 		NL_SET_ERR_MSG(extack, "unkown link");
@@ -243,14 +245,16 @@ static int xeth_lag_newlink(struct net *src_net, struct net_device *lag,
 	return 0;
 }
 
-static void xeth_lag_dellink(struct net_device *lag, struct list_head *q)
+static void xeth_lag_dellink(struct net_device *nd, struct list_head *unregq)
 {
-	unregister_netdevice_queue(lag, q);
+	struct xeth_lag_priv *priv = netdev_priv(nd);
+	xeth_mux_del_vlans(priv->proxy.mux, nd, unregq);
+	unregister_netdevice_queue(nd, unregq);
 }
 
-static struct net *xeth_lag_get_link_net(const struct net_device *lag)
+static struct net *xeth_lag_get_link_net(const struct net_device *nd)
 {
-	return dev_net(lag);
+	return dev_net(nd);
 }
 
 struct rtnl_link_ops xeth_lag_lnko = {

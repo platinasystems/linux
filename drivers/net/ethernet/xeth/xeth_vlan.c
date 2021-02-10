@@ -26,15 +26,14 @@ struct xeth_vlan_priv {
 	u16 vid;
 };
 
-static void xeth_vlan_uninit(struct net_device *nd)
+bool xeth_vlan_has_link(const struct net_device *nd,
+			const struct net_device *link)
 {
 	struct xeth_vlan_priv *priv = netdev_priv(nd);
-	if (priv->link)
-		dev_put(priv->link);
-	xeth_proxy_uninit(nd);
+	return priv->link == link;
 }
 
-int xeth_vlan_get_iflink(const struct net_device *nd)
+static int xeth_vlan_get_iflink(const struct net_device *nd)
 {
 	struct xeth_vlan_priv *priv = netdev_priv(nd);
 	return priv->link ? priv->link->ifindex: nd->ifindex;
@@ -42,7 +41,7 @@ int xeth_vlan_get_iflink(const struct net_device *nd)
 
 static const struct net_device_ops xeth_vlan_ndo = {
 	.ndo_init = xeth_proxy_init,
-	.ndo_uninit = xeth_vlan_uninit,
+	.ndo_uninit = xeth_proxy_uninit,
 	.ndo_open = xeth_proxy_open,
 	.ndo_stop = xeth_proxy_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
@@ -130,23 +129,20 @@ static int xeth_vlan_newlink(struct net *src_net, struct net_device *nd,
 	struct xeth_vlan_priv *priv = netdev_priv(nd);
 	struct xeth_proxy *lproxy;
 	int i, err;
-	u32 li;
 
 	priv->proxy.nd = nd;
 
-	li = nla_get_u32(tb[IFLA_LINK]);
-	priv->link = dev_get_by_index_rcu(dev_net(nd), li);
+	rcu_read_lock();
+	priv->link =
+		dev_get_by_index_rcu(dev_net(nd), nla_get_u32(tb[IFLA_LINK]));
+	rcu_read_unlock();
 	if (IS_ERR_OR_NULL(priv->link)) {
 		NL_SET_ERR_MSG(extack, "unkown link");
-		err = PTR_ERR(priv->link);
-		priv->link = NULL;
-		return err;
+		return PTR_ERR(priv->link);
 	}
-
 	if (!is_xeth_port(priv->link) && !is_xeth_lag(priv->link)) {
 		NL_SET_ERR_MSG(extack, "link not an xeth port or lag");
-		err = -EINVAL;
-		goto xeth_vlan_newlink_link_return;
+		return -EINVAL;
 	}
 
 	lproxy = netdev_priv(priv->link);
@@ -160,7 +156,7 @@ static int xeth_vlan_newlink(struct net *src_net, struct net_device *nd,
 				int err = kstrtoull(nd->name+i+1, 0, &ull);
 				if (err) {
 					NL_SET_ERR_MSG(extack, "invalid name");
-					goto xeth_vlan_newlink_link_return;
+					return err;
 				}
 				priv->vid = ull;
 				break;
@@ -169,8 +165,7 @@ static int xeth_vlan_newlink(struct net *src_net, struct net_device *nd,
 	if (priv->vid < 1 || priv->vid >= VLAN_N_VID) {
 		xeth_debug_nd(nd, "vid %d out-of-range", priv->vid);
 		NL_SET_ERR_MSG(extack, "out-of-range VID");
-		err = -ERANGE;
-		goto xeth_vlan_newlink_link_return;
+		return -ERANGE;
 	}
 
 	eth_hw_addr_inherit(nd, priv->link);
@@ -191,19 +186,10 @@ static int xeth_vlan_newlink(struct net *src_net, struct net_device *nd,
 	xeth_mux_add_proxy(&priv->proxy);
 
 	err = register_netdevice(nd);
-	if (err)
-		goto xeth_vlan_newlink_del_proxy;
-
-	err = xeth_sbtx_ifinfo(&priv->proxy, 0, XETH_IFINFO_REASON_NEW);
 	if (!err)
-		return 0;
-
-xeth_vlan_newlink_del_proxy:
-	xeth_mux_del_proxy(&priv->proxy);
-
-xeth_vlan_newlink_link_return:
-	dev_put(priv->link);
-	priv->link = NULL;
+		err = xeth_sbtx_ifinfo(&priv->proxy, 0, XETH_IFINFO_REASON_NEW);
+	if (err)
+		xeth_mux_del_proxy(&priv->proxy);
 	return err;
 }
 
