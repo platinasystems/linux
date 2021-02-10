@@ -11,6 +11,7 @@
 
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
+#include <linux/glob.h>
 #include <linux/etherdevice.h>
 #include <linux/slab.h>
 #include <linux/i2c.h>
@@ -358,28 +359,28 @@ static int platina_probe(struct platform_device *platina)
 	struct device *dev = &platina->dev;
 
 	static const struct {
-		const char *part_number;
+		const char *glob;
 		int (*probe)(struct platform_device *);
-	} const probes[] = {
-		{ "BT77O759.00", platina_mk1_probe},
-		{ "PS-3001-32C", platina_mk1_probe},
-		{ "PSW-3001-32C", platina_mk1_probe},
+	} const part_numbers[] = {
+		{ "BT77O759.00*", platina_mk1_probe},
+		{ "PS-3001-32C*", platina_mk1_probe},
+		{ "PSW-3001-32C*", platina_mk1_probe},
 	};
 
-	char part_number[onie_max_tlv];
-	ssize_t n = onie_get_tlv(dev, onie_type_part_number,
-				 onie_max_tlv, part_number);
-	int probe;
+	char v[onie_max_tlv];
+	ssize_t n;
+	int i;
 
+	n = onie_get_tlv(dev, onie_type_part_number, onie_max_tlv, v);
 	if (n < 0)
 		return n;
 	else if (n == onie_max_tlv)
 		n = onie_max_tlv-1;
-	part_number[n] = '\0';
+	v[n] = '\0';
 
-	for (probe = 0; probe < ARRAY_SIZE(probes); probe++)
-		if (!strcmp(part_number, probes[probe].part_number))
-			return probes[probe].probe(platina);
+	for (i = 0; i < ARRAY_SIZE(part_numbers); i++)
+		if (glob_match(part_numbers[i].glob, v))
+			return part_numbers[i].probe(platina);
 
 	return -ENXIO;
 }
