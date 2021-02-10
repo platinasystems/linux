@@ -10,6 +10,7 @@
 #include "xeth_sbtx.h"
 #include "xeth_mux.h"
 #include "xeth_proxy.h"
+#include "xeth_lb.h"
 #include "xeth_debug.h"
 
 static void xeth_sbtx_msg_set(void *data, enum xeth_msg_kind kind)
@@ -289,6 +290,8 @@ int xeth_sbtx_ifinfo(struct xeth_proxy *proxy, unsigned iff,
 	msg->net = xeth_sbtx_ns_inum(proxy->nd);
 	msg->ifindex = proxy->nd->ifindex;
 	msg->xid = proxy->xid;
+	if (proxy->kind == XETH_DEV_KIND_LB)
+		msg->kdata = xeth_lb_chan(proxy->nd);
 	msg->flags = iff ? iff : proxy->nd->flags;
 	memcpy(msg->addr, proxy->nd->dev_addr, ETH_ALEN);
 	msg->kind = proxy->kind;

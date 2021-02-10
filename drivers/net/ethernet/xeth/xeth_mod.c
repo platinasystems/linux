@@ -9,6 +9,7 @@
 
 #include "xeth_platform.h"
 #include "xeth_bridge.h"
+#include "xeth_lb.h"
 #include "xeth_lag.h"
 #include "xeth_vlan.h"
 #include "xeth_port.h"
@@ -25,6 +26,7 @@ static struct rtnl_link_ops * const xeth_mod_lnkos[] = {
 	&xeth_lag_lnko,
 	&xeth_vlan_lnko,
 	&xeth_port_lnko,
+	&xeth_lb_lnko,
 	&xeth_mux_lnko,
 	NULL,
 };

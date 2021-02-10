@@ -15,6 +15,12 @@
 #include <uapi/linux/xeth.h>
 
 extern struct rtnl_link_ops xeth_mux_lnko;
+extern const struct net_device_ops xeth_mux_ndo;
+
+static inline bool is_xeth_mux(struct net_device *nd)
+{
+	return nd->netdev_ops == &xeth_mux_ndo;
+}
 
 struct net_device *xeth_mux_probe(struct platform_device *);
 

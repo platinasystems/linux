@@ -297,7 +297,6 @@ volatile unsigned long *xeth_mux_flags(struct net_device *mux)
 	return &priv->flags;
 }
 
-static const struct net_device_ops xeth_mux_ndo;
 static const struct ethtool_ops xeth_mux_ethtool_ops;
 static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb);
 static void xeth_mux_demux_vlan(struct net_device *mux, struct sk_buff *skb);
@@ -1028,7 +1027,7 @@ static rx_handler_result_t xeth_mux_demux(struct sk_buff **pskb)
 	return RX_HANDLER_CONSUMED;
 }
 
-static const struct net_device_ops xeth_mux_ndo = {
+const struct net_device_ops xeth_mux_ndo = {
 	.ndo_init	= xeth_mux_init,
 	.ndo_uninit	= xeth_mux_uninit,
 	.ndo_open	= xeth_mux_open,
@@ -1036,11 +1035,6 @@ static const struct net_device_ops xeth_mux_ndo = {
 	.ndo_start_xmit	= xeth_mux_xmit,
 	.ndo_get_stats64= xeth_mux_get_stats64,
 };
-
-bool xeth_is_mux(struct net_device *nd)
-{
-	return nd->netdev_ops == &xeth_mux_ndo;
-}
 
 static void xeth_mux_eto_get_drvinfo(struct net_device *nd,
 				     struct ethtool_drvinfo *drvinfo)

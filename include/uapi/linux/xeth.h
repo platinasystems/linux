@@ -60,7 +60,7 @@ enum xeth_vlan_ifla {
 
 enum xeth_lb_ifla {
 	XETH_LB_IFLA_UNSPEC,
-	XETH_LB_IFLA_CHANNELS,
+	XETH_LB_IFLA_CHANNEL,
 	XETH_LB_N_IFLA,
 };
 
