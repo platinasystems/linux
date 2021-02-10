@@ -58,12 +58,19 @@ enum xeth_vlan_ifla {
 	XETH_VLAN_N_IFLA,
 };
 
+enum xeth_lb_ifla {
+	XETH_LB_IFLA_UNSPEC,
+	XETH_LB_IFLA_CHANNELS,
+	XETH_LB_N_IFLA,
+};
+
 enum xeth_dev_kind {
 	XETH_DEV_KIND_UNSPEC,
 	XETH_DEV_KIND_PORT,
 	XETH_DEV_KIND_VLAN,
 	XETH_DEV_KIND_BRIDGE,
 	XETH_DEV_KIND_LAG,
+	XETH_DEV_KIND_LB,
 };
 
 enum xeth_msg_kind {
@@ -295,7 +302,8 @@ struct xeth_msg_ifa6 {
 struct xeth_msg_ifinfo {
 	struct xeth_msg_header header;
 	uint32_t xid;
-	uint32_t reserved;
+	/* @kdata: kind specific data (e.g. loopback channel) */
+	uint32_t kdata;
 	uint8_t ifname[XETH_IFNAMSIZ];
 	uint64_t net;
 	int32_t ifindex;
