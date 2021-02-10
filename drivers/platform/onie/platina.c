@@ -321,6 +321,12 @@ static int platina_mk1_probe(struct platform_device *platina)
 	priv->vendor.port_ksettings = platina_mk1_port_ksettings;
 	priv->vendor.subport_ksettings = platina_mk1_subport_ksettings;
 
+	priv->vendor.xeth.info.parent = dev;
+	priv->vendor.xeth.info.name = "xeth";
+	priv->vendor.xeth.info.id = -1;
+	priv->vendor.xeth.info.res = NULL;
+	priv->vendor.xeth.info.num_res = 0;
+
 	/* toggle all PORT*_RST_L gpio pins to start optical qsfps */
 	for (i = 0; i < ARRAY_SIZE(gpios); i++) {
 		struct gpio_desc *gd = gpio_to_desc(gpios[i]);
