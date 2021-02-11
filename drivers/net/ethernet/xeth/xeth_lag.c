@@ -125,11 +125,24 @@ static int xeth_lag_add_lower(struct net_device *lag,
 	return 0;
 }
 
+static int xeth_lag_open(struct net_device *nd)
+{
+	/* FIXME condition this with lowers */
+	netif_carrier_on(nd);
+	return xeth_proxy_open(nd);
+}
+
+static int xeth_lag_stop(struct net_device *nd)
+{
+	netif_carrier_off(nd);
+	return xeth_proxy_stop(nd);
+}
+
 static const struct net_device_ops xeth_lag_ndo = {
 	.ndo_init = xeth_lag_init,
 	.ndo_uninit = xeth_lag_uninit,
-	.ndo_open = xeth_proxy_open,
-	.ndo_stop = xeth_proxy_stop,
+	.ndo_open = xeth_lag_open,
+	.ndo_stop = xeth_lag_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
 	.ndo_get_iflink = xeth_proxy_get_iflink,
 	.ndo_get_stats64 = xeth_proxy_get_stats64,

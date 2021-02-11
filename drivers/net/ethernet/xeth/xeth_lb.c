@@ -36,11 +36,23 @@ static int xeth_lb_get_iflink(const struct net_device *nd)
 	return priv->proxy.mux->ifindex;
 }
 
+static int xeth_lb_open(struct net_device *nd)
+{
+	netif_carrier_on(nd);
+	return xeth_proxy_open(nd);
+}
+
+static int xeth_lb_stop(struct net_device *nd)
+{
+	netif_carrier_off(nd);
+	return xeth_proxy_stop(nd);
+}
+
 static const struct net_device_ops xeth_lb_ndo = {
 	.ndo_init = xeth_proxy_init,
 	.ndo_uninit = xeth_proxy_uninit,
-	.ndo_open = xeth_proxy_open,
-	.ndo_stop = xeth_proxy_stop,
+	.ndo_open = xeth_lb_open,
+	.ndo_stop = xeth_lb_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
 	.ndo_get_iflink = xeth_lb_get_iflink,
 	.ndo_get_stats64 = xeth_proxy_get_stats64,

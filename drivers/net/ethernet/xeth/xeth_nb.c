@@ -124,7 +124,8 @@ static int xeth_nb_netdevice(struct notifier_block *netdevice,
 	nb = xeth_debug_container_of(netdevice, struct xeth_nb, netdevice);
 	if (IS_ERR(nb))
 		return NOTIFY_DONE;
-	if (mux = xeth_mux_of_nb(nb), IS_ERR(mux))
+	mux = xeth_mux_of_nb(nb);
+	if (IS_ERR(mux))
 		return NOTIFY_DONE;
 	nd = netdev_notifier_info_to_dev(ptr);
 	if (nd->ifindex == 1) {
@@ -144,12 +145,11 @@ static int xeth_nb_netdevice(struct notifier_block *netdevice,
 		return NOTIFY_DONE;
 	}
 	proxy = xeth_mux_proxy_of_nd(mux, nd);
-	if (!proxy || !proxy->xid || !proxy->mux)
-		return NOTIFY_DONE;
 	switch (event) {
 	case NETDEV_REGISTER:
 		/* also notifies dev_change_net_namespace */
-		xeth_sbtx_ifinfo(proxy, 0, XETH_IFINFO_REASON_REG);
+		if (proxy && proxy->xid && proxy->mux)
+			xeth_sbtx_ifinfo(proxy, 0, XETH_IFINFO_REASON_REG);
 		break;
 	case NETDEV_UNREGISTER:
 		/* lgnored here, handled by @xeth_UPPER_dellink() */
@@ -167,6 +167,9 @@ static int xeth_nb_netdevice(struct notifier_block *netdevice,
 		break;
 	case NETDEV_CHANGEUPPER:
 		/* ignore here, handled by @xeth_UPPER_add_slave() */
+		break;
+	case NETDEV_CHANGELOWERSTATE:
+		xeth_mux_check_lower_carrier(mux);
 		break;
 	}
 	return NOTIFY_DONE;

@@ -31,6 +31,9 @@ netdev_tx_t xeth_mux_encap_xmit(struct sk_buff *, struct net_device *proxy);
 atomic64_t *xeth_mux_counters(struct net_device *mux);
 volatile unsigned long *xeth_mux_flags(struct net_device *mux);
 
+void xeth_mux_change_carrier(struct net_device *mux, struct net_device *nd,
+			     bool on);
+void xeth_mux_check_lower_carrier(struct net_device *mux);
 void xeth_mux_del_vlans(struct net_device *mux, struct net_device *nd,
 			struct list_head *unregq);
 void xeth_mux_dump_all_ifinfo(struct net_device *);

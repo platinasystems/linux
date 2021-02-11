@@ -223,6 +223,38 @@ do {									\
 	xeth_link_stat_init(priv->link_stats);
 }
 
+void xeth_mux_change_carrier(struct net_device *mux, struct net_device *nd,
+			     bool on)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	void (*change_carrier)(struct net_device *dev) =
+		on ? netif_carrier_on : netif_carrier_off;
+	struct list_head *kin;
+
+	spin_lock(&priv->vlans.mutex);
+	list_for_each(kin, &priv->vlans.list) {
+		struct xeth_proxy *proxy = xeth_proxy_of_kin(kin);
+		if (xeth_vlan_has_link(proxy->nd, nd))
+			change_carrier(proxy->nd);
+	}
+	spin_unlock(&priv->vlans.mutex);
+}
+
+void xeth_mux_check_lower_carrier(struct net_device *mux)
+{
+	struct net_device *lower;
+	struct list_head *lowers;
+	bool carrier = true;
+	netdev_for_each_lower_dev(mux, lower, lowers)
+		if (!netif_carrier_ok(lower))
+			carrier = false;
+	if (carrier) {
+		if (!netif_carrier_ok(mux))
+			netif_carrier_on(mux);
+	} else if (netif_carrier_ok(mux))
+		netif_carrier_off(mux);
+}
+
 void xeth_mux_del_vlans(struct net_device *mux, struct net_device *nd,
 			struct list_head *unregq)
 {
@@ -802,10 +834,10 @@ static int xeth_mux_open(struct net_device *mux)
 	}
 
 	netdev_for_each_lower_dev(mux, lower, lowers)
-		xeth_debug_nd_err(lower, dev_open(lower, NULL));
+		if (!(lower->flags & IFF_UP))
+			xeth_debug_nd_err(lower, dev_open(lower, NULL));
 
-	if (!netif_carrier_ok(mux))
-		netif_carrier_on(mux);
+	xeth_mux_check_lower_carrier(mux);
 
 	return 0;
 }

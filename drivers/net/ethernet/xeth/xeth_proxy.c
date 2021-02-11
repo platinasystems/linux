@@ -86,6 +86,7 @@ int xeth_proxy_init(struct net_device *nd)
 	nd->features |= NETIF_F_VLAN_CHALLENGED;
 	nd->features &= ~NETIF_F_SOFT_FEATURES;
 	nd->features |= NETIF_F_HW_L2FW_DOFFLOAD;
+	netif_carrier_off(nd);
 	return 0;
 }
 
@@ -98,21 +99,13 @@ void xeth_proxy_uninit(struct net_device *nd)
 int xeth_proxy_open(struct net_device *nd)
 {
 	struct xeth_proxy *proxy = netdev_priv(nd);
-	int err;
-
-	if (!proxy->xid || !proxy->mux)
-		return 0;
-	err = dev_open(proxy->mux, NULL);
-	if (err)
-		return err;
-	netif_carrier_off(nd);
-	return xeth_sbtx_ifinfo(proxy, nd->flags, XETH_IFINFO_REASON_UP);
+	return (proxy->xid && proxy->mux) ?
+		xeth_sbtx_ifinfo(proxy, nd->flags, XETH_IFINFO_REASON_UP) : 0;
 }
 
 int xeth_proxy_stop(struct net_device *nd)
 {
 	struct xeth_proxy *proxy = netdev_priv(nd);
-	/* netif_carrier_off() through xeth_sbrx_carrier() */
 	return xeth_sbtx_ifinfo(proxy, nd->flags, XETH_IFINFO_REASON_DOWN);
 }
 

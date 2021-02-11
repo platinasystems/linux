@@ -29,16 +29,10 @@ static void xeth_sbrx_carrier(struct net_device *mux,
 {
 	struct xeth_proxy *proxy = xeth_mux_proxy_of_xid(mux, msg->xid);
 	if (proxy && proxy->kind == XETH_DEV_KIND_PORT)
-		switch (msg->flag) {
-		case XETH_CARRIER_ON:
-			netif_carrier_on(proxy->nd);
-			break;
-		case XETH_CARRIER_OFF:
-			netif_carrier_off(proxy->nd);
-			break;
-		default:
-			xeth_mux_inc_sbrx_invalid(mux);
-		}
+		xeth_mux_change_carrier(mux, proxy->nd,
+					msg->flag == XETH_CARRIER_ON);
+	else
+		xeth_mux_inc_sbrx_invalid(mux);
 }
 
 static void xeth_sbrx_et_stat(struct net_device *mux,

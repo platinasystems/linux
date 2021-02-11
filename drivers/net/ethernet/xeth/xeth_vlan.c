@@ -39,11 +39,25 @@ static int xeth_vlan_get_iflink(const struct net_device *nd)
 	return priv->link ? priv->link->ifindex: nd->ifindex;
 }
 
+static int xeth_vlan_open(struct net_device *nd)
+{
+	struct xeth_vlan_priv *priv = netdev_priv(nd);
+	if (netif_carrier_ok(priv->link))
+		netif_carrier_on(nd);
+	return xeth_proxy_open(nd);
+}
+
+static int xeth_vlan_stop(struct net_device *nd)
+{
+	netif_carrier_off(nd);
+	return xeth_proxy_stop(nd);
+}
+
 static const struct net_device_ops xeth_vlan_ndo = {
 	.ndo_init = xeth_proxy_init,
 	.ndo_uninit = xeth_proxy_uninit,
-	.ndo_open = xeth_proxy_open,
-	.ndo_stop = xeth_proxy_stop,
+	.ndo_open = xeth_vlan_open,
+	.ndo_stop = xeth_vlan_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
 	.ndo_get_iflink = xeth_vlan_get_iflink,
 	.ndo_get_stats64 = xeth_proxy_get_stats64,

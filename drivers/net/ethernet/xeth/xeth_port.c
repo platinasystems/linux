@@ -49,6 +49,14 @@ int xeth_port_subport(struct net_device *nd)
 	return priv->subport;
 }
 
+static int xeth_port_open(struct net_device *nd)
+{
+	struct xeth_port_priv *priv = netdev_priv(nd);
+	if (!(priv->proxy.mux->flags & IFF_UP))
+		dev_open(priv->proxy.mux, NULL);
+	return xeth_proxy_open(nd);
+}
+
 u32 xeth_port_ethtool_priv_flags(struct net_device *nd)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
@@ -88,7 +96,7 @@ void xeth_port_speed(struct net_device *nd, u32 mbps)
 const struct net_device_ops xeth_port_ndo = {
 	.ndo_init = xeth_proxy_init,
 	.ndo_uninit = xeth_proxy_uninit,
-	.ndo_open = xeth_proxy_open,
+	.ndo_open = xeth_port_open,
 	.ndo_stop = xeth_proxy_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
 	.ndo_get_iflink = xeth_proxy_get_iflink,
