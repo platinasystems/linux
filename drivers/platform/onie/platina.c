@@ -23,6 +23,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_DESCRIPTION("an ONIE vendor platform driver");
+MODULE_SOFTDEP("pre: vfio_pci");
 
 static const struct platform_device_id platina_device_ids[] = {
 	{ .name = "platina" },
