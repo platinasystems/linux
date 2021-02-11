@@ -749,14 +749,9 @@ static bool xeth_mux_has_links(struct net_device *mux)
 static int xeth_mux_init(struct net_device *mux)
 {
 	struct xeth_mux_priv *priv = netdev_priv(mux);
-	struct net_device *lower;
-	struct list_head *lowers;
 
 	if (priv->xeth)
 		xeth_mux_add_lowers(mux);
-
-	netdev_for_each_lower_dev(mux, lower, lowers)
-		xeth_debug_nd_err(lower, dev_open(lower, NULL));
 
 	priv->main = kthread_run(xeth_mux_main, mux, "%s", mux->name);
 	return IS_ERR(priv->main) ?  PTR_ERR(priv->main) : 0;
@@ -789,12 +784,14 @@ static void xeth_mux_uninit(struct net_device *mux)
 }
 
 /* The mux's newlink will bind a single lower link, however, with platform
- * probed drivers we delay binding lowers until open (aka. admin up) to ensure
- * that the link devices exist before trying to bind.
+ * probed drivers we retry binding lowers on open (aka. admin up) in case
+ * we failed to find them at init.
  */
 static int xeth_mux_open(struct net_device *mux)
 {
 	struct xeth_mux_priv *priv = netdev_priv(mux);
+	struct net_device *lower;
+	struct list_head *lowers;
 	int err;
 
 	if (!xeth_mux_has_links(mux)) {
@@ -803,6 +800,9 @@ static int xeth_mux_open(struct net_device *mux)
 		if (err = xeth_mux_add_lowers(mux), err)
 			return err;
 	}
+
+	netdev_for_each_lower_dev(mux, lower, lowers)
+		xeth_debug_nd_err(lower, dev_open(lower, NULL));
 
 	if (!netif_carrier_ok(mux))
 		netif_carrier_on(mux);
