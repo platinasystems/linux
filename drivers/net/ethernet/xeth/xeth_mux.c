@@ -231,6 +231,7 @@ void xeth_mux_change_carrier(struct net_device *mux, struct net_device *nd,
 		on ? netif_carrier_on : netif_carrier_off;
 	struct list_head *kin;
 
+	change_carrier(nd);
 	spin_lock(&priv->vlans.mutex);
 	list_for_each(kin, &priv->vlans.list) {
 		struct xeth_proxy *proxy = xeth_proxy_of_kin(kin);
