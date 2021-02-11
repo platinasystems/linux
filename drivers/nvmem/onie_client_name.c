@@ -36,7 +36,7 @@ void onie_client_name(struct platform_device *provider, char *name)
 
 	n = onie_get_tlv(&provider->dev, onie_type_vendor, onie_max_tlv, v);
 	if (n <= 0) {
-		pr_err("%s(%s):vendor:  %ld\n", __func__, provider->name, n);
+		pr_err("%s(%s):vendor:  %zd\n", __func__, provider->name, n);
 		strcpy(name, "onie:novendor");
 		return;
 	}
