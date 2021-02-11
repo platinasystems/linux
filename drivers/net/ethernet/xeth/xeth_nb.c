@@ -146,6 +146,9 @@ static int xeth_nb_netdevice(struct notifier_block *netdevice,
 	}
 	proxy = xeth_mux_proxy_of_nd(mux, nd);
 	switch (event) {
+	case NETDEV_CHANGE:
+		xeth_mux_check_lower_carrier(mux);
+		break;
 	case NETDEV_REGISTER:
 		/* also notifies dev_change_net_namespace */
 		if (proxy && proxy->xid && proxy->mux)
@@ -167,9 +170,6 @@ static int xeth_nb_netdevice(struct notifier_block *netdevice,
 		break;
 	case NETDEV_CHANGEUPPER:
 		/* ignore here, handled by @xeth_UPPER_add_slave() */
-		break;
-	case NETDEV_CHANGELOWERSTATE:
-		xeth_mux_check_lower_carrier(mux);
 		break;
 	}
 	return NOTIFY_DONE;
