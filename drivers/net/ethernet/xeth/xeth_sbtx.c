@@ -212,7 +212,8 @@ int xeth_sbtx_fib6_entry(struct net_device *mux,
 	msg->nsiblings = rt->fib6_nsiblings;
 	msg->type = rt->fib6_type;
 	msg->table = rt->fib6_table->tb6_id;
-	msg->nh.ifindex = rt->fib6_nh->fib_nh_dev->ifindex;
+	msg->nh.ifindex = rt->fib6_nh->fib_nh_dev ?
+		rt->fib6_nh->fib_nh_dev->ifindex : 0;
 	msg->nh.weight = rt->fib6_nh->fib_nh_weight;
 	msg->nh.flags = rt->fib6_nh->fib_nh_flags;
 	memcpy(msg->nh.gw, &rt->fib6_nh->fib_nh_gw6, 16);
@@ -220,7 +221,8 @@ int xeth_sbtx_fib6_entry(struct net_device *mux,
 	list_for_each_entry(iter, &rt->fib6_siblings, fib6_siblings) {
 		if (i == rt->fib6_nsiblings)
 			break;
-		sibling->ifindex = iter->fib6_nh->fib_nh_dev->ifindex;
+		sibling->ifindex = iter->fib6_nh->fib_nh_dev ?
+			iter->fib6_nh->fib_nh_dev->ifindex : 0;
 		sibling->weight = iter->fib6_nh->fib_nh_weight;
 		sibling->flags = iter->fib6_nh->fib_nh_flags;
 		memcpy(sibling->gw, &iter->fib6_nh->fib_nh_gw6, 16);
