@@ -293,6 +293,19 @@ static inline unsigned char imx_i2c_read_reg(struct imx_i2c_struct *i2c_imx,
 	return readb(i2c_imx->base + (reg << i2c_imx->hwdata->regshift));
 }
 
+static void i2c_imx_clear_irq(struct imx_i2c_struct *i2c_imx, unsigned int bits)
+{
+	unsigned int temp;
+
+	/*
+	 * i2sr_clr_opcode is the value to clear all interrupts. Here we want to
+	 * clear only <bits>, so we write ~i2sr_clr_opcode with just <bits>
+	 * toggled. This is required because i.MX needs W0C and Vybrid uses W1C.
+	 */
+	temp = ~i2c_imx->hwdata->i2sr_clr_opcode ^ bits;
+	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2SR);
+}
+
 /* Set up i2c controller register and i2c status register to default value. */
 static void i2c_imx_reset_regs(struct imx_i2c_struct *i2c_imx)
 {
@@ -434,19 +447,6 @@ static void i2c_imx_dma_free(struct imx_i2c_struct *i2c_imx)
 	dma->chan_rx = NULL;
 
 	dma->chan_using = NULL;
-}
-
-static void i2c_imx_clear_irq(struct imx_i2c_struct *i2c_imx, unsigned int bits)
-{
-	unsigned int temp;
-
-	/*
-	 * i2sr_clr_opcode is the value to clear all interrupts. Here we want to
-	 * clear only <bits>, so we write ~i2sr_clr_opcode with just <bits>
-	 * toggled. This is required because i.MX needs W0C and Vybrid uses W1C.
-	 */
-	temp = ~i2c_imx->hwdata->i2sr_clr_opcode ^ bits;
-	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2SR);
 }
 
 static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy)
