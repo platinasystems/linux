@@ -9,6 +9,10 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
+#include <../drivers/gpio/gpiolib.h>
+#include <linux/gpio/consumer.h>
+#include <linux/gpio/machine.h>
+
 enum {
 	xeth_platina_mk1_top_xid = 3999,
 	xeth_platina_mk1_n_ports = 32,
@@ -56,6 +60,14 @@ static const char * const xeth_platina_mk1_et_flag_names[] = {
 	NULL,
 };
 
+static const int xeth_platina_mk1_alpha_qsfp_bus[] = {
+	 2,  3,  4,  5,  6,  7,  8,  9,
+	11, 12, 13, 14, 15, 16, 17, 18,
+	20, 21, 22, 23, 24, 25, 26, 27,
+	29, 30, 31, 32, 33, 34, 35, 36,
+	-1,
+};
+
 static const int xeth_platina_mk1_qsfp_bus[] = {
 	 3,  2,  5,  4,  7,  6,  9,  8,
 	12, 11, 14, 13, 16, 15, 18, 17,
@@ -67,7 +79,14 @@ static const int xeth_platina_mk1_qsfp_bus[] = {
 int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		       const struct pci_device_id *id)
 {
-	int i, j;
+#if 0	/* unused */
+	static const unsigned const qsfp_abs[] = { 496, 480};
+	static const unsigned const qsfp_intr[] = { 464, 448 };
+#endif
+	static const unsigned const qsfp_lpmode[] = { 432, 416 };
+	static const unsigned const qsfp_rst[] = { 400, 384 };
+	struct gpio_desc *gd;
+	int err, i, j;
 
 	xeth_debug("vendor 0x%x, device 0x%x", id->vendor, id->device);
 
@@ -100,6 +119,22 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 	xeth_upper_eto_get_module_info = xeth_qsfp_get_module_info;
 	xeth_upper_eto_get_module_eeprom = xeth_qsfp_get_module_eeprom;
 
+	for (i = 0; i < ARRAY_SIZE(qsfp_rst); i++) {
+		gd = gpio_to_desc(qsfp_rst[i]);
+		if (!gd)
+			continue;
+		set_bit(FLAG_ACTIVE_LOW, &gd->flags);
+		err = xeth_debug_err(gpiod_direction_output(gd, 0x0000));
+		gpiod_put(gd);
+		if (err)
+			break;
+		gd = gpio_to_desc(qsfp_lpmode[i]);
+		if (!gd)
+			break;
+		err = xeth_debug_err(gpiod_direction_output(gd, 0x0000));
+		gpiod_put(gd);
+	}
+
 	return 0;
 }
 
@@ -112,13 +147,14 @@ static int xeth_platina_mk1_init(void)
 	char name[IFNAMSIZ];
 	struct net_device *nd;
 
-	xeth_qsfp_bus = xeth_platina_mk1_qsfp_bus;
 	ea = xeth_onie_mac_base();
 	if (ea)		/* 1st port after bmc, eth0, eth1, and eth2 */
 		ea += 4;
 	first_port = xeth_onie_device_version() > 0 ? 1 : 0;
+	xeth_qsfp_bus = first_port ? xeth_platina_mk1_qsfp_bus :
+		xeth_platina_mk1_alpha_qsfp_bus;
 	for (port = 0; err >= 0 && port < xeth_platina_mk1_n_ports; port++) {
-		int qsfp_bus = xeth_platina_mk1_qsfp_bus[port];
+		int qsfp_bus = xeth_qsfp_bus[port];
 		if (xeth_platina_mk1_provision[port] > 1) {
 			void (*cb)(struct ethtool_link_ksettings *) =
 				xeth_platina_mk1_et_subport_cb;
