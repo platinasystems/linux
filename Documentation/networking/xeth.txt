@@ -1,110 +1,122 @@
-An XETH driver may use VLAN or MPLS encapsulation to multiplex virtual ethernet
-devices through one or more iflinks to respective ports of an on-board or
-remote SWITCH. Such drivers also have a companion daemon (aka. SWITCHD) that
-controls the switch through: vfio/pci; an alternate data link or encapsulation;
-or some other means.  This SWITCHD also has a sideband protocol with its XETH
-driver through a SEQPACKET, UNIX domain socket named @DRIVER/xeth.
+Ethernet multiplexor (xeth)
+===========================
+
+An xeth-mux device may use VLAN or VPLS encapsulation to multiplex virtual
+ethernet devices that proxy loopbacks, port, lag, vlan, and bridges through one
+or more iflinks to respective functions of an on-board or remote SWITCH.  Each
+xeth-mux also has a companion daemon (aka. SWITCHD) that controls the SWITCH
+through: vfio-pci; an alternate data link or encapsulation; or some other
+means.  SWITCHD also has a sideband protocol with the xeth-mux through a
+SEQPACKET, UNIX domain socket named @MUX.
 
 	SWITCHD
 	 |   |
 	 |   |
-	 |   |   virtuals	e.g. eth-[CHASSIS-][SLOT-]PORT-SUBPORT
+	 |   |   virtuals
 	 |   |   | .... |
-	 |   |<->  XETH		@DRIVER/xeth
+	 |   |<->xeth-mux
 	 |          ||
-	 |          ||		iflinks
 	 |          ||
-	 |<-----> SWITCH	on-board or remote
+	 |          ||
+	 |<-----> SWITCH
 	         | .... |
 	           ports
 
-The first XETH driver, platina-mk1 is used on Platina Systems 32 by 100G Top Of
-Rack switch. This TOR has an on-board Tomahawk SWITCH ASIC from Broadcom
-Corporation. The controller, vnetd is bundled within a multi-featured program
-called goes [GO-Embedded-System].
+Usage
+-----
 
-Usage:
+The xeth-mux and its port proxies may be created from an open-firmware matched
+platform device with associated properties or through rtnl with iproute2.
 
-# modprobe platina-mk1
-# ip link add eth-PORT-SUBPORT type platina-mk1
-# ip address add PREFIX dev eth-PORT-SUBPORT
-# ethtool --set-priv-flags eth-PORT-SUBPORT copper {on|off}
-# ethrool -s eth-PORT-SUBPORT autoneg {on|off} speed {Mbps}
-...
-# goes start
-# ip -s link show eth-PORT-SUBPORT
-# ethtool -S eth-PORT-SUBPORT
+	ip link add [NAME] [link DEV] type xeth-mux [encap <(vlan)|vpls>]
+	ip link add [NAME] link XETH_MUX type xeth-port [xid XID]
 
-@DRIVER/xeth protocol:
+The proxy loopback, lag, vlan, and bridge devices are created with iproute.
 
-The first 15 bytes of all protocol messages are 0. Any non-zero data implies
-that the SEQPACKET is a properly encapsulated ethernet frame that is demux'd by
-the driver and forwarded to the respective virtual interface. These are
-typically SWITCH exception frames like ARP, TTL=1 or table misses.
+	ip link add [NAME] link XETH_MUX type xeth-loopback [channel ID]
 
-The 16th byte of the 0 prefaced message is it's op-code identifying the
-remaining message format and the desired operation.
+	ip link add [NAME] link XETH_PORT type xeth-lag
+	ip link set ANOTHER_XETH_PORT master XETH_LAG
 
-XETH_BREAK_OP:
+	ip link add [NAME.VLAN] link XETH_PORT_OR_LAG type xeth-vlan [vid VID]
 
-	u8	zeros[15];
-	u8	op;	// 0
+	ip link add [NAME] link XETH_PORT_LAG_OR_VLAN type xeth-bridge
+	ip link set ANOTHER_XETH_PORT_LAG_OR_VLAN master XETH_BRIDGE
 
-Sent by the XETH driver to indicate completion of streamed response.
+L2 Forwarding Offload
+---------------------
 
-XETH_LINK_STAT_OP:
+The SWITCH offloads forwarding for all devices by default. Each device may
+be configured to defer to Linux forwarding with:
 
-	u8	zeros[15];
-	u8	op;	// 1
-	u8	ifname[IFNAMSIZ];
-	u64	index;
-	u64	count;
+	ethtool -K XETH_DEV l2-fwd-offload off
 
-Sent by SWITCHD to set the indexed link stat.
+Exceptions
+----------
 
-XETH_ETHTOOL_STAT_OP:
+The SWITCH may not be able to forward some frames like ARP requests, TTL=1 or
+table missues. In such cases, SWITCHD can encapsulate and mark such frames
+before forwarding through a raw socket to the xeth-mux that recognizes such
+marks (e.g. vlan priority 7) to demux to the associated proxy device.
 
-	u8	zeros[15];
-	u8	op;	// 2
-	u8	ifname[IFNAMSIZ];
-	u64	index;
-	u64	count;
+Link-less Mux
+-------------
 
-Sent by SWITCHD to set the indexed ethtool stat.
+An xeth-mux may not have any lower links.
 
-XETH_ETHTOOL_FLAGS_OP:
+	ip link add [NAME] type xeth-mux [encap <(vlan)|vpls>]
 
-	u8	zeros[15];
-	u8	op;	// 3
-	u8	ifname[IFNAMSIZ];
-	u32	flags;
+In this case, all received frames are marked, encapsulated, exceptions
+from SWITCHD and all proxy transmitted frames are encapsulated by
+the xeth-mux and received by SWITCHD through the same raw socket.
 
-Sent by the XETH driver to forward dumped or changed ethtool priv_flags.
+This may be used to model a new switch, a network of switches, or connect
+a SWITCHD to a remote SWITCH through a secure tunnel.
 
-XETH_ETHTOOL_SETTINGS_OP:
+Side-band protocol
+------------------
 
-	u8 zeros[15];
-	u8 op;	// 4
-	u8 ifname[IFNAMSIZ];
-	struct ethtool_link_ksettings settings;
+The xeth-mux provides the following information to SWITCHD:
 
-Sent by the XETH driver to forward dumped or changed ethtool settings.
+	- proxy interface
+	- FIB
+	- neighbor entries
 
-XETH_ETHTOOL_DUMP_OP:
+SWITCHD provide this to the xeth-mux:
 
-	u8 zeros[15];
-	u8 op;	// 5
+	- port carrier state
+	- port ethtool stats
+	- proxy link stats 
 
-Sent by SWITCHD to request the ethtool flags and settings of all XETH net
-devices. The XETH driver will send BREAK after the last ETHTOOL_SETTINGS.
+On admin-up, the xeth-mux opens it's @NAME socket. SWITCHD connects to this
+socket and begins with a DUMP_IFINFO request.
 
-XETH_CARRER_OP:
+	SWITCHD              xeth-mux
+	   |--- DUMP_IFINFO ---->|
+	   |<-- XIFINFO ---------|
+	   |    ...              |
+	   |<-- BREAK -----------|
+	   |--- DUMP_FIBINFO --->|
+	   |<-- XFIBINFO --------|
+	   |    ...              |
+	   |<-- BREAK -----------|
+	   |--- SPEED ---------->|
+	   |--- CARRIER -------->|
+	   |--- LINK_STAT ------>|
+	   |--- ETHTOOL_STAT --->|
+	   |    ...              |
 
-	u8	zeros[15];
-	u8	op;	// 6
-	u8	ifname[IFNAMSIZ];
-	u8	flag;	// XETH_CARRIER_ON | XETH_CARRIER_OFF
+In the above diagram, XIFINFO refers to the extended interface info for each
+proxy device: IFINFO, ETHTOOL_FLAGS, IFA, IFA6, UPPER devs.
 
-Sent by SWITCHD to change carrier status (aka. LOWER_UP flag) of an interface.
-This is equivalent to an rtnetlink IFLA_CARRIER attribute sent to the netlink
-socket of the interface's namespace.
+XFIBINFO refers to this extended forwarding info of each network: FIBENTRY,
+FIB6ENTRY, NEIGH_UPDATE, NETNS_ADD/DEL.
+
+After the BREAK reply to the DUMP_IFINFO request, the xeth-mux continues to
+send FIB and interface updates while SWITCHD relays negotiated port speed,
+carrier state, and periodic stats.
+
+See <uapi/linux/xeth.h> for message definitions.
+
+See <https://github.com/platinasystems/xeth> for a GO protocol handler and sample
+SWITCHD.
