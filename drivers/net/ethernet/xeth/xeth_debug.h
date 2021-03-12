@@ -48,7 +48,7 @@ do {									\
 ({									\
 	int _err = (expr);						\
 	if (_err < 0)							\
-		pr_err("%s:%s:%s:%s: %d", xeth_debug_prefix,		\
+		pr_err("%s:%s:%s:%s: %d\n", xeth_debug_prefix,		\
 		       __func__, netdev_name(nd), #expr, _err);		\
 	(_err);								\
 })
@@ -57,11 +57,11 @@ do {									\
 ({									\
 	void *_ptr = (expr);						\
 	if (!_ptr) {							\
-		pr_err("%s:%s:%s: NULL", xeth_debug_prefix,		\
+		pr_err("%s:%s:%s: NULL\n", xeth_debug_prefix,		\
 		       __func__, #expr);				\
 		_ptr = ERR_PTR(-ENOMEM);				\
 	} else if (IS_ERR(_ptr))					\
-		pr_err("%s:%s:%s: %ld", xeth_debug_prefix,		\
+		pr_err("%s:%s:%s: %ld\n", xeth_debug_prefix,		\
 		       __func__, #expr, PTR_ERR(_ptr));			\
 	(_ptr);								\
 })
@@ -73,11 +73,11 @@ do {									\
 ({									\
 	void *_ptr = (expr);						\
 	if (!_ptr) {							\
-		pr_err("%s:%s:%s:%s: %s", xeth_debug_prefix,		\
+		pr_err("%s:%s:%s:%s: %s\n", xeth_debug_prefix,		\
 		       __func__, netdev_name(nd), #expr, "NULL");	\
 		_ptr = ERR_PTR(-ENOMEM);				\
 	} else if (IS_ERR(_ptr))					\
-		pr_err("%s:%s:%s:%s: %ld", xeth_debug_prefix,		\
+		pr_err("%s:%s:%s:%s: %ld\n", xeth_debug_prefix,		\
 		       __func__, netdev_name(nd), #expr, PTR_ERR(_ptr));\
 	(_ptr);								\
 })

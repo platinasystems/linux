@@ -15,7 +15,6 @@
 #include "xeth_sbtx.h"
 #include "xeth_version.h"
 #include "xeth_debug.h"
-#include <linux/xeth.h>
 #include <linux/netdevice.h>
 
 static const char xeth_vlan_drvname[] = "xeth-vlan";

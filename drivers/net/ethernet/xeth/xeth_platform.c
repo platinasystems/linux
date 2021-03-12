@@ -8,49 +8,21 @@
  */
 
 #include "xeth_platform.h"
+#include "xeth_prop.h"
 #include "xeth_mux.h"
 #include "xeth_port.h"
 #include "xeth_qsfp.h"
-#include <linux/module.h>
+#include "xeth_debug.h"
 #include <linux/mod_devicetable.h>
 #include <linux/of_device.h>
+#include <linux/etherdevice.h>
 
-/* Driver Data indices */
-enum xeth_platform_dd {
-	xeth_platform_dd_platina_mk1,
-	xeth_platform_dd_platina_mk1alpha,
-};
-
-extern struct xeth_platform xeth_platina_mk1_platform;
-extern struct xeth_platform xeth_platina_mk1alpha_platform;
-
-static const struct xeth_platform * const xeth_platforms[] = {
-	[xeth_platform_dd_platina_mk1] = &xeth_platina_mk1_platform,
-	[xeth_platform_dd_platina_mk1alpha] = &xeth_platina_mk1alpha_platform,
-};
-
-static const struct platform_device_id xeth_platform_device_ids[] = {
-	{
-		.name = "platina-mk1",
-		.driver_data = xeth_platform_dd_platina_mk1,
-	},
-	{
-		.name = "platina-mk1alpha",
-		.driver_data = xeth_platform_dd_platina_mk1alpha,
-	},
-	{},
-};
-
-MODULE_DEVICE_TABLE(platform, xeth_platform_device_ids);
+static int xeth_platform_probe(struct platform_device *pd);
+static int xeth_platform_remove(struct platform_device *pd);
 
 static const struct of_device_id xeth_platform_of_match[] = {
 	{
-		.compatible = "linux,platina-mk1",
-		.data = &xeth_platina_mk1_platform,
-	},
-	{
-		.compatible = "linux,platina-mk1alpha",
-		.data = &xeth_platina_mk1alpha_platform,
+		.compatible = "platina,mk1",
 	},
 	{},
 };
@@ -58,20 +30,12 @@ static const struct of_device_id xeth_platform_of_match[] = {
 MODULE_DEVICE_TABLE(of, xeth_platform_of_match);
 
 int xeth_platform_provision[512], xeth_platform_provisioned;
+
 module_param_array_named(provision, xeth_platform_provision, int,
 			 &xeth_platform_provisioned, 0644);
 MODULE_PARM_DESC(provision, " 1 (default), 2, or 4 subports per port");
 
-ssize_t xeth_platform_subports(size_t port)
-{
-	return port < ARRAY_SIZE(xeth_platform_provision) ?
-		xeth_platform_provision[port] : -EINVAL;
-}
-
-static inline ssize_t
-xeth_platform_show_port_provision(struct device *dev,
-				  struct device_attribute *attr,
-				  char *buf)
+static ssize_t provisioned_show(struct device_driver *drv, char *buf)
 {
 	int port;
 	for (port = 0;
@@ -82,77 +46,89 @@ xeth_platform_show_port_provision(struct device *dev,
 	return port;
 }
 
-static struct device_attribute xeth_platform_provision_attr = {
-	.attr.name = "provision",
-	.attr.mode = VERIFY_OCTAL_PERMISSIONS(0444),
-	.show = xeth_platform_show_port_provision,
+static DRIVER_ATTR_RO(provisioned);
+
+static struct attribute *xeth_platform_attrs[] = {
+	&driver_attr_provisioned.attr,
+	NULL,
 };
+
+ATTRIBUTE_GROUPS(xeth_platform);
+
+struct platform_driver xeth_platform_driver = {
+	.driver		= {
+		.name = KBUILD_MODNAME,
+		.of_match_table = xeth_platform_of_match,
+		.groups = xeth_platform_groups,
+	},
+	.probe		= xeth_platform_probe,
+	.remove		= xeth_platform_remove,
+};
+
+ssize_t xeth_platform_subports(size_t port)
+{
+	return port < ARRAY_SIZE(xeth_platform_provision) ?
+		xeth_platform_provision[port] : -EINVAL;
+}
 
 static int xeth_platform_probe(struct platform_device *pd)
 {
-	const struct xeth_platform *platform;
+	struct device *dev = &pd->dev;
 	struct net_device *mux;
-	int err, port, subport;
+	char ifname[IFNAMSIZ];
+	int port, subport;
+	u16 ports;
+	u8 base_port;
 
-	platform = of_device_get_match_data(&pd->dev);
-	if (!platform && pd->id_entry)
-		platform = xeth_platforms[pd->id_entry->driver_data];
-	if (!platform) {
-		pr_err("%s: no match\n", pd->name);
-		return -EINVAL;
-	}
-
-	err = device_create_file(&pd->dev, &xeth_platform_provision_attr);
-	if (err)
-		return err;
-
-	err = xeth_platform_init(platform, pd);
-	if (err) {
-		device_remove_file(&pd->dev, &xeth_platform_provision_attr);
-		return err;
-	}
-
-	mux = xeth_mux(platform);
-	if (IS_ERR(mux)) {
-		xeth_platform_uninit(platform);
-		device_remove_file(&pd->dev, &xeth_platform_provision_attr);
+	mux = xeth_mux(dev);
+	if (IS_ERR(mux))
 		return PTR_ERR(mux);
+	if (!mux) {
+		pr_err("null mux\n");
+		return -ENXIO;
 	}
-
 	platform_set_drvdata(pd, mux);
 
-	for (port = 0; port < xeth_platform_ports(platform); port++)
+	ports = xeth_prop_ports(dev);
+	base_port = xeth_prop_base_port(dev);
+	for (port = 0; port < ports; port++) {
 		switch (xeth_platform_provision[port]) {
 		case 1:
-			xeth_port(mux, port, -1);
+			scnprintf(ifname, IFNAMSIZ, "xeth%d",
+				  base_port + port);
+			xeth_port(mux, ifname, port, -1);
 			break;
 		case 2:
 		case 4:
 			for (subport = 0;
 			     subport < xeth_platform_provision[port];
-			     subport++)
-				xeth_port(mux, port, subport);
+			     subport++) {
+				scnprintf(ifname, IFNAMSIZ, "xeth%d-%d",
+					  base_port + port,
+					  base_port + subport);
+				xeth_port(mux, ifname, port, subport);
+			}
 			break;
 		default:
 			xeth_platform_provision[port] = 1;
-			xeth_port(mux, port, -1);
+			scnprintf(ifname, IFNAMSIZ, "xeth%d",
+				  base_port + port);
+			xeth_port(mux, ifname, port, -1);
 		}
+	}
 
 	return 0;
 }
 
 static int xeth_platform_remove(struct platform_device *pd)
 {
-	struct net_device *mux;
+	struct net_device *mux = platform_get_drvdata(pd);
 	LIST_HEAD(q);
 
-	mux = platform_get_drvdata(pd);
 	if (!mux)
 		return 0;
-	platform_set_drvdata(pd, NULL);
 
-	device_remove_file(&pd->dev, &xeth_platform_provision_attr);
-	xeth_platform_uninit(xeth_mux_platform(mux));
+	platform_set_drvdata(pd, NULL);
 
 	rtnl_lock();
 	xeth_mux_lnko.dellink(mux, &q);
@@ -162,13 +138,3 @@ static int xeth_platform_remove(struct platform_device *pd)
 
 	return 0;
 }
-
-struct platform_driver xeth_platform_driver = {
-	.driver		= {
-		.name = KBUILD_MODNAME,
-		.of_match_table = xeth_platform_of_match,
-	},
-	.probe		= xeth_platform_probe,
-	.remove		= xeth_platform_remove,
-	.id_table	= xeth_platform_device_ids,
-};

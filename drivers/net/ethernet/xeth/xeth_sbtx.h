@@ -17,7 +17,6 @@
 #include <net/ip_fib.h>
 #include <net/ip6_fib.h>
 #include <net/netevent.h>
-#include <linux/xeth.h>
 
 struct xeth_sbtxb {
 	struct list_head list;

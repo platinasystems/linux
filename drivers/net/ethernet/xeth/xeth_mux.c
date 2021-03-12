@@ -9,6 +9,7 @@
 
 #include "xeth_mux.h"
 #include "xeth_platform.h"
+#include "xeth_prop.h"
 #include "xeth_link_stat.h"
 #include "xeth_nb.h"
 #include "xeth_proxy.h"
@@ -19,7 +20,6 @@
 #include "xeth_vlan.h"
 #include "xeth_debug.h"
 #include "xeth_version.h"
-#include <linux/xeth.h>
 #include <linux/if_vlan.h>
 #include <net/sock.h>
 #include <linux/un.h>
@@ -35,7 +35,6 @@ enum {
 };
 
 struct xeth_mux_priv {
-	const struct xeth_platform *platform;
 	struct net_device *nd;
 	struct xeth_nb nb;
 	struct task_struct *main;
@@ -54,14 +53,28 @@ struct xeth_mux_priv {
 		struct list_head free, tx;
 		void *rx;
 	} sb;
+	struct {
+		char names[xeth_prop_max_flags][ETH_GSTRING_LEN];
+		size_t named;
+	} priv_flags;
+	struct xeth_mux_stat_name {
+		struct mutex mutex;
+		char names[xeth_prop_max_stats][ETH_GSTRING_LEN];
+		size_t named;
+		bool sysfs;
+	} stat_name;
+	struct {
+		struct gpio_descs *absent_gpios;
+		struct gpio_descs *intr_gpios;
+		struct gpio_descs *lpmode_gpios;
+		struct gpio_descs *reset_gpios;
+		u8 buses[xeth_prop_max_ports];
+		size_t n_buses;
+	} qsfp;
+	size_t ports, port_txqs, port_rxqs;
+	u64 base_port_addr;
 	enum xeth_encap encap;
 };
-
-const struct xeth_platform *xeth_mux_platform(struct net_device *mux)
-{
-	struct xeth_mux_priv *priv = netdev_priv(mux);
-	return priv->platform;
-}
 
 static void xeth_mux_lock_proxy(struct xeth_mux_priv *priv)
 {
@@ -83,12 +96,23 @@ static void xeth_mux_unlock_sb(struct xeth_mux_priv *priv)
 	spin_unlock(&priv->sb.mutex);
 }
 
+static inline void xeth_mux_lock_stat_name(struct xeth_mux_priv *priv)
+{
+	mutex_lock(&priv->stat_name.mutex);
+}
+
+static inline void xeth_mux_unlock_stat_name(struct xeth_mux_priv *priv)
+{
+	mutex_unlock(&priv->stat_name.mutex);
+}
+
 static void xeth_mux_priv_init(struct xeth_mux_priv *priv)
 {
 	int i;
 
 	mutex_init(&priv->proxy.mutex);
 	spin_lock_init(&priv->sb.mutex);
+	mutex_init(&priv->stat_name.mutex);
 
 	for (i = 0; i < xeth_mux_proxy_hash_bkts; i++)
 		INIT_HLIST_HEAD(&priv->proxy.hls[i]);
@@ -115,11 +139,120 @@ struct net_device *xeth_mux_of_nb(struct xeth_nb *nb)
 	return priv->nd;
 }
 
+size_t xeth_mux_ports(struct net_device *nd)
+{
+	struct xeth_mux_priv *priv = netdev_priv(nd);
+	return priv->ports ? priv->ports : 32;
+}
+
+size_t xeth_mux_port_txqs(struct net_device *nd)
+{
+	struct xeth_mux_priv *priv = netdev_priv(nd);
+	return priv->port_txqs ? priv->port_txqs : 1;
+}
+
+size_t xeth_mux_port_rxqs(struct net_device *nd)
+{
+	struct xeth_mux_priv *priv = netdev_priv(nd);
+	return priv->port_rxqs ? priv->port_rxqs : 1;
+}
+
 enum xeth_encap xeth_mux_encap(struct net_device *nd)
 {
 	struct xeth_mux_priv *priv = netdev_priv(nd);
 	return priv->encap;
 }
+
+u64 xeth_mux_base_port_addr(struct net_device *nd)
+{
+	struct xeth_mux_priv *priv = netdev_priv(nd);
+	return priv->base_port_addr;
+}
+
+size_t xeth_mux_n_priv_flags(struct net_device *mux)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return priv->priv_flags.named;
+}
+
+void xeth_mux_priv_flag_names(struct net_device *mux, char *buf)
+{
+	int i;
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	for (i = 0; i < priv->priv_flags.named; i++, buf += ETH_GSTRING_LEN)
+		strncpy(buf, priv->priv_flags.names[i], ETH_GSTRING_LEN);
+}
+
+size_t xeth_mux_n_stats(struct net_device *mux)
+{
+	size_t n;
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	xeth_mux_lock_stat_name(priv);
+	n = priv->stat_name.named;
+	xeth_mux_unlock_stat_name(priv);
+	return n;
+}
+
+void xeth_mux_stat_names(struct net_device *mux, char *buf)
+{
+	int i;
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	xeth_mux_lock_stat_name(priv);
+	for (i = 0; i < priv->stat_name.named; i++, buf += ETH_GSTRING_LEN)
+		strncpy(buf, priv->stat_name.names[i], ETH_GSTRING_LEN);
+	xeth_mux_unlock_stat_name(priv);
+}
+
+static ssize_t xeth_mux_show_stat_name(struct device *dev,
+				       struct device_attribute *attr,
+				       char *buf)
+{
+	struct net_device *mux =
+		container_of(dev, struct net_device, dev);
+	return scnprintf(buf, PAGE_SIZE, "%zd", xeth_mux_n_stats(mux));
+}
+
+static ssize_t xeth_mux_store_stat_name(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t sz)
+{
+	struct net_device *mux =
+		container_of(dev, struct net_device, dev);
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	char *name;
+	int i;
+
+	if (!sz || buf[0] == '\n') {
+		xeth_mux_lock_stat_name(priv);
+		priv->stat_name.named = 0;
+		xeth_mux_unlock_stat_name(priv);
+		return sz;
+	}
+	xeth_mux_lock_stat_name(priv);
+	if (priv->stat_name.named >= xeth_prop_max_stats) {
+		xeth_mux_unlock_stat_name(priv);
+		return -EINVAL;
+	}
+	name = &priv->stat_name.names[priv->stat_name.named][0];
+	for (i = 0; i < ETH_GSTRING_LEN; i++, name++)
+		if (buf[i] == '\n' || i == sz) {
+			*name = '\0';
+			break;
+		} else
+			*name = buf[i];
+	priv->stat_name.named++;
+	xeth_mux_unlock_stat_name(priv);
+	return sz;
+}
+
+static struct device_attribute xeth_mux_stat_name_attr = {
+	.attr = {
+		.name = "stat_name",
+		.mode = VERIFY_OCTAL_PERMISSIONS(0644),
+	},
+	.show = xeth_mux_show_stat_name,
+	.store = xeth_mux_store_stat_name,
+};
 
 struct xeth_proxy *xeth_mux_proxy_of_xid(struct net_device *mux, u32 xid)
 {
@@ -136,6 +269,44 @@ struct xeth_proxy *xeth_mux_proxy_of_xid(struct net_device *mux, u32 xid)
 		}
 	rcu_read_unlock();
 	return NULL;
+}
+
+struct gpio_desc *xeth_mux_qsfp_absent_gpio(struct net_device *mux, size_t port)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return priv->qsfp.absent_gpios &&
+		port < priv->qsfp.absent_gpios->ndescs ?
+		priv->qsfp.absent_gpios->desc[port] : NULL;
+}
+
+struct gpio_desc *xeth_mux_qsfp_intr_gpio(struct net_device *mux, size_t port)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return priv->qsfp.intr_gpios &&
+		port < priv->qsfp.intr_gpios->ndescs ?
+		priv->qsfp.intr_gpios->desc[port] : NULL;
+}
+
+struct gpio_desc *xeth_mux_qsfp_lpmode_gpio(struct net_device *mux, size_t port)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return priv->qsfp.lpmode_gpios &&
+		port < priv->qsfp.lpmode_gpios->ndescs ?
+		priv->qsfp.lpmode_gpios->desc[port] : NULL;
+}
+
+struct gpio_desc *xeth_mux_qsfp_reset_gpio(struct net_device *mux, size_t port)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return priv->qsfp.reset_gpios &&
+		port < priv->qsfp.reset_gpios->ndescs ?
+		priv->qsfp.reset_gpios->desc[port] : NULL;
+}
+
+int xeth_mux_qsfp_bus(struct net_device *mux, size_t port)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return port < priv->qsfp.n_buses ? priv->qsfp.buses[port] : -ENXIO;
 }
 
 struct xeth_proxy *xeth_mux_proxy_of_nd(struct net_device *mux,
@@ -437,16 +608,13 @@ static int xeth_mux_add_lower(struct net_device *mux, struct net_device *lower,
 	return err;
 }
 
-static int xeth_mux_add_platform_links(struct net_device *mux)
+static int xeth_mux_add_platform_links(struct net_device *mux,
+				       struct net_device **links,
+				       size_t n_links)
 {
-	struct xeth_mux_priv *priv = netdev_priv(mux);
 	int i, err;
-
-	for (i = 0, err = 0; !err && priv->platform->links[i]; i++) {
-		err = xeth_mux_add_lower(mux, priv->platform->links[i], NULL);
-		if (err)
-			dev_put(priv->platform->links[i]);
-	}
+	for (i = 0, err = 0; i < n_links && !err; i++)
+		err = xeth_mux_add_lower(mux, links[i], NULL);
 	return err;
 }
 
@@ -1081,6 +1249,26 @@ void xeth_mux_dellink(struct net_device *mux, struct list_head *unregq)
 	if (IS_ERR_OR_NULL(mux) || mux->reg_state != NETREG_REGISTERED)
 		return;
 
+	if (priv->qsfp.absent_gpios) {
+		gpiod_put_array(priv->qsfp.absent_gpios);
+		priv->qsfp.absent_gpios = NULL;
+	}
+	if (priv->qsfp.intr_gpios) {
+		gpiod_put_array(priv->qsfp.intr_gpios);
+		priv->qsfp.intr_gpios = NULL;
+	}
+	if (priv->qsfp.lpmode_gpios) {
+		gpiod_put_array(priv->qsfp.lpmode_gpios);
+		priv->qsfp.lpmode_gpios = NULL;
+	}
+	if (priv->qsfp.reset_gpios) {
+		/* FIXME reset all */
+		gpiod_put_array(priv->qsfp.reset_gpios);
+		priv->qsfp.reset_gpios = NULL;
+	}
+	if (priv->stat_name.sysfs)
+		device_remove_file(&mux->dev, &xeth_mux_stat_name_attr);
+
 	rcu_read_lock();
 	list_for_each_entry_rcu(proxy, &priv->proxy.bridges, kin)
 		unregister_netdevice_queue(proxy->nd, unregq);
@@ -1113,42 +1301,126 @@ struct rtnl_link_ops xeth_mux_lnko = {
 	.get_link_net	= xeth_mux_get_link_net,
 };
 
-struct net_device *xeth_mux(const struct xeth_platform *platform)
+static void xeth_mux_get_flags_prop(struct device *dev,
+				    struct xeth_mux_priv *priv)
 {
-	struct net_device *mux;
-	struct xeth_mux_priv *priv;
-	char ifname[IFNAMSIZ];
-	int err;
+	const char *names[xeth_prop_max_flags];
+	size_t n_flags = xeth_prop_flags(dev, names);
+	int i;
 
-	xeth_platform_ifname(platform, ifname, -1, -1);
-	mux = xeth_debug_ptr_err(alloc_netdev_mqs(sizeof(*priv), ifname,
-						  NET_NAME_ENUM,
-						  xeth_mux_setup, 1, 1));
-	if (IS_ERR(mux))
-		return mux;
+	if (n_flags > 0) {
+		for (i = 0; i < n_flags; i++)
+			strncpy(priv->priv_flags.names[i], names[i],
+				ETH_GSTRING_LEN);
+		priv->priv_flags.named = n_flags;
+	}
+}
+
+static void xeth_mux_get_stats_prop(struct device *dev,
+				    struct xeth_mux_priv *priv)
+{
+	static const char *names[xeth_prop_max_stats];
+	size_t n_stats = xeth_prop_stats(dev, names);
+	int i;
+
+	if (n_stats > 0) {
+		for (i = 0; i < n_stats; i++)
+			strncpy(priv->stat_name.names[i], names[i],
+				ETH_GSTRING_LEN);
+		priv->stat_name.named = n_stats;
+	}
+}
+
+struct net_device *xeth_mux(struct device *dev)
+{
+	struct xeth_mux_priv *priv;
+	struct net_device *mux;
+	struct net_device *links[xeth_prop_max_links];
+	const char *akas[xeth_prop_max_links];
+	char ifname[IFNAMSIZ];
+	const char *aka;
+	ssize_t n_links;
+	int i, l, err;
+
+	if (n_links = xeth_prop_links(dev, akas), n_links > 0)
+		for (l = 0; l < n_links; l++)
+			for (links[l] = NULL, aka = akas[l]; !links[l]; ) {
+				if (!*aka) {
+					for (--l; l >= 0; --l)
+						dev_put(links[l]);
+					return ERR_PTR(-EPROBE_DEFER);
+				}
+				for (i = 0; *aka; aka++)
+					if (*aka == ',') {
+						aka++;
+						break;
+					} else if (i < IFNAMSIZ-1)
+						ifname[i++] = *aka;
+				ifname[i] = '\0';
+				links[l] = dev_get_by_name(&init_net, ifname);
+			}
+
+	mux = alloc_netdev_mqs(sizeof(*priv),
+			       xeth_prop_mux_name(dev),
+			       NET_NAME_ENUM,
+			       xeth_mux_setup,
+			       xeth_prop_mux_txqs(dev), 
+			       xeth_prop_mux_rxqs(dev));
+	if (!mux) {
+		for (i = 0; links[i] && i < n_links; i++)
+			dev_put(links[i]);
+		return ERR_PTR(-ENOMEM);
+	}
 
 	priv = netdev_priv(mux);
-	priv->platform = platform;
 	priv->nd = mux;
-	priv->encap = platform->encap;
+	priv->ports = xeth_prop_ports(dev);
+	priv->port_txqs = xeth_prop_port_txqs(dev);
+	priv->port_rxqs = xeth_prop_port_rxqs(dev);
+	priv->encap = xeth_prop_encap_vpls(dev) ?
+		XETH_ENCAP_VPLS : XETH_ENCAP_VLAN;
+	priv->base_port_addr = xeth_prop_base_port_addr(dev);
+	xeth_mux_get_flags_prop(dev, priv);
+	xeth_mux_get_stats_prop(dev, priv);
 
-	xeth_platform_hw_addr(platform, mux, -1, -1);
+	if (n_links > 0) {
+		eth_hw_addr_inherit(mux, links[0]);
+		if (!priv->base_port_addr)
+			priv->base_port_addr = 1 +
+				ether_addr_to_u64(links[n_links-1]->dev_addr);
+	} else
+		eth_hw_addr_random(mux);
+
+	priv->qsfp.absent_gpios = xeth_prop_qsfp_absent_gpios(dev);
+	priv->qsfp.intr_gpios = xeth_prop_qsfp_intr_gpios(dev);
+	priv->qsfp.lpmode_gpios = xeth_prop_qsfp_lpmode_gpios(dev);
+	priv->qsfp.reset_gpios = xeth_prop_qsfp_reset_gpios(dev);
+	priv->qsfp.n_buses = xeth_prop_qsfp_buses(dev, priv->qsfp.buses);
 
 	rtnl_lock();
 	err = xeth_debug_err(register_netdevice(mux));
 	rtnl_unlock();
 
-	if (err) {
+	if (err < 0) {
+		for (i = 0; links[i] && i < n_links; i++)
+			dev_put(links[i]);
 		free_netdev(mux);
 		return ERR_PTR(err);
 	}
 
-	rtnl_lock();
-	xeth_mux_add_platform_links(mux);
-	rtnl_unlock();
+	if (!priv->stat_name.named) {
+		err = device_create_file(&mux->dev, &xeth_mux_stat_name_attr);
+		if (!err)
+			priv->stat_name.sysfs = true;
+	}
 
-	priv->main = xeth_debug_nd_ptr_err(mux,
-					   kthread_run(xeth_mux_main, mux,
-						       "%s", mux->name));
+	if (n_links > 0) {
+		rtnl_lock();
+		xeth_mux_add_platform_links(mux, links, n_links);
+		rtnl_unlock();
+	}
+
+	priv->main = kthread_run(xeth_mux_main, mux, "%s", mux->name);
+
 	return mux;
 }

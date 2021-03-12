@@ -15,6 +15,29 @@ static DEFINE_MUTEX(xeth_qsfp_mutex);
 static void xeth_qsfp_lock(void)	{ mutex_lock(&xeth_qsfp_mutex); }
 static void xeth_qsfp_unlock(void)	{ mutex_unlock(&xeth_qsfp_mutex); }
 
+static int xeth_qsfp_peek(struct i2c_adapter *adapter, unsigned short addr)
+{
+	int err;
+	union i2c_smbus_data data;
+
+	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_READ_BYTE_DATA))
+		return -ENXIO;
+	err = i2c_smbus_xfer(adapter, addr, 0, I2C_SMBUS_READ, 0,
+			     I2C_SMBUS_BYTE_DATA, &data);
+	if (err < 0)
+		return -ENXIO;
+	switch (data.byte) {
+	case 0x03:	/* SFP    */
+	case 0x0C:	/* QSFP   */
+	case 0x0D:	/* QSFP+  */
+	case 0x11:	/* QSFP28 */
+		break;
+	default:
+		return -ENXIO;
+	}
+	return data.byte;
+}
+
 static int xeth_qsfp_bload(struct i2c_client *qsfp, u8 *data, u32 o, u32 n)
 {
 	int i;
@@ -115,4 +138,28 @@ int xeth_qsfp_get_module_eeprom(struct i2c_client *qsfp,
 		return -EINVAL;
 	err = xeth_qsfp_load(qsfp, data, ee->offset, ee->len);
 	return err < 0 ? err : 0;
+}
+
+struct i2c_client *xeth_qsfp_client(int nr)
+{
+	static const unsigned short const addrs[] = I2C_ADDRS(0x50, 0x51);
+	struct i2c_adapter *adapter;
+	struct i2c_board_info info;
+	struct i2c_client *cl;
+	int id, i;
+
+	memset(&info, 0, sizeof(info));
+	strscpy(info.type, "qsfp", sizeof(info.type));
+	adapter = i2c_get_adapter(nr);
+	for (i = 0, cl = NULL; !cl && addrs[i] != I2C_CLIENT_END; i++) {
+		id = xeth_qsfp_peek(adapter, addrs[i]);
+		if (id > 0) {
+			info.addr = addrs[i];
+			cl = i2c_new_client_device(adapter, &info);
+			if (IS_ERR(cl))
+				cl = NULL;
+		}
+	}
+	i2c_put_adapter(adapter);
+	return cl;
 }

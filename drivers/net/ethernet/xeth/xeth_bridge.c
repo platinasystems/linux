@@ -16,7 +16,6 @@
 #include "xeth_sbtx.h"
 #include "xeth_version.h"
 #include "xeth_debug.h"
-#include <linux/xeth.h>
 #include <linux/netdevice.h>
 
 static const char xeth_bridge_drvname[] = "xeth-bridge";

@@ -14,7 +14,6 @@
 #include "xeth_lag.h"
 #include "xeth_sbtx.h"
 #include "xeth_version.h"
-#include <linux/xeth.h>
 #include <linux/netdevice.h>
 
 static const char xeth_lb_drvname[] = "xeth-lb";

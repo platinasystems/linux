@@ -8,23 +8,21 @@
  */
 
 #include "xeth_mux.h"
-#include "xeth_platform.h"
+#include "xeth_prop.h"
 #include "xeth_proxy.h"
 #include "xeth_port.h"
 #include "xeth_qsfp.h"
 #include "xeth_sbtx.h"
 #include "xeth_version.h"
 #include "xeth_debug.h"
-#include <linux/xeth.h>
 #include <linux/netdevice.h>
 
 static const char xeth_port_drvname[] = "xeth-port";
 
 struct xeth_port_ext {
 	struct i2c_client *qsfp;
-	u8 n_priv_flags;
 	u32 priv_flags;
-	atomic64_t stats[];
+	atomic64_t stats[xeth_prop_max_stats];
 };
 
 struct xeth_port_priv {
@@ -45,6 +43,16 @@ int xeth_port_subport(struct net_device *nd)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
 	return priv->subport;
+}
+
+static void xeth_port_uninit(struct net_device *nd)
+{
+	struct xeth_port_priv *priv = netdev_priv(nd);
+	if (priv->subport <= 0 && priv->ext[0].qsfp) {
+		i2c_unregister_device(priv->ext[0].qsfp);
+		priv->ext[0].qsfp = NULL;
+	}
+	xeth_proxy_uninit(nd);
 }
 
 static int xeth_port_open(struct net_device *nd)
@@ -71,24 +79,18 @@ xeth_port_ethtool_ksettings(struct net_device *nd)
 void xeth_port_reset_ethtool_stats(struct net_device *nd)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	const struct xeth_platform *platform =
-		xeth_mux_platform(priv->proxy.mux);
-	size_t n = xeth_platform_port_et_stats(platform);
 	int i;
 
 	if (priv->subport <= 0)
-		for (i = 0; i < n; i++)
+		for (i = 0; i < xeth_prop_max_stats; i++)
 			atomic64_set(&priv->ext[0].stats[i], 0LL);
 }
 
 void xeth_port_ethtool_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	const struct xeth_platform *platform =
-		xeth_mux_platform(priv->proxy.mux);
-	size_t n = xeth_platform_port_et_stats(platform);
 
-	if (index < n)
+	if (index < xeth_prop_max_stats)
 		atomic64_set(&priv->ext[0].stats[index], count);
 	else
 		xeth_mux_inc_sbrx_invalid(priv->proxy.mux);
@@ -102,7 +104,7 @@ void xeth_port_speed(struct net_device *nd, u32 mbps)
 
 const struct net_device_ops xeth_port_ndo = {
 	.ndo_init = xeth_proxy_init,
-	.ndo_uninit = xeth_proxy_uninit,
+	.ndo_uninit = xeth_port_uninit,
 	.ndo_open = xeth_port_open,
 	.ndo_stop = xeth_proxy_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
@@ -117,15 +119,13 @@ static void xeth_port_get_drvinfo(struct net_device *nd,
 				  struct ethtool_drvinfo *drvinfo)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	const struct xeth_platform *platform =
-		xeth_mux_platform(priv->proxy.mux);
 
 	strlcpy(drvinfo->driver, xeth_port_drvname, sizeof(drvinfo->driver));
 	strlcpy(drvinfo->version, XETH_VERSION, sizeof(drvinfo->version));
 	strlcpy(drvinfo->fw_version, "n/a", ETHTOOL_FWVERS_LEN);
 	strlcpy(drvinfo->erom_version, "n/a", ETHTOOL_EROMVERS_LEN);
-	drvinfo->n_priv_flags = priv->ext[0].n_priv_flags;
-	drvinfo->n_stats = xeth_platform_port_et_stat_named(platform);
+	drvinfo->n_priv_flags = xeth_mux_n_priv_flags(priv->proxy.mux);
+	drvinfo->n_stats = xeth_mux_n_stats(priv->proxy.mux);
 	scnprintf(drvinfo->bus_info, ETHTOOL_BUSINFO_LEN, "%u:%u",
 		  priv->port, priv->proxy.xid);
 }
@@ -148,8 +148,6 @@ static void xeth_subport_get_drvinfo(struct net_device *nd,
 static int xeth_port_get_sset_count(struct net_device *nd, int sset)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	const struct xeth_platform *platform =
-		xeth_mux_platform(priv->proxy.mux);
 	int n;
 
 	switch (sset) {
@@ -157,10 +155,10 @@ static int xeth_port_get_sset_count(struct net_device *nd, int sset)
 		n = 0;
 		break;
 	case ETH_SS_STATS:
-		n = xeth_platform_port_et_stat_named(platform);
+		n = xeth_mux_n_stats(priv->proxy.mux);
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		n = priv->ext[0].n_priv_flags;
+		n = xeth_mux_n_priv_flags(priv->proxy.mux);
 		break;
 	default:
 		n = -EOPNOTSUPP;
@@ -172,23 +170,15 @@ static int xeth_port_get_sset_count(struct net_device *nd, int sset)
 static void xeth_port_get_strings(struct net_device *nd, u32 sset, u8 *data)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	const struct xeth_platform *platform =
-		xeth_mux_platform(priv->proxy.mux);
-	char *p = (char *)data;
-	int i;
 
 	switch (sset) {
 	case ETH_SS_TEST:
 		break;
 	case ETH_SS_STATS:
-		xeth_platform_port_et_stat_names(platform, data);
+		xeth_mux_stat_names(priv->proxy.mux, data);
 		break;
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < priv->ext[0].n_priv_flags;
-		     i++, p += ETH_GSTRING_LEN)
-			strlcpy(p, platform->port_et_priv_flag_names[i],
-				ETH_GSTRING_LEN);
-			
+		xeth_mux_priv_flag_names(priv->proxy.mux, data);
 		break;
 	default:
 		break;
@@ -199,9 +189,7 @@ static void xeth_port_get_stats(struct net_device *nd,
 				struct ethtool_stats *stats, u64 *data)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
-	const struct xeth_platform *platform =
-		xeth_mux_platform(priv->proxy.mux);
-	int i, n = xeth_platform_port_et_stat_named(platform);
+	int i, n = xeth_mux_n_stats(priv->proxy.mux);
 
 	for (i = 0; i < n; i++)
 		data[i] = atomic64_read(&priv->ext[0].stats[i]);
@@ -218,13 +206,82 @@ static int xeth_port_set_priv_flags(struct net_device *nd, u32 flags)
 	struct xeth_port_priv *priv = netdev_priv(nd);
 	if (priv->subport > 0)
 		return -EINVAL;
-	if (flags >= (1 << priv->ext[0].n_priv_flags))
-		return -EINVAL;
 	priv->ext[0].priv_flags = flags;
 	xeth_sbtx_et_flags(priv->proxy.mux, priv->proxy.xid, flags);
 	return 0;
 }
 
+static void xeth_port_ksettings(struct ethtool_link_ksettings *ks)
+{
+	ks->base.speed = 0;
+	ks->base.duplex = DUPLEX_FULL;
+	ks->base.autoneg = AUTONEG_ENABLE;
+	ks->base.port = PORT_OTHER;
+	ethtool_link_ksettings_zero_link_mode(ks, supported);
+	ethtool_link_ksettings_add_link_mode(ks, supported, Autoneg);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKX4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseR_FEC);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseMLD2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseLR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseCR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseSR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 100000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 100000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 100000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported,
+					     100000baseLR4_ER4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, TP);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_NONE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_RS);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_BASER);
+	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
+		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+	/* disable FEC_NONE so that the vner-platina-mk1 interprets
+	 * FEC_RS|FEC_BASER as FEC_AUTO */
+	ethtool_link_ksettings_del_link_mode(ks, advertising, FEC_NONE);
+}
+
+static void xeth_subport_ksettings(struct ethtool_link_ksettings *ks)
+{
+	ks->base.speed = 0;
+	ks->base.duplex = DUPLEX_FULL;
+	ks->base.autoneg = AUTONEG_ENABLE;
+	ks->base.port = PORT_OTHER;
+	ethtool_link_ksettings_zero_link_mode(ks, supported);
+	ethtool_link_ksettings_add_link_mode(ks, supported, Autoneg);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKX4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 10000baseR_FEC);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseMLD2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 20000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseKR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 25000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 40000baseLR4_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseCR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseKR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, 50000baseSR2_Full);
+	ethtool_link_ksettings_add_link_mode(ks, supported, TP);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_NONE);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_RS);
+	ethtool_link_ksettings_add_link_mode(ks, supported, FEC_BASER);
+	bitmap_copy(ks->link_modes.advertising, ks->link_modes.supported,
+		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
 static int xeth_port_get_link_ksettings(struct net_device *nd,
 					struct ethtool_link_ksettings *p)
 {
@@ -491,33 +548,65 @@ static void xeth_port_setup(struct net_device *nd)
 	nd->priv_flags |= IFF_DONT_BRIDGE;
 }
 
-struct net_device *xeth_port(struct net_device *mux, int port, int subport)
+static void xeth_port_qsfp(struct xeth_port_priv *priv)
 {
-	const struct xeth_platform *platform = xeth_mux_platform(mux);
+	struct gpio_desc *absent_gpio, *reset_gpio;
+	int nr;
+
+	absent_gpio = xeth_mux_qsfp_absent_gpio(priv->proxy.mux, priv->port);
+	if (!absent_gpio || gpiod_get_value_cansleep(absent_gpio))
+		return;
+	reset_gpio = xeth_mux_qsfp_reset_gpio(priv->proxy.mux, priv->port);
+	if (!reset_gpio)
+		return;
+	gpiod_set_value_cansleep(reset_gpio, 0);
+	msleep(10);
+	nr = xeth_mux_qsfp_bus(priv->proxy.mux, priv->port);
+	if (nr < 0)
+		return;
+	priv->ext[0].qsfp = xeth_qsfp_client(nr);
+	if (!priv->ext[0].qsfp)
+		xeth_debug("qsfp[%d] not found @%d", priv->port, nr);
+}
+
+struct net_device *xeth_port(struct net_device *mux, const char *ifname,
+			     int port, int subport)
+{
 	struct net_device *nd;
 	struct xeth_port_priv *priv;
-	char ifname[IFNAMSIZ];
 	size_t sz;
-	int err;
+	u64 base_port_addr;
+	int i, err;
 
-	xeth_platform_ifname(platform, ifname, port, subport);
 	sz = sizeof(*priv);
-	if (subport <= 0) {
-		size_t stats = xeth_platform_port_et_stats(platform);
+	if (subport <= 0)
 		sz += sizeof(struct xeth_port_ext);
-		sz += sizeof(atomic64_t) * stats;
-	}
 	nd = alloc_netdev_mqs(sz, ifname, NET_NAME_ENUM,
-			      xeth_port_setup, 1, 1);
+			      xeth_port_setup,
+			      xeth_mux_port_txqs(mux), 
+			      xeth_mux_port_rxqs(mux));
 	if (IS_ERR(nd))
 		return nd;
 
-	xeth_platform_hw_addr(platform, nd, port, subport);
+	base_port_addr = xeth_mux_base_port_addr(mux);
+	if (base_port_addr) {
+		u64 addr = base_port_addr;
+		addr += port;
+		if (subport > 0)
+			addr += (subport * 4);
+		u64_to_ether_addr(addr, nd->dev_addr);
+		nd->addr_assign_type = NET_ADDR_PERM;
+	} else
+		eth_hw_addr_random(nd);
 
 	priv = netdev_priv(nd);
 	priv->proxy.nd = nd;
 	priv->proxy.mux = mux;
-	priv->proxy.xid = xeth_platform_xid(platform, port, subport); 
+
+	priv->proxy.xid = 3999 - port;
+	if (subport >= 0)
+		priv->proxy.xid -= xeth_mux_ports(mux) * subport;
+
 	nd->min_mtu = priv->proxy.mux->min_mtu;
 	nd->max_mtu = priv->proxy.mux->max_mtu;
 
@@ -525,21 +614,17 @@ struct net_device *xeth_port(struct net_device *mux, int port, int subport)
 	priv->subport = subport;
 
 	if (subport <= 0) {
-		int i;
-		size_t n = xeth_platform_port_et_stats(platform);
-		for (i = 0; i < n; i++)
-			atomic64_set(&priv->ext[0].stats[i], 0LL);
 		nd->ethtool_ops = &xeth_port_eto;
-		priv->ext[0].qsfp = xeth_platform_qsfp(platform, port);
-		for (n = 0; platform->port_et_priv_flag_names[n]; n++);
-		priv->ext[0].n_priv_flags = n;
+		for (i = 0; i < xeth_prop_max_stats; i++)
+			atomic64_set(&priv->ext[0].stats[i], 0LL);
+		xeth_port_qsfp(priv);
 	} else
 		nd->ethtool_ops = &xeth_subport_eto;
 
 	if (subport < 0)
-		xeth_platform_port_ksettings(platform, &priv->ksettings);
+		xeth_port_ksettings(&priv->ksettings);
 	else
-		xeth_platform_subport_ksettings(platform, &priv->ksettings);
+		xeth_subport_ksettings(&priv->ksettings);
 
 	xeth_mux_add_proxy(&priv->proxy);
 

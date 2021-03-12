@@ -10,9 +10,8 @@
 #ifndef __NET_ETHERNET_XETH_MUX_H
 #define __NET_ETHERNET_XETH_MUX_H
 
-#include <linux/platform_device.h>
 #include <net/rtnetlink.h>
-#include <linux/xeth.h>
+#include <linux/gpio/consumer.h>
 
 extern struct rtnl_link_ops xeth_mux_lnko;
 extern const struct net_device_ops xeth_mux_ndo;
@@ -22,9 +21,22 @@ static inline bool is_xeth_mux(struct net_device *nd)
 	return nd->netdev_ops == &xeth_mux_ndo;
 }
 
+struct net_device *xeth_mux(struct device *dev);
+
+size_t xeth_mux_ports(struct net_device *mux);
+size_t xeth_mux_port_txqs(struct net_device *mux);
+size_t xeth_mux_port_rxqs(struct net_device *mux);
+
 enum xeth_encap xeth_mux_encap(struct net_device *mux);
 
 netdev_tx_t xeth_mux_encap_xmit(struct sk_buff *, struct net_device *proxy);
+
+u64 xeth_mux_base_port_addr(struct net_device *mux);
+size_t xeth_mux_n_priv_flags(struct net_device *mux);
+void xeth_mux_priv_flag_names(struct net_device *mux, char *buf);
+
+size_t xeth_mux_n_stats(struct net_device *mux);
+void xeth_mux_stat_names(struct net_device *mux, char *buf);
 
 atomic64_t *xeth_mux_counters(struct net_device *mux);
 volatile unsigned long *xeth_mux_flags(struct net_device *mux);
@@ -35,6 +47,13 @@ void xeth_mux_check_lower_carrier(struct net_device *mux);
 void xeth_mux_del_vlans(struct net_device *mux, struct net_device *nd,
 			struct list_head *unregq);
 void xeth_mux_dump_all_ifinfo(struct net_device *);
+
+struct gpio_desc *xeth_mux_qsfp_absent_gpio(struct net_device *mux, size_t prt);
+struct gpio_desc *xeth_mux_qsfp_intr_gpio(struct net_device *mux, size_t prt);
+struct gpio_desc *xeth_mux_qsfp_lpmode_gpio(struct net_device *mux, size_t prt);
+struct gpio_desc *xeth_mux_qsfp_reset_gpio(struct net_device *mux, size_t prt);
+
+int xeth_mux_qsfp_bus(struct net_device *mux, size_t port);
 
 enum xeth_mux_counter {
 	xeth_mux_counter_ex_frames,
