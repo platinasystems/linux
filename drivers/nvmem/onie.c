@@ -19,6 +19,35 @@
 #include <linux/etherdevice.h>
 #include <linux/glob.h>
 
+#define onie_pr_debug(format, args...)					\
+do {									\
+	pr_debug("%s:" format "\n", __func__, ##args);			\
+} while(0)
+
+#define onie_pr_err(format, args...)					\
+do {									\
+	pr_err("%s:" format "\n", __func__, ##args);			\
+} while(0)
+
+#define onie_pr_if_err(expr)						\
+({									\
+	int _err = (expr);						\
+	if (_err < 0)							\
+		onie_pr_err("%s == %d", #expr, _err);			\
+	(_err);								\
+})
+
+#define onie_pr_if_ptr_err(expr)					\
+({									\
+	void *_ptr = (expr);						\
+	if (!_ptr) {							\
+		onie_pr_err("%s == nil", #expr);			\
+		_ptr = ERR_PTR(-ENOMEM);				\
+	} else if (IS_ERR(_ptr))					\
+		onie_pr_err("%s == %ld", #expr, PTR_ERR(_ptr));		\
+	(_ptr);								\
+})
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Platina Systems");
 MODULE_DESCRIPTION("a platform driver for ONIE format NVMEM");
@@ -30,8 +59,8 @@ static const struct of_device_id onie_of_match[] = {
 MODULE_DEVICE_TABLE(of, onie_of_match);
 
 static const char onie_driver_name[] = "nvmem_onie";
-static int onie_probe(struct platform_device *provider);
-static int onie_remove(struct platform_device *provider);
+static int onie_probe(struct platform_device *);
+static int onie_remove(struct platform_device *);
 
 static struct platform_driver onie_platform_driver = {
 	.driver = {
@@ -72,22 +101,24 @@ enum onie_type {
 };
 
 struct onie_priv {
-	struct	nvmem_cell
-		*cell;
-	struct {
-		struct	platform_device *pdev;
-		struct	platform_device_info info;
-		char	name[PLATFORM_NAME_SIZE];
-	} client;
+	struct platform_device *pd;
+	struct nvmem_cell *cell;
 	struct {
 		struct	mutex	mutex;
 		u8	data[onie_max_data];
+		size_t	n;
 	} cache;
 	struct {
 		struct	mutex	mutex;
 		u8	data[onie_max_data];
 	} writeback;
 };
+
+static ssize_t onie_cache_unlock(struct onie_priv *priv, ssize_t n)
+{
+	mutex_unlock(&priv->cache.mutex);
+	return n;
+}
 
 static const struct attribute_group *onie_attr_groups[];
 
@@ -194,30 +225,102 @@ static ssize_t onie_cache_validate(void *data)
 	struct onie_header *h = data;
 	size_t tlvsz, fullsz, crcsz;
 	u32 crc_read, crc_calc;
+	ssize_t n;
 
-	if (strcmp(onie_header_id, data))
-		return -EIDRM;
-	if (h->version != onie_header_version)
-		return -EINVAL;
+	n = onie_pr_if_err(strcmp(onie_header_id, data) ? -EIDRM : 0);
+	if (n)
+		return n;
+	n = onie_pr_if_err(h->version != onie_header_version ? -EINVAL : 0);
+	if (n)
+		return n;
 	tlvsz = onie_u16(h->length);
 	fullsz = sizeof(*h) + tlvsz;
-	if (fullsz > onie_max_data)
-		return -EFBIG;
+	n = onie_pr_if_err(fullsz > onie_max_data ? -EFBIG : 0);
+	if (n)
+		return n;
 	crcsz = fullsz - onie_sz_crc;
 	crc_read = onie_u32(data + crcsz);
 	crc_calc = onie_crc(data, crcsz);
 #if 0
-	pr_debug("crc: 0x%08x vs. 0x%08x\n", crc_read, crc_calc);
-	pr_debug("crc32_le:0: 0x%08x\n", crc32_le(0, data, sz));
-	pr_debug("crc32_be:0: 0x%08x\n", crc32_be(0, data, sz));
-	pr_debug("crc32_le:~0: 0x%08x\n", crc32_le(~0, data, sz));
-	pr_debug("crc32_be:~0: 0x%08x\n", crc32_be(~0, data, sz));
-	pr_debug("crc32_le:0:^~0: 0x%08x\n", crc32_le(0, data, sz)^~0);
-	pr_debug("crc32_be:0:^~0: 0x%08x\n", crc32_be(0, data, sz)^~0);
-	pr_debug("crc32_le:~0:^~0: 0x%08x\n", crc32_le(~0, data, sz)^~0);
-	pr_debug("crc32_be:~0:^~0: 0x%08x\n", crc32_be(~0, data, sz)^~0);
+	onie_pr_debug("crc: 0x%08x vs. 0x%08x\n", crc_read, crc_calc);
+	onie_pr_debug("crc32_le:0: 0x%08x\n", crc32_le(0, data, sz));
+	onie_pr_debug("crc32_be:0: 0x%08x\n", crc32_be(0, data, sz));
+	onie_pr_debug("crc32_le:~0: 0x%08x\n", crc32_le(~0, data, sz));
+	onie_pr_debug("crc32_be:~0: 0x%08x\n", crc32_be(~0, data, sz));
+	onie_pr_debug("crc32_le:0:^~0: 0x%08x\n", crc32_le(0, data, sz)^~0);
+	onie_pr_debug("crc32_be:0:^~0: 0x%08x\n", crc32_be(0, data, sz)^~0);
+	onie_pr_debug("crc32_le:~0:^~0: 0x%08x\n", crc32_le(~0, data, sz)^~0);
+	onie_pr_debug("crc32_be:~0:^~0: 0x%08x\n", crc32_be(~0, data, sz)^~0);
 #endif
-	return (crc_read == crc_calc) ? fullsz : -EBADF;
+	n = onie_pr_if_err(crc_read != crc_calc) ? -EBADF : fullsz;
+	return n;
+}
+
+static void onie_cache_init(void *data)
+{
+	struct onie_header *h = data;
+	struct onie_data *od = (struct onie_data *)data;
+	struct onie_tlv *crc_tlv = &od->tlv;
+	u16 tl;
+
+	strcpy(h->id, onie_header_id);
+	h->version = onie_header_version;
+	tl = onie_sz_header + sizeof(*crc_tlv) + onie_sz_crc;
+	onie_set_u16(tl, h->length);
+	onie_reset_crc(crc_tlv);
+	onie_append_crc(data, tl - onie_sz_crc);
+	onie_pr_if_err(onie_cache_validate(data));
+}
+
+static void onie_cell_put(void *cell)
+{
+	nvmem_cell_put(cell);
+}
+
+static ssize_t onie_cell_validate(struct onie_priv *priv)
+{
+	const char *name = priv->pd->name;
+	void *data;
+	int err;
+
+	mutex_lock(&priv->cache.mutex);
+	if (IS_ERR(priv->cell))
+		return onie_cache_unlock(priv, PTR_ERR(priv->cell));
+	if (priv->cell)
+		return onie_cache_unlock(priv, priv->cache.n);
+	priv->cell = nvmem_cell_get(&priv->pd->dev, "onie-data");
+	if (IS_ERR(priv->cell)) {
+		err = PTR_ERR(priv->cell);
+		if (err == -EPROBE_DEFER)
+			priv->cell = NULL;
+		else
+			onie_pr_err("nvmem_cell_get(%s): %d", name, err);
+		return onie_cache_unlock(priv, err);
+	} else if (!priv->cell) {
+		onie_pr_err("nvmem_cell_get(%s): nil", name);
+		return onie_cache_unlock(priv, -ENXIO);
+	}
+	data = nvmem_cell_read(priv->cell, &priv->cache.n);
+	if (IS_ERR(data)) {
+		err = PTR_ERR(data);
+		onie_pr_err("nvmem_cell_read(%s): %d", name, err);
+		onie_cell_put(priv->cell);
+		priv->cell = data;
+		return onie_cache_unlock(priv, err);
+	}
+	memcpy(priv->cache.data, data, priv->cache.n);
+	kfree(data);
+	err = devm_add_action(&priv->pd->dev, onie_cell_put, priv->cell);
+	if (err) {
+		onie_pr_err("devm_add_action(put, %s)): %d", name, err);
+		onie_cell_put(priv->cell);
+		priv->cell = ERR_PTR(err);
+		return onie_cache_unlock(priv, err);
+	}
+	priv->cache.n = onie_cache_validate(priv->cache.data);
+	if (priv->cache.n < 0)
+		onie_cache_init(priv->cache.data);
+	return onie_cache_unlock(priv, priv->cache.n);
 }
 
 /**
@@ -266,36 +369,31 @@ static ssize_t onie_get_tlv(struct onie_priv *priv,
 	u16 hl;
 	u8 *end;
 
-	mutex_lock(&priv->cache.mutex);
-	n = onie_cache_validate(priv->cache.data);
+	n = onie_cell_validate(priv);
 	if (n < 0)
-		goto onie_priv_get_tlv_exit;
+		return onie_cache_unlock(priv, n);
+	mutex_lock(&priv->cache.mutex);
 	n = -ENOMSG;
 	hl = onie_u16(data->header.length);
-	if (!hl) {
-		goto onie_priv_get_tlv_exit;
-	}
+	if (!hl)
+		return onie_cache_unlock(priv, -ENOMSG);
 	end = priv->cache.data + sizeof(data->header) + hl;
 	for (tlv = &data->tlv; (u8*)tlv < end; tlv = onie_next(tlv))
 		if (tlv->t == t) {
 			if (n < 0)
 				n = 0;
 			if (tlv->l) {
-				if (l < n + tlv->l) {
-					n = -EINVAL;
-					goto onie_priv_get_tlv_exit;
-				}
+				if (l < n + tlv->l)
+					return onie_cache_unlock(priv, -EINVAL);
 				memcpy(v, tlv->v, tlv->l);
 				n += tlv->l;
 				v += tlv->l;
 			} else	/* may have 0 length values */
 				n = 0;
 			if (t != onie_type_vendor_extension)
-				goto onie_priv_get_tlv_exit;
+				return onie_cache_unlock(priv, n);
 		}
-onie_priv_get_tlv_exit:
-	mutex_unlock(&priv->cache.mutex);
-	return n;
+	return onie_cache_unlock(priv, n);
 }
 
 static struct onie_tlv *onie_insert_tlv(struct onie_tlv *dst, enum onie_type t,
@@ -385,185 +483,24 @@ static int onie_set_tlv(struct onie_priv *priv,
 	return 0;
 }
 
-static struct onie_priv *onie_new_priv(struct platform_device *provider)
+static int onie_probe(struct platform_device *pd)
 {
-	struct device *dev = &provider->dev;
-	struct onie_priv *priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
-	if (priv) {
-		mutex_init(&priv->cache.mutex);
-		mutex_init(&priv->writeback.mutex);
-		platform_set_drvdata(provider, priv);
-	}
-	return priv;
+	struct onie_priv *priv;
+
+	priv = devm_kzalloc(&pd->dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+	priv->pd = pd;
+	mutex_init(&priv->cache.mutex);
+	mutex_init(&priv->writeback.mutex);
+	platform_set_drvdata(pd, priv);
+	onie_cell_validate(priv);
+	return devm_device_add_groups(&pd->dev, onie_attr_groups);
 }
 
-static void onie_cell_put(void *cell)
+static int onie_remove(struct platform_device *pd)
 {
-	nvmem_cell_put(cell);
-}
-
-static int onie_cell_get(struct platform_device *provider) {
-	static const char *onie_nvmem_cell = "onie-data";
-	const char *name = provider->name;
-	struct device *dev = &provider->dev;
-	struct onie_priv *priv = dev_get_drvdata(dev);
-	int err;
-
-	priv->cell = nvmem_cell_get(dev, onie_nvmem_cell);
-	if (IS_ERR(priv->cell)) {
-		err = PTR_ERR(priv->cell);
-		priv->cell = NULL;
-		if (err != -EPROBE_DEFER) {
-			pr_err("%s(%s):nvmem_cell_get: %d\n",
-			       __func__, name, err);
-			err = -ENXIO;
-		}
-		return  err;
-	}
-	if (!priv->cell) {
-		pr_err("%s(%s):%s: nil\n", __func__, name, onie_nvmem_cell);
-		return -ENXIO;
-	}
-	err = devm_add_action(dev, onie_cell_put, priv->cell);
-	if (err)
-		onie_cell_put(priv->cell);
-	return err;
-}
-
-static int onie_cache_data(struct platform_device *provider)
-{
-	size_t n;
-	int err = 0;
-	const char *name = provider->name;
-	struct device *dev = &provider->dev;
-	struct onie_priv *priv = dev_get_drvdata(dev);
-	void *data = nvmem_cell_read(priv->cell, &n);
-	if (IS_ERR(data)) {
-		err = PTR_ERR(data);
-		pr_err("%s(%s):nvmem_cell_read: %d\n", __func__, name, err);
-	} else if (!data) {
-		pr_err("%s(%s):nvmem_cell_read: nil\n", __func__, name);
-		err = -EINVAL;
-	} else {
-		memcpy(priv->cache.data, data, n);
-		kfree(data);
-	}
-	return err;
-}
-
-static u8 onie_device_version(struct onie_priv *priv)
-{
-	u8 dv[1];
-	ssize_t n;
-
-	n = onie_get_tlv(priv, onie_type_device_version, sizeof(u8), dv);
-	return (n == sizeof(u8)) ? dv[0] : 0;
-}
-
-static const char *onie_platina_mk1_name(struct onie_priv *priv)
-{
-	return onie_device_version(priv) ? "platina-mk1" : "platina-mk1alpha";
-}
-
-static const char *onie_platina_name(struct onie_priv *priv)
-{
-	static const struct {
-		const char *glob;
-		const char *(*mk)(struct onie_priv *priv);
-	} partnos[] = {
-		{ "BT77O759.00*", onie_platina_mk1_name},
-		{ "PS-3001-32C*", onie_platina_mk1_name},
-		{ "PSW-3001-32C*", onie_platina_mk1_name},
-	};
-
-	char v[onie_max_tlv];
-	ssize_t n;
-	int i;
-
-	n = onie_get_tlv(priv, onie_type_part_number, onie_max_tlv, v);
-	if (n <= 0)
-		return NULL;
-
-	v[n < onie_max_tlv ? n : onie_max_tlv-1] = '\0';
-
-	for (i = 0; i < ARRAY_SIZE(partnos); i++)
-		if (glob_match(partnos[i].glob, v))
-			return partnos[i].mk(priv);
-
-	return NULL;
-}
-
-static const char *onie_vendor_name(struct onie_priv *priv)
-{
-	static const struct {
-		const char *glob;
-		const char *(*vendor)(struct onie_priv *priv);
-	} vendors[] = {
-		{ "Platina*", onie_platina_name },
-	};
-
-	char v[onie_max_tlv];
-	ssize_t n;
-	int i;
-
-	n = onie_get_tlv(priv, onie_type_vendor, onie_max_tlv, v);
-	if (n <= 0)
-		return NULL;
-
-	v[n < onie_max_tlv ? n : onie_max_tlv-1] = '\0';
-
-	for (i = 0; i < ARRAY_SIZE(vendors); i++)
-		if (glob_match(vendors[i].glob, v))
-			return vendors[i].vendor(priv);
-	return NULL;
-}
-
-static void onie_new_client(struct platform_device *provider)
-{
-	struct onie_priv *priv = platform_get_drvdata(provider);
-	const char *name = onie_vendor_name(priv);
-	int err;
-
-	if (!name)
-		return;
-	strlcpy(priv->client.name, name, sizeof(priv->client.name));
-	priv->client.info.name = priv->client.name;
-	priv->client.info.id = -1;
-	priv->client.info.res = NULL;
-	priv->client.info.num_res = 0;
-	priv->client.info.parent = NULL;
-	priv->client.pdev = platform_device_register_full(&priv->client.info);
-	if (IS_ERR(priv->client.pdev)) {
-		err = PTR_ERR(priv->client.pdev);
-		priv->client.pdev = NULL;
-		pr_err("%s(%s):register(%s):  %d\n", __func__, name,
-		       priv->client.info.name, err);
-	}
-}
-
-static int onie_probe(struct platform_device *provider)
-{
-	static const bool onie_with_client = true;
-	struct onie_priv *priv = onie_new_priv(provider);
-	int err = !priv ? -ENOMEM : 0;
-	if (err >= 0)
-		err = onie_cell_get(provider);
-	if (err >= 0)
-		err = onie_cache_data(provider);
-	if (err >= 0)
-		err = onie_cache_validate(priv->cache.data);
-	if (err >= 0)
-		err = devm_device_add_groups(&provider->dev, onie_attr_groups);
-	if (err >= 0 && onie_with_client)
-		onie_new_client(provider);
-	return err;
-}
-
-static int onie_remove(struct platform_device *provider)
-{
-	struct onie_priv *priv = platform_get_drvdata(provider);
-	if (priv && priv->client.pdev)
-		platform_device_unregister(priv->client.pdev);
+	platform_set_drvdata(pd, NULL);
 	return 0;
 }
 
@@ -778,13 +715,13 @@ static ssize_t onie_store_crc(struct device *dev,
 	struct onie_priv *priv = dev_get_drvdata(dev);
 	ssize_t n;
 
-	n = onie_cache_validate(priv->cache.data);
+	n = onie_cell_validate(priv);
 	if (n <= 0)
 		return n;
-	if (priv->cell)
-		n = nvmem_cell_write(priv->cell, priv->cache.data, n);
+	if (IS_ERR(priv->cell))
+		n = PTR_ERR(priv->cell);
 	else
-		n = -ENODEV;
+		n = nvmem_cell_write(priv->cell, priv->cache.data, n);
 	return (n < 0) ? n : sz;
 }
 
