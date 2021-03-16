@@ -11,8 +11,10 @@
 #define __NET_ETHERNET_XETH_PORT_H
 
 #include <linux/netdevice.h>
+#include <linux/platform_device.h>
 #include <linux/i2c.h>
 
+extern struct platform_driver xeth_port_driver;
 extern struct rtnl_link_ops xeth_port_lnko;
 
 extern const struct net_device_ops xeth_port_ndo;
@@ -21,9 +23,6 @@ static inline bool is_xeth_port(struct net_device *nd)
 {
 	return nd->netdev_ops == &xeth_port_ndo;
 }
-
-struct net_device *
-xeth_port(struct net_device *mux, const char *ifname, int port, int subport);
 
 int xeth_port_of(struct net_device *nd);
 int xeth_port_subport(struct net_device *nd);

@@ -7,7 +7,6 @@
  * Platina Systems, 3180 Del La Cruz Blvd, Santa Clara, CA 95054
  */
 
-#include "xeth_platform.h"
 #include "xeth_bridge.h"
 #include "xeth_lb.h"
 #include "xeth_lag.h"
@@ -16,6 +15,12 @@
 #include "xeth_mux.h"
 #include "xeth_version.h"
 #include <linux/module.h>
+
+static struct platform_driver * const xeth_mod_drivers[] = {
+	&xeth_mux_driver,
+	&xeth_port_driver,
+	NULL,
+};
 
 static struct rtnl_link_ops * const xeth_mod_lnkos[] = {
 	/*
@@ -33,18 +38,19 @@ static struct rtnl_link_ops * const xeth_mod_lnkos[] = {
 
 static int __init xeth_mod_init(void)
 {
-	struct rtnl_link_ops * const *plnko;
+	struct platform_driver * const *drvr = NULL;
+	struct rtnl_link_ops * const *lnko = NULL;
 	int err;
 
-	err = platform_driver_register(&xeth_platform_driver);
-	if (err < 0)
-		return err;
-	for (plnko = xeth_mod_lnkos; err >= 0 && (*plnko); plnko++)
-		err = rtnl_link_register(*plnko);
+	for (drvr = xeth_mod_drivers; err >= 0 && (*drvr); drvr++)
+		err = platform_driver_register(*drvr);
+	for (lnko = xeth_mod_lnkos; err >= 0 && (*lnko); lnko++)
+		err = rtnl_link_register(*lnko);
 	if (err) {
-		platform_driver_unregister(&xeth_platform_driver);
-		while (plnko != xeth_mod_lnkos)
-			rtnl_link_unregister(*(--plnko));
+		while (drvr != xeth_mod_drivers)
+			platform_driver_unregister(*(--drvr));
+		while (lnko != xeth_mod_lnkos)
+			rtnl_link_unregister(*(--lnko));
 	}
 	return err;
 }
@@ -52,12 +58,14 @@ module_init(xeth_mod_init);
 
 static void __exit xeth_mod_exit(void)
 {
-	struct rtnl_link_ops * const *plnko;
+	struct platform_driver * const *drvr = NULL;
+	struct rtnl_link_ops * const *lnko = NULL;
 
-	platform_driver_unregister(&xeth_platform_driver);
-	for (plnko = xeth_mod_lnkos; *plnko; plnko++)
-		if ((*plnko)->list.next || (*plnko)->list.prev)
-			rtnl_link_unregister(*plnko);
+	for (drvr = xeth_mod_drivers; *drvr; drvr++)
+		platform_driver_unregister(*drvr);
+	for (lnko = xeth_mod_lnkos; *lnko; lnko++)
+		if ((*lnko)->list.next || (*lnko)->list.prev)
+			rtnl_link_unregister(*lnko);
 }
 module_exit(xeth_mod_exit);
 

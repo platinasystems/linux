@@ -1,7 +1,6 @@
 obj-$(CONFIG_NET_XETH) += xeth.o
 
 xeth-y := xeth_mod.o
-xeth-y += xeth_platform.o
 xeth-y += xeth_mux.o
 xeth-y += xeth_proxy.o
 xeth-y += xeth_bridge.o

@@ -8,7 +8,6 @@
  */
 
 #include "xeth_mux.h"
-#include "xeth_prop.h"
 #include "xeth_proxy.h"
 #include "xeth_port.h"
 #include "xeth_qsfp.h"
@@ -17,12 +16,17 @@
 #include "xeth_debug.h"
 #include <linux/netdevice.h>
 
+enum {
+	xeth_port_top_vid = 3999,
+};
+
 static const char xeth_port_drvname[] = "xeth-port";
+static ssize_t xeth_port_subports(size_t port);
 
 struct xeth_port_ext {
 	struct i2c_client *qsfp;
 	u32 priv_flags;
-	atomic64_t stats[xeth_prop_max_stats];
+	atomic64_t stats[xeth_mux_max_stats];
 };
 
 struct xeth_port_priv {
@@ -82,7 +86,7 @@ void xeth_port_reset_ethtool_stats(struct net_device *nd)
 	int i;
 
 	if (priv->subport <= 0)
-		for (i = 0; i < xeth_prop_max_stats; i++)
+		for (i = 0; i < ARRAY_SIZE(priv->ext[0].stats); i++)
 			atomic64_set(&priv->ext[0].stats[i], 0LL);
 }
 
@@ -90,7 +94,7 @@ void xeth_port_ethtool_stat(struct net_device *nd, u32 index, u64 count)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
 
-	if (index < xeth_prop_max_stats)
+	if (index < ARRAY_SIZE(priv->ext[0].stats))
 		atomic64_set(&priv->ext[0].stats[index], count);
 	else
 		xeth_mux_inc_sbrx_invalid(priv->proxy.mux);
@@ -548,10 +552,9 @@ static void xeth_port_setup(struct net_device *nd)
 	nd->priv_flags |= IFF_DONT_BRIDGE;
 }
 
-static void xeth_port_qsfp(struct xeth_port_priv *priv)
+static void xeth_port_qsfp(struct xeth_port_priv *priv, u8 bus)
 {
 	struct gpio_desc *absent_gpio, *reset_gpio;
-	int nr;
 
 	absent_gpio = xeth_mux_qsfp_absent_gpio(priv->proxy.mux, priv->port);
 	if (!absent_gpio || gpiod_get_value_cansleep(absent_gpio))
@@ -561,83 +564,9 @@ static void xeth_port_qsfp(struct xeth_port_priv *priv)
 		return;
 	gpiod_set_value_cansleep(reset_gpio, 0);
 	msleep(10);
-	nr = xeth_mux_qsfp_bus(priv->proxy.mux, priv->port);
-	if (nr < 0)
-		return;
-	priv->ext[0].qsfp = xeth_qsfp_client(nr);
+	priv->ext[0].qsfp = xeth_qsfp_client(bus);
 	if (!priv->ext[0].qsfp)
-		xeth_debug("qsfp[%d] not found @%d", priv->port, nr);
-}
-
-struct net_device *xeth_port(struct net_device *mux, const char *ifname,
-			     int port, int subport)
-{
-	struct net_device *nd;
-	struct xeth_port_priv *priv;
-	size_t sz;
-	u64 base_port_addr;
-	int i, err;
-
-	sz = sizeof(*priv);
-	if (subport <= 0)
-		sz += sizeof(struct xeth_port_ext);
-	nd = alloc_netdev_mqs(sz, ifname, NET_NAME_ENUM,
-			      xeth_port_setup,
-			      xeth_mux_port_txqs(mux), 
-			      xeth_mux_port_rxqs(mux));
-	if (IS_ERR(nd))
-		return nd;
-
-	base_port_addr = xeth_mux_base_port_addr(mux);
-	if (base_port_addr) {
-		u64 addr = base_port_addr;
-		addr += port;
-		if (subport > 0)
-			addr += (subport * 4);
-		u64_to_ether_addr(addr, nd->dev_addr);
-		nd->addr_assign_type = NET_ADDR_PERM;
-	} else
-		eth_hw_addr_random(nd);
-
-	priv = netdev_priv(nd);
-	priv->proxy.nd = nd;
-	priv->proxy.mux = mux;
-
-	priv->proxy.xid = 3999 - port;
-	if (subport >= 0)
-		priv->proxy.xid -= xeth_mux_ports(mux) * subport;
-
-	nd->min_mtu = priv->proxy.mux->min_mtu;
-	nd->max_mtu = priv->proxy.mux->max_mtu;
-
-	priv->port = port;
-	priv->subport = subport;
-
-	if (subport <= 0) {
-		nd->ethtool_ops = &xeth_port_eto;
-		for (i = 0; i < xeth_prop_max_stats; i++)
-			atomic64_set(&priv->ext[0].stats[i], 0LL);
-		xeth_port_qsfp(priv);
-	} else
-		nd->ethtool_ops = &xeth_subport_eto;
-
-	if (subport < 0)
-		xeth_port_ksettings(&priv->ksettings);
-	else
-		xeth_subport_ksettings(&priv->ksettings);
-
-	xeth_mux_add_proxy(&priv->proxy);
-
-	rtnl_lock();
-	err = xeth_debug_nd_err(nd, register_netdevice(nd));
-	rtnl_unlock();
-
-	if (err) {
-		xeth_mux_del_proxy(&priv->proxy);
-		free_netdev(nd);
-		return ERR_PTR(err);
-	}
-	return nd;
+		xeth_debug("qsfp[%d] not found @%d", priv->port, bus);
 }
 
 static int xeth_port_validate(struct nlattr *tb[], struct nlattr *data[],
@@ -677,7 +606,7 @@ static int xeth_port_newlink(struct net *src_net, struct net_device *nd,
 	if (data && data[XETH_PORT_IFLA_XID])
 		priv->proxy.xid = nla_get_u16(data[XETH_PORT_IFLA_XID]);
 	else
-		for (priv->proxy.xid = 3999;
+		for (priv->proxy.xid = xeth_port_top_vid;
 		     xeth_mux_proxy_of_xid(priv->proxy.mux, priv->proxy.xid);
 		     priv->proxy.xid--);
 
@@ -719,4 +648,210 @@ struct rtnl_link_ops xeth_port_lnko = {
 	.get_link_net	= xeth_port_get_link_net,
 	.policy		= xeth_port_nla_policy,
 	.maxtype	= XETH_PORT_N_IFLA - 1,
+};
+
+static bool xeth_port_is_platina_mk1(struct platform_device *pd);
+
+static const char *xeth_port_mux_prop(struct platform_device *pd)
+{
+	const char *val;
+	if (xeth_port_is_platina_mk1(pd))
+		val = "platina-mk1";
+	else if (device_property_read_string(&pd->dev, "mux", &val))
+		val = "xeth-mux";
+	return val;
+}
+
+static int xeth_port_index_prop(struct platform_device *pd)
+{
+	u32 val;
+	return pd->id >= 0 && !pd->id_auto ? pd->id :
+		device_property_read_u32(&pd->dev, "index", &val) ?
+		-EINVAL : val;
+}
+
+static u64 xeth_port_addr_prop(struct platform_device *pd)
+{
+	u64 val;
+	return device_property_read_u64(&pd->dev, "addr", &val) ?  0 : val;
+}
+
+static u8 xeth_port_qs_prop(struct platform_device *pd, const char *label)
+{
+	u8 val;
+	return device_property_read_u8(&pd->dev, label, &val) ?  1 : val;
+}
+
+static u8 xeth_port_qsfp_bus_prop(struct platform_device *pd)
+{
+	u8 val;
+	return device_property_read_u8(&pd->dev, "qsfp-bus", &val) ?  0 : val;
+}
+
+static int xeth_port(struct platform_device *pd, struct net_device *mux,
+		     const char *ifname, int port, int subport, u64 addr)
+{
+	struct net_device *nd;
+	struct xeth_port_priv *priv;
+	size_t sz;
+	int i, err;
+
+	sz = sizeof(*priv);
+	if (subport <= 0)
+		sz += sizeof(struct xeth_port_ext);
+	nd = alloc_netdev_mqs(sz, ifname, NET_NAME_ENUM, xeth_port_setup,
+			      xeth_port_qs_prop(pd, "txqs"),
+			      xeth_port_qs_prop(pd, "rxqs"));
+	if (!nd)
+		return -ENOMEM;
+
+	priv = netdev_priv(nd);
+	priv->proxy.nd = nd;
+	priv->proxy.mux = mux;
+
+	priv->proxy.xid = xeth_port_top_vid - port;
+	if (subport >= 0)
+		priv->proxy.xid -= (subport * xeth_mux_ports(mux));
+
+	nd->min_mtu = priv->proxy.mux->min_mtu;
+	nd->max_mtu = priv->proxy.mux->max_mtu;
+
+	if (addr) {
+		u64_to_ether_addr(addr, nd->dev_addr);
+		nd->addr_assign_type = NET_ADDR_PERM;
+	} else
+		eth_hw_addr_random(nd);
+
+	priv->port = port;
+	priv->subport = subport;
+
+	if (subport <= 0) {
+		u8 bus = xeth_port_qsfp_bus_prop(pd);
+		nd->ethtool_ops = &xeth_port_eto;
+		for (i = 0; i < ARRAY_SIZE(priv->ext[0].stats); i++)
+			atomic64_set(&priv->ext[0].stats[i], 0LL);
+		if (bus)
+			xeth_port_qsfp(priv, bus);
+	} else
+		nd->ethtool_ops = &xeth_subport_eto;
+
+	if (subport < 0)
+		xeth_port_ksettings(&priv->ksettings);
+	else
+		xeth_subport_ksettings(&priv->ksettings);
+
+	xeth_mux_add_proxy(&priv->proxy);
+
+	rtnl_lock();
+	err = xeth_debug_nd_err(nd, register_netdevice(nd));
+	rtnl_unlock();
+
+	if (err) {
+		xeth_mux_del_proxy(&priv->proxy);
+		free_netdev(nd);
+	}
+	return err;
+}
+
+static int xeth_port_probe(struct platform_device *pd)
+{
+	struct net_device *mux;
+	char name[IFNAMSIZ];
+	int port, subport, subports, err;
+	u64 addr;
+	u8 base_port;
+
+	mux = dev_get_by_name(&init_net, xeth_port_mux_prop(pd));
+	if (!mux)
+		return -EPROBE_DEFER;
+
+	port = xeth_port_index_prop(pd);
+	addr = xeth_port_addr_prop(pd);
+	subports = xeth_port_subports(port);
+	base_port = xeth_mux_base_port(mux);
+
+	if (subports > 1) {
+		for (subport = err = 0; !err && subport < subports; subport++) {
+			scnprintf(name, IFNAMSIZ, "xeth%u-%u",
+				  port + base_port, subport + base_port);
+			err = xeth_port(pd, mux, name, port, subport, addr);
+		}
+	} else {
+		scnprintf(name, IFNAMSIZ, "xeth%u", port + base_port);
+		err = xeth_port(pd, mux, name, port, -1, addr);
+	}
+
+	dev_put(mux);
+	if (err)
+		pr_err("can't make %s: %d\n", name, err);
+	return err;
+}
+
+static int xeth_port_remove(struct platform_device *pd)
+{
+	/* port netdevs are removed by the mux */
+	return 0;
+}
+
+int xeth_port_provision[512], xeth_port_provisioned;
+
+module_param_array_named(provision, xeth_port_provision, int,
+			 &xeth_port_provisioned, 0644);
+MODULE_PARM_DESC(provision, " 1 (default), 2, or 4 subports per port");
+
+static ssize_t xeth_port_subports(size_t port)
+{
+	return port < ARRAY_SIZE(xeth_port_provision) ?
+		xeth_port_provision[port] : -EINVAL;
+}
+
+static ssize_t provisioned_show(struct device_driver *drv, char *buf)
+{
+	int port;
+	for (port = 0;
+	     port < ARRAY_SIZE(xeth_port_provision) &&
+	     xeth_port_provision[port];
+	     port++)
+		buf[port] = xeth_port_provision[port] + '0';
+	return port;
+}
+
+static DRIVER_ATTR_RO(provisioned);
+
+static struct attribute *xeth_port_attrs[] = {
+	&driver_attr_provisioned.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(xeth_port);
+
+static const struct of_device_id xeth_port_of_match[] = {
+	{ .compatible = "xeth,port", },
+	{},
+};
+
+MODULE_DEVICE_TABLE(of, xeth_port_of_match);
+
+static const struct platform_device_id xeth_port_id_match[] = {
+	{ .name = "xeth-port" },
+	{},
+};
+
+MODULE_DEVICE_TABLE(platform, xeth_port_id_match);
+
+static bool xeth_port_is_platina_mk1(struct platform_device *pd)
+{
+	return pd->id_entry == &xeth_port_id_match[0];
+
+}
+
+struct platform_driver xeth_port_driver = {
+	.driver = {
+		.name = xeth_port_drvname,
+		.of_match_table = xeth_port_of_match,
+		.groups = xeth_port_groups,
+	},
+	.probe = xeth_port_probe,
+	.remove = xeth_port_remove,
+	.id_table = xeth_port_id_match,
 };

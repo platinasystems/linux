@@ -10,9 +10,17 @@
 #ifndef __NET_ETHERNET_XETH_MUX_H
 #define __NET_ETHERNET_XETH_MUX_H
 
+#include <linux/platform_device.h>
+#include <linux/netdevice.h>
 #include <net/rtnetlink.h>
 #include <linux/gpio/consumer.h>
 
+enum {
+	xeth_mux_max_flags = 8,
+	xeth_mux_max_stats = 512,
+};
+
+extern struct platform_driver xeth_mux_driver;
 extern struct rtnl_link_ops xeth_mux_lnko;
 extern const struct net_device_ops xeth_mux_ndo;
 
@@ -21,17 +29,12 @@ static inline bool is_xeth_mux(struct net_device *nd)
 	return nd->netdev_ops == &xeth_mux_ndo;
 }
 
-struct net_device *xeth_mux(struct device *dev);
-
-size_t xeth_mux_ports(struct net_device *mux);
-size_t xeth_mux_port_txqs(struct net_device *mux);
-size_t xeth_mux_port_rxqs(struct net_device *mux);
-
 enum xeth_encap xeth_mux_encap(struct net_device *mux);
+u8 xeth_mux_base_port(struct net_device *mux);
+u16 xeth_mux_ports(struct net_device *mux);
 
 netdev_tx_t xeth_mux_encap_xmit(struct sk_buff *, struct net_device *proxy);
 
-u64 xeth_mux_base_port_addr(struct net_device *mux);
 size_t xeth_mux_n_priv_flags(struct net_device *mux);
 void xeth_mux_priv_flag_names(struct net_device *mux, char *buf);
 
