@@ -14,7 +14,6 @@
 #include "xeth_sbtx.h"
 #include "xeth_version.h"
 #include "xeth_debug.h"
-#include <linux/netdevice.h>
 
 enum {
 	xeth_port_top_vid = 3999,
@@ -62,9 +61,25 @@ static void xeth_port_uninit(struct net_device *nd)
 static int xeth_port_open(struct net_device *nd)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
+	struct gpio_desc *lpmode_gpio;
+
 	if (!(priv->proxy.mux->flags & IFF_UP))
 		dev_open(priv->proxy.mux, NULL);
+	lpmode_gpio = xeth_mux_qsfp_lpmode_gpio(priv->proxy.mux, priv->port);
+	if (lpmode_gpio)
+		gpiod_set_value_cansleep(lpmode_gpio, 0);
 	return xeth_proxy_open(nd);
+}
+
+static int xeth_port_stop(struct net_device *nd)
+{
+	struct xeth_port_priv *priv = netdev_priv(nd);
+	struct gpio_desc *lpmode_gpio;
+
+	lpmode_gpio = xeth_mux_qsfp_lpmode_gpio(priv->proxy.mux, priv->port);
+	if (lpmode_gpio)
+		gpiod_set_value_cansleep(lpmode_gpio, 1);
+	return xeth_proxy_stop(nd);
 }
 
 u32 xeth_port_ethtool_priv_flags(struct net_device *nd)
@@ -110,7 +125,7 @@ const struct net_device_ops xeth_port_ndo = {
 	.ndo_init = xeth_proxy_init,
 	.ndo_uninit = xeth_port_uninit,
 	.ndo_open = xeth_port_open,
-	.ndo_stop = xeth_proxy_stop,
+	.ndo_stop = xeth_port_stop,
 	.ndo_start_xmit = xeth_proxy_start_xmit,
 	.ndo_get_iflink = xeth_proxy_get_iflink,
 	.ndo_get_stats64 = xeth_proxy_get_stats64,
@@ -554,16 +569,15 @@ static void xeth_port_setup(struct net_device *nd)
 
 static void xeth_port_qsfp(struct xeth_port_priv *priv, u8 bus)
 {
-	struct gpio_desc *absent_gpio, *reset_gpio;
-
-	absent_gpio = xeth_mux_qsfp_absent_gpio(priv->proxy.mux, priv->port);
-	if (!absent_gpio || gpiod_get_value_cansleep(absent_gpio))
+	struct gpio_desc *absent_gpio =
+		xeth_mux_qsfp_absent_gpio(priv->proxy.mux, priv->port);
+	struct gpio_desc *reset_gpio =
+		xeth_mux_qsfp_reset_gpio(priv->proxy.mux, priv->port);
+	if (!absent_gpio || !reset_gpio)
 		return;
-	reset_gpio = xeth_mux_qsfp_reset_gpio(priv->proxy.mux, priv->port);
-	if (!reset_gpio)
+	if (gpiod_get_value_cansleep(absent_gpio))
 		return;
 	gpiod_set_value_cansleep(reset_gpio, 0);
-	msleep(10);
 	priv->ext[0].qsfp = xeth_qsfp_client(bus);
 	if (!priv->ext[0].qsfp)
 		xeth_debug("qsfp[%d] not found @%d", priv->port, bus);
