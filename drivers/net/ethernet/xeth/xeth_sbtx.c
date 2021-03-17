@@ -408,6 +408,7 @@ int xeth_sbtx_ifinfo(struct net_device *nd, u32 xid, enum xeth_dev_kind kind,
 	memcpy(msg->addr, nd->dev_addr, ETH_ALEN);
 	msg->kind = kind;
 	msg->reason = reason;
+	msg->features = nd->features;
 	xeth_sbtx_queue(entry);
 	return 0;
 }

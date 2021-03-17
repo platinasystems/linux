@@ -273,11 +273,8 @@ static int xeth_upper_ndo_stop(struct net_device *nd)
 static netdev_tx_t xeth_upper_ndo_xmit(struct sk_buff *skb,
 				       struct net_device *nd)
 {
-	if (netif_carrier_ok(nd))
-		switch (xeth_encap) {
-		case XETH_ENCAP_VLAN:
-			return xeth_upper_encap_vlan(skb, nd);
-		}
+	if (netif_carrier_ok(nd) && xeth_encap == XETH_ENCAP_VLAN)
+		return xeth_upper_encap_vlan(skb, nd);
 	kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
@@ -359,6 +356,23 @@ static int xeth_upper_ndo_change_mtu(struct net_device *upper_nd, int mtu)
 	return 0;
 }
 
+netdev_features_t xeth_upper_ndo_fix_features(struct net_device *nd,
+					      netdev_features_t features)
+{
+	features &= ~NETIF_F_SOFT_FEATURES;
+	return features;
+}
+
+int xeth_upper_ndo_set_features(struct net_device *nd,
+				netdev_features_t features)
+{
+	struct xeth_upper_priv *priv = netdev_priv(nd);
+	nd->features = features;
+	xeth_sbtx_ifinfo(nd, priv->xid, priv->kind, 0,
+			 XETH_IFINFO_REASON_FEATURES);
+	return 1;
+}
+
 static const struct net_device_ops xeth_upper_ndo_port = {
 	.ndo_open = xeth_upper_ndo_open,
 	.ndo_stop = xeth_upper_ndo_stop,
@@ -366,6 +380,8 @@ static const struct net_device_ops xeth_upper_ndo_port = {
 	.ndo_get_iflink = xeth_upper_ndo_get_iflink,
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
 	.ndo_change_mtu = xeth_upper_ndo_change_mtu,
+	.ndo_fix_features = xeth_upper_ndo_fix_features,
+	.ndo_set_features = xeth_upper_ndo_set_features,
 };
 
 static const struct net_device_ops xeth_upper_ndo_vlan = {
@@ -375,6 +391,8 @@ static const struct net_device_ops xeth_upper_ndo_vlan = {
 	.ndo_get_iflink = xeth_upper_ndo_get_iflink_vlan,
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
 	.ndo_change_mtu = xeth_upper_ndo_change_mtu,
+	.ndo_fix_features = xeth_upper_ndo_fix_features,
+	.ndo_set_features = xeth_upper_ndo_set_features,
 };
 
 static const struct net_device_ops xeth_upper_ndo_bridge_or_lag = {
@@ -385,6 +403,8 @@ static const struct net_device_ops xeth_upper_ndo_bridge_or_lag = {
 	.ndo_get_stats64 = xeth_upper_ndo_get_stats64,
 	.ndo_add_slave = xeth_upper_ndo_add_lower,
 	.ndo_del_slave = xeth_upper_ndo_del_lower,
+	.ndo_fix_features = xeth_upper_ndo_fix_features,
+	.ndo_set_features = xeth_upper_ndo_set_features,
 };
 
 static void xeth_upper_eto_get_drvinfo(struct net_device *nd,
@@ -740,7 +760,10 @@ static void xeth_upper_lnko_setup_port(struct net_device *nd)
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
 	nd->priv_flags |= IFF_DONT_BRIDGE;
+	nd->hw_features = NETIF_F_HW_L2FW_DOFFLOAD;
 	nd->features |= NETIF_F_VLAN_CHALLENGED;
+	nd->features &= ~NETIF_F_SOFT_FEATURES;
+	nd->features |= NETIF_F_HW_L2FW_DOFFLOAD;
 	nd->min_mtu = xeth_mux->min_mtu;
 	nd->max_mtu = xeth_mux->max_mtu;
 }
@@ -756,7 +779,10 @@ static void xeth_upper_lnko_setup_vlan(struct net_device *nd)
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
 	nd->priv_flags |= IFF_DONT_BRIDGE;
+	nd->hw_features = NETIF_F_HW_L2FW_DOFFLOAD;
 	nd->features |= NETIF_F_VLAN_CHALLENGED;
+	nd->features &= ~NETIF_F_SOFT_FEATURES;
+	nd->features |= NETIF_F_HW_L2FW_DOFFLOAD;
 }
 
 static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
@@ -771,7 +797,10 @@ static void xeth_upper_lnko_setup_bridge_or_lag(struct net_device *nd)
 	nd->priv_flags |= IFF_NO_QUEUE;
 	nd->priv_flags |= IFF_PHONY_HEADROOM;
 	nd->priv_flags |= IFF_DONT_BRIDGE;
+	nd->hw_features = NETIF_F_HW_L2FW_DOFFLOAD;
 	nd->features |= NETIF_F_VLAN_CHALLENGED;
+	nd->features &= ~NETIF_F_SOFT_FEATURES;
+	nd->features |= NETIF_F_HW_L2FW_DOFFLOAD;
 	nd->features |= NETIF_F_NETNS_LOCAL;
 }
 

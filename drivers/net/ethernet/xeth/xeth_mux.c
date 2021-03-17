@@ -578,11 +578,7 @@ void xeth_mux_exit(void)
 
 u8 xeth_mux_bits(void)
 {
-	switch (xeth_encap) {
-	case XETH_ENCAP_VLAN:
-		return 12;
-	}
-	return 0;
+	return xeth_encap == XETH_ENCAP_VLAN ? 12 : 0;
 }
 
 long long xeth_mux_counter(enum xeth_counter index)

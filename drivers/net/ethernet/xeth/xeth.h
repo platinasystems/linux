@@ -161,7 +161,7 @@ enum {
 };
 
 extern int xeth_base_xid;
-extern int xeth_encap;
+extern enum xeth_encap xeth_encap;
 extern struct net_device *xeth_mux;
 extern const int *xeth_qsfp_bus;
 extern void *xeth_sbrx_buf;
@@ -175,10 +175,6 @@ extern int (*xeth_upper_eto_get_module_eeprom)(struct net_device *,
 extern int (*xeth_vendor_init)(void);
 extern void (*xeth_vendor_exit)(void);
 extern struct net_device **xeth_vendor_lowers;
-
-enum xeth_encap {
-	XETH_ENCAP_VLAN = 0,
-};
 
 enum xeth_counter {
 	xeth_counter_ex_frames,

@@ -21,7 +21,7 @@ MODULE_VERSION(xeth_version);
 MODULE_SOFTDEP("pre: nvmem-onie");
 static struct pci_driver xeth_main_pci_driver;
 
-int xeth_encap = XETH_ENCAP_VLAN;
+enum xeth_encap xeth_encap = XETH_ENCAP_VLAN;
 int xeth_base_xid = 3000;
 
 static int xeth_main_stat_index;
