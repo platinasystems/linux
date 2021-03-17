@@ -1365,11 +1365,19 @@ static void xeth_mux_platina_mk1_ports(struct platform_device *pd,
 				       struct net_device *mux)
 {
 	struct xeth_mux_priv *priv = netdev_priv(mux);
-	static const u8 const bus[] = {
-		 3,  2,  5,  4,  7,  6,  9,  8,
-		12, 11, 14, 13, 16, 15, 18, 17,
-		21, 20, 23, 22, 25, 24, 27, 26,
-		30, 29, 32, 31, 34, 33, 36, 35,
+	static const u8 const bus[][32] = {
+		[0] = {
+			 2,  3,  4,  5,  6,  7,  8,  9,
+			11, 12, 13, 14, 15, 16, 17, 18,
+			20, 21, 22, 23, 24, 25, 26, 27,
+			29, 30, 31, 32, 33, 34, 35, 36,
+		},
+		[1] = {
+			 3,  2,  5,  4,  7,  6,  9,  8,
+			12, 11, 14, 13, 16, 15, 18, 17,
+			21, 20, 23, 22, 25, 24, 27, 26,
+			30, 29, 32, 31, 34, 33, 36, 35,
+		},
 	};
 	static struct property_entry props[32][4];
 	static struct platform_device_info info[32];
@@ -1390,7 +1398,7 @@ static void xeth_mux_platina_mk1_ports(struct platform_device *pd,
 		props[port][2].name = "qsfp-bus";
 		props[port][2].length = sizeof(u8);
 		props[port][2].type = DEV_PROP_U8;
-		props[port][2].value.u8_data = bus[port];
+		props[port][2].value.u8_data = bus[priv->base_port][port];
 
 		info[port].name = "xeth-port";
 		info[port].id = port + priv->base_port;
