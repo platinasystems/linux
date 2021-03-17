@@ -1360,13 +1360,6 @@ static size_t xeth_mux_stats_prop(struct platform_device *pd,
 	return n > 0 ? n : 0;
 }
 
-/* Use gpiod_put_array() when finished */
-static struct gpio_descs *xeth_mux_gpios_prop(struct platform_device *pd,
-					      const char *label)
-{
-	return gpiod_get_array_optional(&pd->dev, label, 0);
-}
-
 /* FIXME remove this after goes-boot-mk1 upgrade */
 static void xeth_mux_platina_mk1_ports(struct platform_device *pd,
 				       struct net_device *mux)
@@ -1496,10 +1489,15 @@ static int xeth_mux_probe(struct platform_device *pd)
 
 	platform_set_drvdata(pd, mux);
 
-	priv->absent_gpios = xeth_mux_gpios_prop(pd, "absent");
-	priv->intr_gpios = xeth_mux_gpios_prop(pd, "int");
-	priv->lpmode_gpios = xeth_mux_gpios_prop(pd, "lpmode");
-	priv->reset_gpios = xeth_mux_gpios_prop(pd, "reset");
+	priv->absent_gpios =
+		gpiod_get_array_optional(&pd->dev, "absent", GPIOD_IN);
+	priv->intr_gpios =
+		gpiod_get_array_optional(&pd->dev, "int", GPIOD_IN);
+	priv->lpmode_gpios =
+		gpiod_get_array_optional(&pd->dev, "lpmode", GPIOD_OUT_HIGH);
+	priv->reset_gpios =
+		gpiod_get_array_optional(&pd->dev, "reset", GPIOD_OUT_LOW);
+
 	/* FIXME remove this after goes-boot-mk1 upgrade */
 	if (xeth_mux_is_platina_mk1(pd))
 		xeth_mux_platina_mk1_ports(pd, mux);
