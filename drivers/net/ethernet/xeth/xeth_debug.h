@@ -9,6 +9,8 @@
 #ifndef __NET_ETHERNET_XETH_DEBUG_H
 #define __NET_ETHERNET_XETH_DEBUG_H
 
+#include <linux/netdevice.h>
+
 #if defined(KBUILD_MODNAME)
 # define xeth_debug_prefix KBUILD_MODNAME
 #else /* !KBUILD_MODNAME */
