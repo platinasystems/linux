@@ -76,15 +76,16 @@ static const int xeth_platina_mk1_qsfp_bus[] = {
 	-1,
 };
 
+enum {
+	xeth_platina_mk1_absent_gpios = 480,
+	xeth_platina_mk1_intr_gpios = 448,
+	xeth_platina_mk1_lpmode_gpios = 416,
+	xeth_platina_mk1_reset_gpios = 384,
+};
+
 int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		       const struct pci_device_id *id)
 {
-#if 0	/* unused */
-	static const unsigned const qsfp_abs[] = { 496, 480};
-	static const unsigned const qsfp_intr[] = { 464, 448 };
-#endif
-	static const unsigned const qsfp_lpmode[] = { 432, 416 };
-	static const unsigned const qsfp_rst[] = { 400, 384 };
 	struct gpio_desc *gd;
 	int err, i, j;
 
@@ -110,6 +111,22 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 		}
 	}
 
+	for (i = err = 0; !err && i < xeth_platina_mk1_n_ports; i++) {
+		gd = gpio_to_desc(xeth_platina_mk1_reset_gpios+i);
+		if (!gd)
+			continue;
+		set_bit(FLAG_ACTIVE_LOW, &gd->flags);
+		err = xeth_debug_err(gpiod_direction_output(gd, 0));
+		gpiod_put(gd);
+		if (err)
+			break;
+		gd = gpio_to_desc(xeth_platina_mk1_lpmode_gpios+i);
+		if (!gd)
+			break;
+		err = xeth_debug_err(gpiod_direction_output(gd, 0));
+		gpiod_put(gd);
+	}
+
 	xeth_vendor_init = xeth_platina_mk1_init;
 	xeth_vendor_exit = xeth_platina_mk1_exit;
 	xeth_vendor_lowers = xeth_platina_mk1_lowers;
@@ -118,22 +135,6 @@ int xeth_platina_mk1_probe(struct pci_dev *pci_dev,
 
 	xeth_upper_eto_get_module_info = xeth_qsfp_get_module_info;
 	xeth_upper_eto_get_module_eeprom = xeth_qsfp_get_module_eeprom;
-
-	for (i = 0; i < ARRAY_SIZE(qsfp_rst); i++) {
-		gd = gpio_to_desc(qsfp_rst[i]);
-		if (!gd)
-			continue;
-		set_bit(FLAG_ACTIVE_LOW, &gd->flags);
-		err = xeth_debug_err(gpiod_direction_output(gd, 0x0000));
-		gpiod_put(gd);
-		if (err)
-			break;
-		gd = gpio_to_desc(qsfp_lpmode[i]);
-		if (!gd)
-			break;
-		err = xeth_debug_err(gpiod_direction_output(gd, 0x0000));
-		gpiod_put(gd);
-	}
 
 	return 0;
 }
