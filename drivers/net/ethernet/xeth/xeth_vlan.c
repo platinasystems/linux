@@ -220,6 +220,11 @@ static int xeth_vlan_newlink(struct net *src_net, struct net_device *nd,
 
 static void xeth_vlan_dellink(struct net_device *nd, struct list_head *q)
 {
+	if (netdev_has_any_upper_dev(nd)) {
+		struct net_device *upper = netdev_master_upper_dev_get(nd);
+		if (upper && upper->netdev_ops->ndo_del_slave)
+			upper->netdev_ops->ndo_del_slave(upper, nd);
+	}
 	unregister_netdevice_queue(nd, q);
 }
 

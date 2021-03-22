@@ -640,6 +640,11 @@ static void xeth_port_dellink(struct net_device *nd, struct list_head *unregq)
 {
 	struct xeth_port_priv *priv = netdev_priv(nd);
 	xeth_mux_del_vlans(priv->proxy.mux, nd, unregq);
+	if (netdev_has_any_upper_dev(nd)) {
+		struct net_device *upper = netdev_master_upper_dev_get(nd);
+		if (upper && upper->netdev_ops->ndo_del_slave)
+			upper->netdev_ops->ndo_del_slave(upper, nd);
+	}
 	unregister_netdevice_queue(nd, unregq);
 }
 
