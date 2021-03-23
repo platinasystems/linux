@@ -17,6 +17,11 @@ int xeth_qsfp_get_module_info(struct i2c_client *qsfp,
 			      struct ethtool_modinfo *emi);
 int xeth_qsfp_get_module_eeprom(struct i2c_client *qsfp,
 				struct ethtool_eeprom *ee, u8 *data);
-struct i2c_client *xeth_qsfp_client(int bus);
+/**
+ * xeth_qsfp_client()
+ * @nr: bus number
+ * @addrs: a I2C_CLIENT_END terminated list
+ */
+struct i2c_client *xeth_qsfp_client(int nr, const unsigned short const *addrs);
 
 #endif /* __NET_ETHERNET_XETH_QSFP_H */

@@ -140,9 +140,8 @@ int xeth_qsfp_get_module_eeprom(struct i2c_client *qsfp,
 	return err < 0 ? err : 0;
 }
 
-struct i2c_client *xeth_qsfp_client(int nr)
+struct i2c_client *xeth_qsfp_client(int nr, const unsigned short const *addrs)
 {
-	static const unsigned short const addrs[] = I2C_ADDRS(0x50, 0x51);
 	struct i2c_adapter *adapter;
 	struct i2c_board_info info;
 	struct i2c_client *cl;

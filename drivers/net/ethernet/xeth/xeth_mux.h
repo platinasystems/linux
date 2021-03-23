@@ -51,6 +51,7 @@ void xeth_mux_del_vlans(struct net_device *mux, struct net_device *nd,
 			struct list_head *unregq);
 void xeth_mux_dump_all_ifinfo(struct net_device *);
 
+const unsigned short *xeth_mux_qsfp_i2c_addrs(struct net_device *mux);
 struct gpio_desc *xeth_mux_qsfp_absent_gpio(struct net_device *mux, size_t prt);
 struct gpio_desc *xeth_mux_qsfp_intr_gpio(struct net_device *mux, size_t prt);
 struct gpio_desc *xeth_mux_qsfp_lpmode_gpio(struct net_device *mux, size_t prt);

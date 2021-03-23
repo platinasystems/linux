@@ -573,12 +573,14 @@ static void xeth_port_qsfp(struct xeth_port_priv *priv, u8 bus)
 		xeth_mux_qsfp_absent_gpio(priv->proxy.mux, priv->port);
 	struct gpio_desc *reset_gpio =
 		xeth_mux_qsfp_reset_gpio(priv->proxy.mux, priv->port);
+	const unsigned short const *addrs =
+		xeth_mux_qsfp_i2c_addrs(priv->proxy.mux);
 	if (!absent_gpio || !reset_gpio)
 		return;
 	if (gpiod_get_value_cansleep(absent_gpio))
 		return;
 	gpiod_set_value_cansleep(reset_gpio, 0);
-	priv->ext[0].qsfp = xeth_qsfp_client(bus);
+	priv->ext[0].qsfp = xeth_qsfp_client(bus, addrs);
 	if (!priv->ext[0].qsfp)
 		xeth_debug("qsfp[%d] not found @%d", priv->port, bus);
 }

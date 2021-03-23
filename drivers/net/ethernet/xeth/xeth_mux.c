@@ -18,6 +18,7 @@
 #include "xeth_vlan.h"
 #include "xeth_debug.h"
 #include "xeth_version.h"
+#include <linux/acpi.h>
 #include <linux/if_vlan.h>
 #include <net/sock.h>
 #include <linux/un.h>
@@ -32,6 +33,7 @@ enum {
 	xeth_mux_link_hash_bits = 4,
 	xeth_mux_link_hash_bkts = 1 << xeth_mux_link_hash_bits,
 	xeth_mux_max_links = 8,
+	xeth_mux_max_qsfp_i2c_addrs = 3,
 };
 
 struct xeth_mux_priv {
@@ -70,9 +72,17 @@ struct xeth_mux_priv {
 	enum xeth_encap encap;
 	u8 base_port;	/* 0 | 1 */
 	u16 ports;
+	u16 qsfp_i2c_addrs[xeth_mux_max_qsfp_i2c_addrs];
 
-	/* FIXME remove this after goes-boot-mk1 upgrade */
-	struct platform_device *platina_mk1_ports[32];
+	/*
+	 * PPDs: mux created port platform devices
+	 *	Ordinarily, port platform devices are created through
+	 *	APCI or DT entries. This flexible array member is here
+	 *	to experiment with MUX created ports before making
+	 *	burning bios/flash changes.
+	 */
+	u16 n_ppds;
+	struct platform_device *ppds[];
 };
 
 static void xeth_mux_lock_proxy(struct xeth_mux_priv *priv)
@@ -1234,7 +1244,6 @@ static void xeth_mux_dellink(struct net_device *mux, struct list_head *unregq)
 		priv->lpmode_gpios = NULL;
 	}
 	if (priv->reset_gpios) {
-		/* FIXME reset all */
 		gpiod_put_array(priv->reset_gpios);
 		priv->reset_gpios = NULL;
 	}
@@ -1273,15 +1282,36 @@ struct rtnl_link_ops xeth_mux_lnko = {
 	.get_link_net	= xeth_mux_get_link_net,
 };
 
-static bool xeth_mux_is_platina_mk1(struct platform_device *pd);
+static const char *xeth_mux_compatible_prop(struct platform_device *pd)
+{
+	const char *val;
+	int err = device_property_read_string(&pd->dev, "compatible", &val);
+	return err ? "xeth,mux" : val;
+}
+
+static bool xeth_mux_is_platina_mk1(struct platform_device *pd)
+{
+	const char *val = xeth_mux_compatible_prop(pd);
+	return !strcmp(val, "platina,mk1");
+}
 
 static const char *xeth_mux_name_prop(struct platform_device *pd)
 {
-	/* FIXME remove this after goes-boot-mk1 upgrade */
-	bool FIXME = xeth_mux_is_platina_mk1(pd);
 	const char *val;
-	int err = device_property_read_string(&pd->dev, "mux-name", &val);
-	return !err ? val : FIXME ? "platina-mk1" : "xeth-mux";
+	int err = device_property_read_string(&pd->dev, "name", &val);
+	return err ? NULL : val;
+}
+
+static void xeth_mux_name(struct platform_device *pd, char ifname[])
+{
+	int i;
+	const char *s = xeth_mux_name_prop(pd);
+	if (!s)
+		s = xeth_mux_compatible_prop(pd);
+	strncpy(ifname, s, IFNAMSIZ);
+	for (i = 0; i < IFNAMSIZ && ifname[i]; i++)
+		if (ifname[i] == ',')
+			ifname[i] = '-';
 }
 
 static enum xeth_encap xeth_mux_encap_prop(struct platform_device *pd)
@@ -1303,20 +1333,100 @@ static u16 xeth_mux_ports_prop(struct platform_device *pd)
 	return device_property_read_u16(&pd->dev, "ports", &val) ? 32 : val;
 }
 
-static size_t xeth_mux_links_prop(struct platform_device *pd,
-				  const char **links)
+static u16 xeth_mux_ppds_prop(struct platform_device *pd)
 {
-	ssize_t n;
+	return xeth_mux_is_platina_mk1(pd) ? 32 : 0;
+}
 
-	n = device_property_read_string_array(&pd->dev, "links", links,
-					      xeth_mux_max_links);
-	if (n < 0) {
-		/* FIXME remove this after goes-boot-mk1 upgrade */
-		links[0] = "eth1,enp3s0f0";
-		links[1] = "eth2,enp3s0f1";
+static ssize_t xeth_mux_link_addr_prop(struct platform_device *pd,
+				       const char *label, u8 *addr)
+{
+	ssize_t n = device_property_read_u8_array(&pd->dev, label, addr,
+						  ETH_ALEN);
+	return n == ETH_ALEN ? n : 0;
+}
+
+static ssize_t xeth_mux_link_addrs(struct platform_device *pd,
+				   struct net_device **links)
+{
+	char label[16];
+	u8 addr[ETH_ALEN];
+	struct net_device *nd;
+	ssize_t n;
+	int l;
+
+	for (l = 0; l < xeth_mux_max_links; l++) {
+		sprintf(label, "link%d-addr", l);
+		n = xeth_mux_link_addr_prop(pd, label, addr);
+		if (n != ETH_ALEN)
+			return l;
+		rcu_read_lock();
+		for_each_netdev_rcu(&init_net, nd)
+			if (!memcmp(nd->dev_addr, addr, ETH_ALEN)) {
+				dev_hold(links[l]);
+				break;
+			}
+		rcu_read_unlock();
+		if (!links[l]) {
+			for (--l; l >= 0; --l)
+				dev_put(links[l]);
+			return -EPROBE_DEFER;
+		}
+	}
+	return l;
+}
+
+static size_t xeth_mux_link_akas_prop(struct platform_device *pd,
+				      const char **akas)
+{
+	ssize_t n = device_property_read_string_array(&pd->dev, "link-akas",
+						      akas,
+						      xeth_mux_max_links);
+	if (n <= 0 && xeth_mux_is_platina_mk1(pd)) {
+		akas[0] = "enp3s0f0,eth1";
+		akas[1] = "enp3s0f1,eth2";
 		n = 2;
 	}
 	return n >= 0 ? n : 0;
+}
+
+static ssize_t xeth_mux_link_akas(struct platform_device *pd,
+				  struct net_device **links)
+{
+	const char *akas[xeth_mux_max_links];
+	const char *aka;
+	char ifname[IFNAMSIZ];
+	ssize_t n_links;
+	int i, l;
+
+	n_links = xeth_mux_link_akas_prop(pd, akas);
+	if (n_links <= 0)
+		return n_links;
+	for (l = 0; l < n_links; l++)
+		for (links[l] = NULL, aka = akas[l]; !links[l]; ) {
+			if (!*aka) {
+				for (--l; l >= 0; --l)
+					dev_put(links[l]);
+				return -EPROBE_DEFER;
+			}
+			for (i = 0; *aka; aka++)
+				if (*aka == ',') {
+					aka++;
+					break;
+				} else if (i < IFNAMSIZ-1)
+					ifname[i++] = *aka;
+			ifname[i] = '\0';
+			links[l] = dev_get_by_name(&init_net, ifname);
+		}
+	return l;
+}
+
+static ssize_t xeth_mux_links(struct platform_device *pd,
+			      struct net_device **links)
+{
+	return device_property_present(&pd->dev, "link0-addr") ?
+		xeth_mux_link_addrs(pd, links) :
+		xeth_mux_link_akas(pd, links);
 }
 
 static u8 xeth_mux_qs_prop(struct platform_device *pd, const char *label)
@@ -1334,13 +1444,13 @@ static size_t xeth_mux_flags_prop(struct platform_device *pd,
 
 	n = device_property_read_string_array(&pd->dev, "flags", val,
 					      xeth_mux_max_flags);
-	if (n < 0) {
-		/* FIXME remove this after goes-boot-mk1 upgrade */
-		val[0] = "copper";
-		val[1] = "fec74";
-		val[2] = "fec91";
-		n = 3;
-	}
+	if (n <= 0)
+		if (xeth_mux_is_platina_mk1(pd)) {
+			val[0] = "copper";
+			val[1] = "fec74";
+			val[2] = "fec91";
+			n = 3;
+		}
 	for (i = 0; i < n; i++)
 		strncpy(names[i], val[i], ETH_GSTRING_LEN);
 	return n > 0 ? n : 0;
@@ -1360,9 +1470,32 @@ static size_t xeth_mux_stats_prop(struct platform_device *pd,
 	return n > 0 ? n : 0;
 }
 
-/* FIXME remove this after goes-boot-mk1 upgrade */
-static void xeth_mux_platina_mk1_ports(struct platform_device *pd,
-				       struct net_device *mux)
+static void xeth_mux_qsfp_i2c_addrs_prop(struct platform_device *pd,
+					 struct net_device *mux)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	ssize_t n = xeth_mux_max_qsfp_i2c_addrs - 1;
+	n = device_property_read_u16_array(&pd->dev, "qsfp-i2c-addrs",
+					   priv->qsfp_i2c_addrs, n);
+	if (n <= 0) {
+		priv->qsfp_i2c_addrs[0] = 0x50;
+		priv->qsfp_i2c_addrs[1] = 0x51;
+		priv->qsfp_i2c_addrs[2] = I2C_CLIENT_END;
+		if (xeth_mux_is_platina_mk1(pd) &&
+		    xeth_mux_base_port_prop(pd) == 0)
+			priv->qsfp_i2c_addrs[1] = I2C_CLIENT_END;
+	} else
+		priv->qsfp_i2c_addrs[n] = I2C_CLIENT_END;
+}
+
+const unsigned short *xeth_mux_qsfp_i2c_addrs(struct net_device *mux)
+{
+	struct xeth_mux_priv *priv = netdev_priv(mux);
+	return priv->qsfp_i2c_addrs;
+}
+
+static void xeth_mux_platina_mk1_ppds(struct platform_device *pd,
+				      struct net_device *mux)
 {
 	struct xeth_mux_priv *priv = netdev_priv(mux);
 	static const u8 const bus[][32] = {
@@ -1410,48 +1543,43 @@ static void xeth_mux_platina_mk1_ports(struct platform_device *pd,
 			       info[port].id, PTR_ERR(ppd));
 			return;
 		}
-		priv->platina_mk1_ports[port] = ppd;
+		priv->ppds[port] = ppd;
 	}
+}
+
+static void xeth_mux_ppds(struct platform_device *pd, struct net_device *mux)
+{
+	if (xeth_mux_is_platina_mk1(pd))
+		xeth_mux_platina_mk1_ppds(pd, mux);
 }
 
 static int xeth_mux_probe(struct platform_device *pd)
 {
-	struct xeth_mux_priv *priv;
-	struct net_device *mux;
 	struct net_device *links[xeth_mux_max_links];
-	const char *akas[xeth_mux_max_links];
 	char ifname[IFNAMSIZ];
-	const char *aka;
-	ssize_t n_links;
-	int i, l, err;
+	struct net_device *mux;
+	struct xeth_mux_priv *priv;
+	ssize_t n_links, n_ppds;
+	size_t sz;
+	int err;
 
-	if (n_links = xeth_mux_links_prop(pd, akas), n_links > 0)
-		for (l = 0; l < n_links; l++)
-			for (links[l] = NULL, aka = akas[l]; !links[l]; ) {
-				if (!*aka) {
-					for (--l; l >= 0; --l)
-						dev_put(links[l]);
-					return -EPROBE_DEFER;
-				}
-				for (i = 0; *aka; aka++)
-					if (*aka == ',') {
-						aka++;
-						break;
-					} else if (i < IFNAMSIZ-1)
-						ifname[i++] = *aka;
-				ifname[i] = '\0';
-				links[l] = dev_get_by_name(&init_net, ifname);
-			}
+	n_links = xeth_mux_links(pd, links);
+	if (n_links < 0)
+		return n_links;
 
-	mux = alloc_netdev_mqs(sizeof(*priv),
-			       xeth_mux_name_prop(pd),
-			       NET_NAME_ENUM,
+	xeth_mux_name(pd, ifname);
+
+	n_ppds = xeth_mux_ppds_prop(pd);
+	sz = sizeof(*priv);
+	if (n_ppds)
+		sz += n_ppds * sizeof(struct platform_device *);
+	mux = alloc_netdev_mqs(sz, ifname, NET_NAME_ENUM,
 			       xeth_mux_setup,
 			       xeth_mux_qs_prop(pd, "txqs"), 
 			       xeth_mux_qs_prop(pd, "rxqs"));
 	if (!mux) {
-		for (i = 0; links[i] && i < n_links; i++)
-			dev_put(links[i]);
+		for (--n_links; n_links >= 0 && links[n_links]; --n_links)
+			dev_put(links[n_links]);
 		return -ENOMEM;
 	}
 
@@ -1460,10 +1588,12 @@ static int xeth_mux_probe(struct platform_device *pd)
 	priv->encap = xeth_mux_encap_prop(pd);
 	priv->base_port = xeth_mux_base_port_prop(pd);
 	priv->ports = xeth_mux_ports_prop(pd);
+	priv->n_ppds = n_ppds;
 	priv->priv_flags.named =
 		xeth_mux_flags_prop(pd, priv->priv_flags.names);
 	priv->stat_name.named =
 		xeth_mux_stats_prop(pd, priv->stat_name.names);
+	xeth_mux_qsfp_i2c_addrs_prop(pd, mux);
 
 	if (n_links > 0)
 		eth_hw_addr_inherit(mux, links[0]);
@@ -1475,8 +1605,8 @@ static int xeth_mux_probe(struct platform_device *pd)
 	rtnl_unlock();
 
 	if (err < 0) {
-		for (i = 0; links[i] && i < n_links; i++)
-			dev_put(links[i]);
+		for (--n_links; n_links >= 0 && links[n_links]; --n_links)
+			dev_put(links[n_links]);
 		free_netdev(mux);
 		return err;
 	}
@@ -1506,9 +1636,8 @@ static int xeth_mux_probe(struct platform_device *pd)
 	priv->reset_gpios =
 		gpiod_get_array_optional(&pd->dev, "reset", GPIOD_OUT_LOW);
 
-	/* FIXME remove this after goes-boot-mk1 upgrade */
-	if (xeth_mux_is_platina_mk1(pd))
-		xeth_mux_platina_mk1_ports(pd, mux);
+	if (n_ppds)
+		xeth_mux_ppds(pd, mux);
 
 	return 0;
 }
@@ -1517,6 +1646,7 @@ static int xeth_mux_remove(struct platform_device *pd)
 {
 	struct net_device *mux = platform_get_drvdata(pd);
 	struct xeth_mux_priv *priv;
+	int i;
 	LIST_HEAD(q);
 
 	if (!mux)
@@ -1531,33 +1661,20 @@ static int xeth_mux_remove(struct platform_device *pd)
 	rtnl_unlock();
 	rcu_barrier();
 
-	if (xeth_mux_is_platina_mk1(pd)) {
-		/* FIXME remove this after upgrading goes-boot-mk1 */
-		int port;
-		for (port = 0; port < 32; port++)
-			if (priv->platina_mk1_ports[port])
-				platform_device_unregister(priv->platina_mk1_ports[port]);
-	}
+	for (i = 0; i < priv->n_ppds; i++)
+		if (priv->ppds[i])
+			platform_device_unregister(priv->ppds[i]);
 
 	return 0;
 }
 
 static const struct of_device_id xeth_mux_of_match[] = {
-	/* FIXME remove this after upgrading goes-boot-mk1 */
 	{ .compatible = "platina,mk1", },
 	{ .compatible = "xeth,mux", },
 	{},
 };
 
 MODULE_DEVICE_TABLE(of, xeth_mux_of_match);
-
-/* FIXME remove this after upgrading goes-boot-mk1 */
-static bool xeth_mux_is_platina_mk1(struct platform_device *pd)
-{
-	const char *val;
-	int err = device_property_read_string(&pd->dev, "compatible", &val);
-	return !err && !strcmp(val, xeth_mux_of_match[0].compatible);
-}
 
 struct platform_driver xeth_mux_driver = {
 	.driver		= {
