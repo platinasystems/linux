@@ -552,7 +552,7 @@ static void xeth_mux_rehash_link_ht(struct net_device *mux)
 
 static int xeth_mux_bind_lower(struct net_device *mux,
 			       struct net_device *lower,
-			       struct netlink_ext_ack *extack)
+			       struct netlink_ext_ack *ack)
 {
 	int err;
 
@@ -560,7 +560,7 @@ static int xeth_mux_bind_lower(struct net_device *mux,
 	err = xeth_debug_nd_err(lower,
 				netdev_master_upper_dev_link(lower, mux,
 							     NULL, NULL,
-							     extack));
+							     ack));
 	if (err)
 		lower->flags &= ~IFF_SLAVE;
 	else
@@ -569,7 +569,7 @@ static int xeth_mux_bind_lower(struct net_device *mux,
 }
 
 static int xeth_mux_add_lower(struct net_device *mux, struct net_device *lower,
-			      struct netlink_ext_ack *extack)
+			      struct netlink_ext_ack *ack)
 {
 	int err;
 
@@ -583,8 +583,7 @@ static int xeth_mux_add_lower(struct net_device *mux, struct net_device *lower,
 	if (!err)
 		err = xeth_mux_handle_lower(mux, lower);
 	if (!err)
-		err = xeth_mux_bind_lower(mux, lower, extack);
-
+		err = xeth_mux_bind_lower(mux, lower, ack);
 	if (err)
 		netdev_rx_handler_unregister(lower);
 	return err;
@@ -611,15 +610,19 @@ static int xeth_mux_del_lower(struct net_device *mux, struct net_device *lower)
 }
 
 static int xeth_mux_validate(struct nlattr *tb[], struct nlattr *data[],
-			      struct netlink_ext_ack *extack)
+			      struct netlink_ext_ack *ack)
 {
-	if (!tb || !tb[IFLA_LINK]) {
-		NL_SET_ERR_MSG(extack, "missing link");
-		return -EINVAL;
-	}
 	if (tb && tb[IFLA_ADDRESS]) {
-		NL_SET_ERR_MSG(extack, "cannot set mac addr");
+		NL_SET_ERR_MSG(ack, "cannot set mac addr");
 		return -EOPNOTSUPP;
+	}
+	if (data && data[XETH_MUX_IFLA_ENCAP]) {
+		u8 val = nla_get_u8(data[XETH_MUX_IFLA_ENCAP]);
+		if (val > XETH_ENCAP_VPLS) {
+			xeth_debug("invalid encap %u", val);
+			NL_SET_ERR_MSG(ack, "invalid encap");
+			return -ERANGE;
+		}
 	}
 	return 0;
 }
@@ -1223,6 +1226,39 @@ static const struct ethtool_ops xeth_mux_ethtool_ops = {
 	.get_priv_flags = xeth_mux_eto_get_priv_flags,
 };
 
+static int xeth_mux_newlink(struct net *src_net, struct net_device *nd,
+			    struct nlattr *tb[], struct nlattr *data[],
+			    struct netlink_ext_ack *ack)
+{
+	struct xeth_mux_priv *priv = netdev_priv(nd);
+	struct net_device *link = NULL;
+	int err;
+
+	if (tb && tb[IFLA_LINK]) {
+		link = dev_get_by_index(dev_net(nd),
+					nla_get_u32(tb[IFLA_LINK]));
+		if (IS_ERR_OR_NULL(link)) {
+			NL_SET_ERR_MSG(ack, "unkown link");
+			return PTR_ERR(priv->link);
+		}
+		eth_hw_addr_inherit(nd, link);
+		nd->addr_assign_type = NET_ADDR_STOLEN;
+		nd->min_mtu = link->min_mtu;
+		nd->max_mtu = link->max_mtu;
+	} else
+		eth_hw_addr_random(nd);
+	if (data && data[XETH_MUX_IFLA_ENCAP])
+		priv->encap = nla_get_u8(data[XETH_MUX_IFLA_ENCAP]);
+	err = register_netdevice(nd);
+	if (!err && link)
+		err = xeth_debug_nd_err(nd, xeth_mux_add_lower(nd, link, ack));
+	if (!err)
+		priv->main = kthread_run(xeth_mux_main, nd, "%s", nd->name);
+	if (err)
+		dev_put(link);
+	return err;
+}
+
 static void xeth_mux_dellink(struct net_device *mux, struct list_head *unregq)
 {
 	struct xeth_mux_priv *priv = netdev_priv(mux);
@@ -1275,9 +1311,7 @@ struct rtnl_link_ops xeth_mux_lnko = {
 	.priv_size	= sizeof(struct xeth_mux_priv),
 	.setup		= xeth_mux_setup,
 	.validate	= xeth_mux_validate,
-#if 0	/* FIXME ip link add type xeth-mux */
 	.newlink	= xeth_mux_newlink,
-#endif
 	.dellink	= xeth_mux_dellink,
 	.get_link_net	= xeth_mux_get_link_net,
 };
