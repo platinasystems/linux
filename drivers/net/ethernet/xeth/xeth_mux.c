@@ -985,6 +985,7 @@ static netdev_tx_t xeth_mux_vlan_xmit(struct sk_buff *skb,
 	struct xeth_mux_priv *priv = netdev_priv(mux);
 	atomic64_t *ls = priv->link_stats;
 	struct net_device *link;
+	unsigned int len = skb->len;
 
 	if (xeth_mux_was_vlan_exception(mux, skb))
 		return NETDEV_TX_OK;
@@ -997,7 +998,7 @@ static netdev_tx_t xeth_mux_vlan_xmit(struct sk_buff *skb,
 				xeth_inc_TX_DROPPED(ls);
 			} else {
 				xeth_inc_TX_PACKETS(ls);
-				xeth_add_TX_BYTES(ls, skb->len);
+				xeth_add_TX_BYTES(ls, len);
 			}
 		} else {
 			xeth_inc_TX_ERRORS(ls);
@@ -1005,9 +1006,15 @@ static netdev_tx_t xeth_mux_vlan_xmit(struct sk_buff *skb,
 			kfree_skb(skb);
 		}
 	} else {
-		xeth_inc_TX_ERRORS(ls);
-		xeth_inc_TX_ABORTED_ERRORS(ls);
-		kfree_skb(skb);
+		skb->dev = mux;
+		if (dev_forward_skb(mux, skb) == NET_RX_SUCCESS) {
+			xeth_inc_RX_PACKETS(ls);
+			xeth_add_RX_BYTES(ls, len);
+		} else {
+			xeth_inc_TX_ERRORS(ls);
+			xeth_inc_TX_ABORTED_ERRORS(ls);
+			kfree_skb(skb);
+		}
 	}
 	return NETDEV_TX_OK;
 }
