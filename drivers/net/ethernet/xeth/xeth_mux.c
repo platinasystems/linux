@@ -364,7 +364,13 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 		skb_pull_inline(skb, VLAN_HLEN);
 	}
 	upper = xeth_debug_rcu(xeth_upper_lookup_rcu(xid));
-	if (upper) {
+	if (!upper) {
+		no_xeth_debug("no upper for xid %d; tci 0x%x",
+			xid, skb->vlan_tci);
+		atomic64_inc(&priv->link_stats.rx_errors);
+		atomic64_inc(&priv->link_stats.rx_nohandler);
+		dev_kfree_skb(skb);
+	} else if (upper->flags & IFF_UP) {
 		struct ethhdr *eth;
 		unsigned char *mac = skb_mac_header(skb);
 		skb_push(skb, ETH_HLEN);
@@ -375,10 +381,7 @@ static void xeth_mux_demux_vlan(struct sk_buff *skb)
 		skb->vlan_tci = 0;
 		xeth_mux_forward(upper, skb);
 	} else {
-		no_xeth_debug("no upper for xid %d; tci 0x%x",
-			xid, skb->vlan_tci);
-		atomic64_inc(&priv->link_stats.rx_errors);
-		atomic64_inc(&priv->link_stats.rx_nohandler);
+		atomic64_inc(&priv->link_stats.rx_dropped);
 		dev_kfree_skb(skb);
 	}
 }
