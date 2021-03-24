@@ -1101,7 +1101,13 @@ static void xeth_mux_demux_vlan(struct net_device *mux, struct sk_buff *skb)
 		skb_pull_inline(skb, VLAN_HLEN);
 	}
 	proxy = xeth_mux_proxy_of_xid(mux, xid);
-	if (proxy) {
+	if (!proxy) {
+		no_xeth_debug("no proxy for xid %d; tci 0x%x",
+			xid, skb->vlan_tci);
+		xeth_inc_RX_ERRORS(ls);
+		xeth_inc_RX_NOHANDLER(ls);
+		dev_kfree_skb(skb);
+	} else if (proxy->nd->flags & IFF_UP) {
 		struct ethhdr *eth;
 		unsigned char *mac = skb_mac_header(skb);
 		skb_push(skb, ETH_HLEN);
@@ -1116,10 +1122,7 @@ static void xeth_mux_demux_vlan(struct net_device *mux, struct sk_buff *skb)
 		} else
 			xeth_inc_RX_DROPPED(ls);
 	} else {
-		no_xeth_debug("no proxy for xid %d; tci 0x%x",
-			xid, skb->vlan_tci);
-		xeth_inc_RX_ERRORS(ls);
-		xeth_inc_RX_NOHANDLER(ls);
+		xeth_inc_RX_DROPPED(ls);
 		dev_kfree_skb(skb);
 	}
 }
