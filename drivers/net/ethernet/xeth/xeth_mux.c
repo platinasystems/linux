@@ -1391,6 +1391,7 @@ static ssize_t xeth_mux_link_addrs(struct platform_device *pd,
 	int a, l, n;
 
 	for (a = 0; a < xeth_mux_max_links; a++) {
+		scnprintf(label, ARRAY_SIZE(label), "link%d-mac-address", a);
 		n = device_property_read_u8_array(&pd->dev, label, NULL, 0);
 		if (n != ETH_ALEN)
 			break;
