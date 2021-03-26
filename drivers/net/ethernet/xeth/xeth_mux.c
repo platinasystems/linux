@@ -73,13 +73,11 @@ struct xeth_mux_priv {
 	u8 base_port;	/* 0 | 1 */
 	u16 ports;
 	u16 qsfp_i2c_addrs[xeth_mux_max_qsfp_i2c_addrs];
-
 	/*
 	 * PPDs: mux created port platform devices
-	 *	Ordinarily, port platform devices are created through
-	 *	APCI or DT entries. This flexible array member is here
-	 *	to experiment with MUX created ports before making
-	 *	burning bios/flash changes.
+	 *	Ordinarily, port platform devices are created through APCI or
+	 *	DT entries. This flexible array member is to experiment with
+	 *	MUX created ports before making bios/flash changes.
 	 */
 	u16 n_ppds;
 	struct platform_device *ppds[];
@@ -586,16 +584,6 @@ static int xeth_mux_add_lower(struct net_device *mux, struct net_device *lower,
 		err = xeth_mux_bind_lower(mux, lower, ack);
 	if (err)
 		netdev_rx_handler_unregister(lower);
-	return err;
-}
-
-static int xeth_mux_add_platform_links(struct net_device *mux,
-				       struct net_device **links,
-				       size_t n_links)
-{
-	int i, err;
-	for (i = 0, err = 0; i < n_links && !err; i++)
-		err = xeth_mux_add_lower(mux, links[i], NULL);
 	return err;
 }
 
@@ -1377,11 +1365,6 @@ static u16 xeth_mux_ports_prop(struct platform_device *pd)
 	return device_property_read_u16(&pd->dev, "ports", &val) ? 32 : val;
 }
 
-static u16 xeth_mux_ppds_prop(struct platform_device *pd)
-{
-	return xeth_mux_is_platina_mk1(pd) ? 32 : 0;
-}
-
 static ssize_t xeth_mux_link_addrs(struct platform_device *pd,
 				   struct net_device **links)
 {
@@ -1457,15 +1440,6 @@ static ssize_t xeth_mux_link_akas(struct platform_device *pd,
 			links[l] = dev_get_by_name(&init_net, ifname);
 		}
 	return l;
-}
-
-static ssize_t xeth_mux_links(struct platform_device *pd,
-			      struct net_device **links)
-{
-	ssize_t n = xeth_mux_link_addrs(pd, links);
-	if (n == 0)
-		n = xeth_mux_link_akas(pd, links);
-	return n;
 }
 
 static u8 xeth_mux_qs_prop(struct platform_device *pd, const char *label)
@@ -1548,8 +1522,8 @@ const unsigned short *xeth_mux_qsfp_i2c_addrs(struct net_device *mux)
 	return priv->qsfp_i2c_addrs;
 }
 
-static void xeth_mux_platina_mk1_ppds(struct platform_device *pd,
-				      struct net_device *mux)
+static void xeth_mux_mk_platina_mk1_ppds(struct platform_device *pd,
+					 struct net_device *mux)
 {
 	struct xeth_mux_priv *priv = netdev_priv(mux);
 	static const u8 const bus[][32] = {
@@ -1601,12 +1575,6 @@ static void xeth_mux_platina_mk1_ppds(struct platform_device *pd,
 	}
 }
 
-static void xeth_mux_ppds(struct platform_device *pd, struct net_device *mux)
-{
-	if (xeth_mux_is_platina_mk1(pd))
-		xeth_mux_platina_mk1_ppds(pd, mux);
-}
-
 static int xeth_mux_probe(struct platform_device *pd)
 {
 	struct net_device *links[xeth_mux_max_links];
@@ -1615,18 +1583,28 @@ static int xeth_mux_probe(struct platform_device *pd)
 	struct xeth_mux_priv *priv;
 	ssize_t n_links, n_ppds;
 	size_t sz;
-	int err;
+	int i, err;
+	void (*mk_ppds)(struct platform_device *pd, struct net_device *mux);
 
-	n_links = xeth_mux_links(pd, links);
+	if (xeth_mux_is_platina_mk1(pd)) {
+		n_ppds = 32;
+		mk_ppds = xeth_mux_mk_platina_mk1_ppds;
+	} else {
+		n_ppds = 32;
+		mk_ppds = NULL;
+	}
+
+	n_links = xeth_mux_link_addrs(pd, links);
+	if (n_links == 0)
+		n_links = xeth_mux_link_akas(pd, links);
 	if (n_links < 0)
 		return n_links;
+	else if (n_links == 0)
+		xeth_debug("no links?");
 
 	xeth_mux_name(pd, ifname);
 
-	n_ppds = xeth_mux_ppds_prop(pd);
-	sz = sizeof(*priv);
-	if (n_ppds)
-		sz += n_ppds * sizeof(struct platform_device *);
+	sz = sizeof(*priv) + (n_ppds * sizeof(struct platform_device *));
 	mux = alloc_netdev_mqs(sz, ifname, NET_NAME_ENUM,
 			       xeth_mux_setup,
 			       xeth_mux_qs_prop(pd, "txqs"), 
@@ -1642,7 +1620,6 @@ static int xeth_mux_probe(struct platform_device *pd)
 	priv->encap = xeth_mux_encap_prop(pd);
 	priv->base_port = xeth_mux_base_port_prop(pd);
 	priv->ports = xeth_mux_ports_prop(pd);
-	priv->n_ppds = n_ppds;
 	priv->priv_flags.named =
 		xeth_mux_flags_prop(pd, priv->priv_flags.names);
 	priv->stat_name.named =
@@ -1673,7 +1650,13 @@ static int xeth_mux_probe(struct platform_device *pd)
 
 	if (n_links > 0) {
 		rtnl_lock();
-		xeth_mux_add_platform_links(mux, links, n_links);
+		for (i = 0, err = 0; i < n_links && !err; i++) {
+			err = xeth_mux_add_lower(mux, links[i], NULL);
+			if (err)
+				pr_err("link %s: %d\n", links[i]->name, err);
+			else
+				xeth_debug("linked %s", links[i]->name);
+		}
 		rtnl_unlock();
 	}
 
@@ -1690,8 +1673,10 @@ static int xeth_mux_probe(struct platform_device *pd)
 	priv->reset_gpios =
 		gpiod_get_array_optional(&pd->dev, "reset", GPIOD_OUT_LOW);
 
-	if (n_ppds)
-		xeth_mux_ppds(pd, mux);
+	if (n_ppds) {
+		priv->n_ppds = n_ppds;
+		mk_ppds(pd, mux);
+	}
 
 	return 0;
 }
