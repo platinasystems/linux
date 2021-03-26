@@ -1382,71 +1382,64 @@ static u16 xeth_mux_ppds_prop(struct platform_device *pd)
 	return xeth_mux_is_platina_mk1(pd) ? 32 : 0;
 }
 
-static ssize_t xeth_mux_link_addr_prop(struct platform_device *pd,
-				       const char *label, u8 *addr)
-{
-	ssize_t n = device_property_read_u8_array(&pd->dev, label, addr,
-						  ETH_ALEN);
-	return n == ETH_ALEN ? n : 0;
-}
-
 static ssize_t xeth_mux_link_addrs(struct platform_device *pd,
 				   struct net_device **links)
 {
-	char label[16];
-	u8 addr[ETH_ALEN];
+	char label[32];
+	u8 addrs[xeth_mux_max_links][ETH_ALEN];
 	struct net_device *nd;
-	ssize_t n;
-	int l;
+	int a, l, n;
 
-	for (l = 0; l < xeth_mux_max_links; l++) {
-		sprintf(label, "link%d-addr", l);
-		n = xeth_mux_link_addr_prop(pd, label, addr);
+	for (a = 0; a < xeth_mux_max_links; a++) {
+		n = device_property_read_u8_array(&pd->dev, label, NULL, 0);
 		if (n != ETH_ALEN)
-			return l;
-		rcu_read_lock();
-		for_each_netdev_rcu(&init_net, nd)
-			if (!memcmp(nd->dev_addr, addr, ETH_ALEN)) {
-				dev_hold(links[l]);
-				break;
-			}
-		rcu_read_unlock();
+			break;
+		if (device_property_read_u8_array(&pd->dev, label, addrs[a], n)
+		    < 0)
+			break;
+	}
+	if (!a)
+		return 0;
+	for (l = 0; l < a; l++)
+		links[l] = NULL;
+	rcu_read_lock();
+	for_each_netdev_rcu(&init_net, nd)
+		for (l = 0; l < a; l++)
+			if (!links[l])
+				if (!memcmp(nd->dev_addr, addrs[l], ETH_ALEN)) {
+					dev_hold(nd);
+					links[l] = nd;
+				}
+	rcu_read_unlock();
+	for (l = 0; l < a; l++)
 		if (!links[l]) {
-			for (--l; l >= 0; --l)
+			for (l = 0; l < a; l++) {
 				dev_put(links[l]);
+				links[l] = NULL;
+			}
 			return -EPROBE_DEFER;
 		}
-	}
-	return l;
-}
-
-static size_t xeth_mux_link_akas_prop(struct platform_device *pd,
-				      const char **akas)
-{
-	ssize_t n = device_property_read_string_array(&pd->dev, "link-akas",
-						      akas,
-						      xeth_mux_max_links);
-	if (n <= 0 && xeth_mux_is_platina_mk1(pd)) {
-		akas[0] = "enp3s0f0,eth1";
-		akas[1] = "enp3s0f1,eth2";
-		n = 2;
-	}
-	return n >= 0 ? n : 0;
+	return a;
 }
 
 static ssize_t xeth_mux_link_akas(struct platform_device *pd,
 				  struct net_device **links)
 {
+	static const char label[] = "link-akas";
 	const char *akas[xeth_mux_max_links];
 	const char *aka;
 	char ifname[IFNAMSIZ];
-	ssize_t n_links;
+	ssize_t n;
 	int i, l;
 
-	n_links = xeth_mux_link_akas_prop(pd, akas);
-	if (n_links <= 0)
-		return n_links;
-	for (l = 0; l < n_links; l++)
+	n = device_property_read_string_array(&pd->dev, label, NULL, 0);
+	if (n <= 0)
+		return 0;
+	if (n > xeth_mux_max_links)
+		n = xeth_mux_max_links;
+	if (device_property_read_string_array(&pd->dev, label, akas, n) < 0)
+		return 0;
+	for (l = 0; l < n; l++)
 		for (links[l] = NULL, aka = akas[l]; !links[l]; ) {
 			if (!*aka) {
 				for (--l; l >= 0; --l)
@@ -1468,9 +1461,10 @@ static ssize_t xeth_mux_link_akas(struct platform_device *pd,
 static ssize_t xeth_mux_links(struct platform_device *pd,
 			      struct net_device **links)
 {
-	return device_property_present(&pd->dev, "link0-addr") ?
-		xeth_mux_link_addrs(pd, links) :
-		xeth_mux_link_akas(pd, links);
+	ssize_t n = xeth_mux_link_addrs(pd, links);
+	if (n == 0)
+		n = xeth_mux_link_akas(pd, links);
+	return n;
 }
 
 static u8 xeth_mux_qs_prop(struct platform_device *pd, const char *label)
@@ -1482,22 +1476,30 @@ static u8 xeth_mux_qs_prop(struct platform_device *pd, const char *label)
 static size_t xeth_mux_flags_prop(struct platform_device *pd,
 				  char names[][ETH_GSTRING_LEN])
 {
+	const char label[] = "flags";
 	const char *val[xeth_mux_max_flags];
 	ssize_t n;
 	int i;
 
-	n = device_property_read_string_array(&pd->dev, "flags", val,
-					      xeth_mux_max_flags);
-	if (n <= 0)
+	n = device_property_read_string_array(&pd->dev, label, NULL, 0);
+	if (n <= 0) {
 		if (xeth_mux_is_platina_mk1(pd)) {
 			val[0] = "copper";
 			val[1] = "fec74";
 			val[2] = "fec91";
 			n = 3;
-		}
+		} else
+			return 0;
+	} else {
+		if (n > xeth_mux_max_flags)
+			n = xeth_mux_max_flags;
+		if (device_property_read_string_array(&pd->dev, "flags", val, n)
+		    != n)
+			return 0;
+	}
 	for (i = 0; i < n; i++)
 		strncpy(names[i], val[i], ETH_GSTRING_LEN);
-	return n > 0 ? n : 0;
+	return n;
 }
 
 static size_t xeth_mux_stats_prop(struct platform_device *pd,
@@ -1507,29 +1509,36 @@ static size_t xeth_mux_stats_prop(struct platform_device *pd,
 	ssize_t n;
 	int i;
 
-	n = device_property_read_string_array(&pd->dev, "stats", val,
-					      xeth_mux_max_stats);
+	n = device_property_read_string_array(&pd->dev, "stats", NULL, 0);
+	if (n <= 0)
+		return 0;
+	if (n > xeth_mux_max_stats)
+		n = xeth_mux_max_stats;
+	if (device_property_read_string_array(&pd->dev, "stats", val, n) != n)
+		return 0;
 	for (i = 0; i < n; i++)
 		strncpy(names[i], val[i], ETH_GSTRING_LEN);
-	return n > 0 ? n : 0;
+	return n;
 }
 
-static void xeth_mux_qsfp_i2c_addrs_prop(struct platform_device *pd,
-					 struct net_device *mux)
+static void xeth_mux_qsfp_i2c_addrs_prop(struct platform_device *pd, u16 *addrs)
 {
-	struct xeth_mux_priv *priv = netdev_priv(mux);
-	ssize_t n = xeth_mux_max_qsfp_i2c_addrs - 1;
-	n = device_property_read_u16_array(&pd->dev, "qsfp-i2c-addrs",
-					   priv->qsfp_i2c_addrs, n);
-	if (n <= 0) {
-		priv->qsfp_i2c_addrs[0] = 0x50;
-		priv->qsfp_i2c_addrs[1] = 0x51;
-		priv->qsfp_i2c_addrs[2] = I2C_CLIENT_END;
-		if (xeth_mux_is_platina_mk1(pd) &&
-		    xeth_mux_base_port_prop(pd) == 0)
-			priv->qsfp_i2c_addrs[1] = I2C_CLIENT_END;
-	} else
-		priv->qsfp_i2c_addrs[n] = I2C_CLIENT_END;
+	static const char label[] = "qsfp-i2c-addrs";
+	int n;
+
+	addrs[0] = 0x50;
+	addrs[1] = 0x51;
+	addrs[2] = I2C_CLIENT_END;
+
+	if (!device_property_present(&pd->dev, label))
+		return;
+
+	n = device_property_read_u16_array(&pd->dev, label, NULL, 0);
+	if (n >= xeth_mux_max_qsfp_i2c_addrs)
+		return;
+
+	device_property_read_u16_array(&pd->dev, label, addrs, n);
+	addrs[n] = I2C_CLIENT_END;
 }
 
 const unsigned short *xeth_mux_qsfp_i2c_addrs(struct net_device *mux)
@@ -1637,7 +1646,7 @@ static int xeth_mux_probe(struct platform_device *pd)
 		xeth_mux_flags_prop(pd, priv->priv_flags.names);
 	priv->stat_name.named =
 		xeth_mux_stats_prop(pd, priv->stat_name.names);
-	xeth_mux_qsfp_i2c_addrs_prop(pd, mux);
+	xeth_mux_qsfp_i2c_addrs_prop(pd, priv->qsfp_i2c_addrs);
 
 	if (n_links > 0)
 		eth_hw_addr_inherit(mux, links[0]);
