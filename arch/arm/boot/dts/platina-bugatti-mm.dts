@@ -1,0 +1,852 @@
+/*
+ * Copyright (C) 2015 Platina Systems, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include "imx6sx.dtsi"
+
+/ {
+	model = "Freescale i.MX6 SoloX Bugatti LC Board";
+	compatible = "platina,platina-bugatti-mm", "fsl,imx6sx";
+
+	chosen {
+		stdout-path = &uart1;
+	};
+
+	memory {
+		reg = <0x80000000 0x40000000>;
+	};
+
+};
+
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet1>;
+	status = "okay";
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+
+&usdhc4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc4>;
+	cd-gpios = <&gpio6 21 GPIO_ACTIVE_LOW>;
+	wp-gpios = <&gpio6 20 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+
+&ecspi5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi5>;
+	status = "okay";
+
+	flash0: macronix@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "macronix,mx66l51235l";
+		spi-max-frequency = <29000000>;
+		reg = <0>;
+	};
+
+	flash1: macronix@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "macronix,mx66l51235l";
+		spi-max-frequency = <29000000>;
+		reg = <1>;
+	};
+};
+
+&iomuxc {
+	imx6x-sdb {
+		pinctrl_enet1: enet1grp {
+			fsl,pins = <
+				MX6SX_PAD_ENET1_MDIO__ENET1_MDIO	0xa0b1
+				MX6SX_PAD_ENET1_MDC__ENET1_MDC		0xa0b1
+				MX6SX_PAD_RGMII1_TXC__ENET1_RGMII_TXC	0xa0b1
+				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0xa0b1
+				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0xa0b1
+				MX6SX_PAD_RGMII1_TD2__ENET1_TX_DATA_2	0xa0b1
+				MX6SX_PAD_RGMII1_TD3__ENET1_TX_DATA_3	0xa0b1
+				MX6SX_PAD_RGMII1_TX_CTL__ENET1_TX_EN	0xa0b1
+				MX6SX_PAD_RGMII1_RXC__ENET1_RX_CLK	0x3081
+				MX6SX_PAD_RGMII1_RD0__ENET1_RX_DATA_0	0x3081
+				MX6SX_PAD_RGMII1_RD1__ENET1_RX_DATA_1	0x3081
+				MX6SX_PAD_RGMII1_RD2__ENET1_RX_DATA_2	0x3081
+				MX6SX_PAD_RGMII1_RD3__ENET1_RX_DATA_3	0x3081
+				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x3081
+				MX6SX_PAD_ENET2_RX_CLK__ENET2_REF_CLK_25M	0x91
+			>;
+		};
+
+		pinctrl_gpio_keys: gpio_keysgrp {
+			fsl,pins = <
+				MX6SX_PAD_CSI_DATA04__GPIO1_IO_18 0x17059
+				MX6SX_PAD_CSI_DATA05__GPIO1_IO_19 0x17059
+			>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO01__I2C1_SDA		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x4001b8b1
+			>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO03__I2C2_SDA		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO02__I2C2_SCL		0x4001b8b1
+			>;
+		};
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <
+				MX6SX_PAD_KEY_ROW4__I2C3_SDA		0x4001b8b1
+				MX6SX_PAD_KEY_COL4__I2C3_SCL		0x4001b8b1
+			>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO04__UART1_TX		0x1b0b1
+				MX6SX_PAD_GPIO1_IO05__UART1_RX		0x1b0b1
+			>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO06__UART2_TX		0x1b0b1
+				MX6SX_PAD_GPIO1_IO07__UART2_RX		0x1b0b1
+			>;
+		};
+
+		pinctrl_usdhc4: usdhc4grp {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17059
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x10059
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x17059
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x17059
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17059
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17059
+				MX6SX_PAD_SD4_DATA7__GPIO6_IO_21	0x17059 /* CD */
+				MX6SX_PAD_SD4_DATA6__GPIO6_IO_20	0x17059 /* WP */
+			>;
+		};
+
+		pinctrl_ecspi5: ecspi5grp {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1A_DQS__ECSPI5_MOSI       0x70f1
+				MX6SX_PAD_QSPI1A_SS1_B__ECSPI5_MISO     0x70f1
+				MX6SX_PAD_QSPI1B_DQS__ECSPI5_SS0        0x70f1
+				MX6SX_PAD_QSPI1B_SS1_B__ECSPI5_SCLK     0x70f1
+			>;
+		};
+	};
+};
+
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+
+        at24@50 {
+		compatible = "at24,24c32";
+		pagesize = <32>;
+		reg = <0x50>;
+	};
+
+        mux0: i2cmux@71 {
+                compatible = "nxp,pca9548";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg = <0x71>;
+
+		i2c@0 {
+		      #address-cells = <1>;
+		      #size-cells = <0>;
+		      reg = <0>;
+
+		      ltc4215@48 {
+				reg = <0x48>;
+		      };
+
+		};
+
+		i2c@2 {
+		      #address-cells = <1>;
+		      #size-cells = <0>;
+		      reg = <2>;
+
+		      ucd90120@34 {
+				compatible = "ti,ucd90120";
+				reg = <0x34>;
+		      };
+		};
+	};
+
+        mux1: i2cmux@72 {
+                compatible = "nxp,pca9548";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg = <0x72>;
+
+		i2c@3 {
+		      #address-cells = <1>;
+		      #size-cells = <0>;
+		      reg = <3>;
+
+			sensor_intake: lm75@48 {
+				compatible = "lm75";
+				reg = <0x48>;
+			};
+		};
+
+		i2c@4 {
+		      #address-cells = <1>;
+		      #size-cells = <0>;
+		      reg = <4>;
+
+			sensor_exhaust: lm75@49 {
+				compatible = "lm75";
+				reg = <0x49>;
+			};
+		};
+	};
+
+	expander0: pca9555@20 {
+		   compatible = "nxp,pca9555";
+		   reg = <0x20>;
+	};
+
+	expander1: pca9536@41 {
+		   compatible = "nxp,pca9536";
+		   reg = <0x41>;
+	};
+
+};
+
+&i2c2 {
+        mux2: i2cmux@70 {
+                compatible = "nxp,pca9548";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg = <0x70>;
+	};
+
+        mux3: i2cmux@71 {
+                compatible = "nxp,pca9548";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg = <0x70>;
+	};
+
+        mux4: i2cmux@72 {
+                compatible = "nxp,pca9548";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg = <0x72>;
+
+		lc0: i2c@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc1: i2c@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc2: i2c@2 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc3: i2c@3 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc4: i2c@4 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc5: i2c@5 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc6: i2c@6 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc7: i2c@7 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+	};
+
+	mux5: i2cmux@73 {
+		compatible = "nxp,pca9548";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0x73>;
+
+		lc8: i2c@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc9: i2c@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc10: i2c@2 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc11: i2c@3 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc12: i2c@4 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc13: i2c@5 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc14: i2c@6 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+
+		lc15: i2c@7 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			i2cmux@75 {
+				compatible = "nxp,pca9546";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0x75>;
+
+				i2c@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					at24@51 {
+						compatible = "at24,24c32";
+						pagesize = <32>;
+						reg = <0x51>;
+					};
+				};
+
+				i2c@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					pca9536@41 {
+						compatible = "nxp,pca9536";
+						reg = <0x41>;
+					};
+				};
+			};
+		};
+        };
+
+};
