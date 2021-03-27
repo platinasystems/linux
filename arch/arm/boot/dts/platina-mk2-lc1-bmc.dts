@@ -1,0 +1,553 @@
+/*
+ * Copyright (C) 2015-2016 Platina Systems, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include "imx6sx.dtsi"
+
+/ {
+	model = "platina-mk2-lc1-bmc";
+	compatible = "platina,platina-mk2-lc1-bmc", "fsl,imx6sx-sdb", "fsl,imx6sx";
+
+	chosen {
+		stdout-path = &uart1;
+	};
+
+	memory {
+		reg = <0x80000000 0x40000000>;
+	};
+
+};
+
+&fec1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet1>;
+	phy-mode = "rgmii";
+	fixed-link {
+	      speed = <1000>;
+	      full-duplex;
+	};
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+
+&usbotg1 {			/* onboard debug */
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+
+&usbotg2 { 			/* used for front faceplate */
+	dr_mode = "host";
+	status = "okay";
+};
+
+
+&usdhc4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc4>;
+	status = "okay";
+};
+
+
+/* Added new Quad-SPI1 node for TOR1 */
+/*   	      	       	    	     */
+&qspi1 {
+       pinctrl-names = "default";
+       pinctrl-0 = <&pinctrl_qspi1>;
+       status = "okay";
+
+	ddrsmp = <0>;		/* DDR internal Sampling */
+
+       flash10: s25fl256s1@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "spansion,s25fl256s1";
+		spi-max-frequency = <29000000>;
+		reg = <0>;
+	};
+
+/*
+	flash11: s25fl512s@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "spansion,s25fl512s";
+		spi-max-frequency = <29000000>;
+		reg = <1>;
+	};
+
+     	flash12: s25fl512s@2 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "spansion,s25fl512s";
+		spi-max-frequency = <29000000>;
+		reg = <2>;
+	};
+
+	flash13: s25fl512s@3 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "spansion,s25fl512s";
+		spi-max-frequency = <29000000>;
+		reg = <3>;
+	};
+
+*/
+
+};
+
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+	platina-mk2-lc1-bmc {
+        	pinctrl_hog: hoggrp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x17028
+				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9 	0x17028
+				MX6SX_PAD_GPIO1_IO10__GPIO1_IO_10	0x00828
+				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x00028
+				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x00028
+				MX6SX_PAD_GPIO1_IO13__GPIO1_IO_13	0x07828
+				
+				MX6SX_PAD_ENET1_COL__GPIO2_IO_0		0x13028
+				MX6SX_PAD_ENET1_CRS__GPIO2_IO_1		0x10028
+				MX6SX_PAD_ENET1_RX_CLK__GPIO2_IO_4	0x10028
+				MX6SX_PAD_ENET1_TX_CLK__GPIO2_IO_5	0x10028
+				MX6SX_PAD_ENET2_COL__GPIO2_IO_6		0x10028
+				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7 	0x10028
+				MX6SX_PAD_ENET2_RX_CLK__GPIO2_IO_8	0x00028
+
+				MX6SX_PAD_KEY_COL0__GPIO2_IO_10		0x00028
+				MX6SX_PAD_KEY_COL1__GPIO2_IO_11		0x00028
+				MX6SX_PAD_KEY_COL2__GPIO2_IO_12		0x10028
+				MX6SX_PAD_KEY_COL3__GPIO2_IO_13		0x10028
+				MX6SX_PAD_KEY_ROW0__GPIO2_IO_15		0x10028
+				MX6SX_PAD_KEY_ROW1__GPIO2_IO_16		0x10028
+				MX6SX_PAD_KEY_ROW2__GPIO2_IO_17		0x10028
+				MX6SX_PAD_KEY_ROW3__GPIO2_IO_18		0x10028
+
+				MX6SX_PAD_LCD1_CLK__GPIO3_IO_0		0x10028
+				MX6SX_PAD_LCD1_ENABLE__GPIO3_IO_25	0x00828
+				MX6SX_PAD_LCD1_HSYNC__GPIO3_IO_26 	0x07028
+				MX6SX_PAD_LCD1_VSYNC__GPIO3_IO_28	0x17028
+
+				MX6SX_PAD_NAND_ALE__GPIO4_IO_0  	0x00000 /* unused */
+				MX6SX_PAD_NAND_CE0_B__GPIO4_IO_1 	0x00000 /* unused */
+				MX6SX_PAD_NAND_CE1_B__GPIO4_IO_2 	0x10028
+				MX6SX_PAD_NAND_CLE__GPIO4_IO_3  	0x13028
+				MX6SX_PAD_NAND_DATA00__GPIO4_IO_4 	0x10028
+				MX6SX_PAD_NAND_DATA01__GPIO4_IO_5	0x10028
+				MX6SX_PAD_NAND_DATA02__GPIO4_IO_6	0x10028	
+				MX6SX_PAD_NAND_DATA03__GPIO4_IO_7	0x10028
+				MX6SX_PAD_NAND_DATA04__GPIO4_IO_8 	0x11028
+				MX6SX_PAD_NAND_DATA05__GPIO4_IO_9 	0x03028
+				MX6SX_PAD_NAND_DATA06__GPIO4_IO_10	0x10028
+				MX6SX_PAD_NAND_DATA07__GPIO4_IO_11 	0x00000  /* unused */
+				MX6SX_PAD_NAND_RE_B__GPIO4_IO_12   	0x00028
+				MX6SX_PAD_NAND_READY_B__GPIO4_IO_13	0x00028
+				MX6SX_PAD_NAND_WE_B__GPIO4_IO_14        0x00028
+				MX6SX_PAD_NAND_WP_B__GPIO4_IO_15 	0x13028
+				MX6SX_PAD_QSPI1B_DATA0__GPIO4_IO_24     0x0028
+                                MX6SX_PAD_QSPI1B_DATA1__GPIO4_IO_25     0x0028
+                                MX6SX_PAD_QSPI1B_DATA2__GPIO4_IO_26     0x0028
+                                MX6SX_PAD_QSPI1B_DATA3__GPIO4_IO_27     0x0000 /* unused */
+                                MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28       0x0000 /* unused */
+				MX6SX_PAD_QSPI1B_SCLK__GPIO4_IO_29      0x0028
+                                MX6SX_PAD_QSPI1B_SS0_B__GPIO4_IO_30     0x10028
+                                MX6SX_PAD_QSPI1B_SS1_B__GPIO4_IO_31     0x10028
+
+				MX6SX_PAD_SD2_CLK__GPIO6_IO_6		0x03068
+				MX6SX_PAD_SD2_CMD__GPIO6_IO_7  		0x11028
+				MX6SX_PAD_SD2_DATA0__GPIO6_IO_8  	0x00028
+				MX6SX_PAD_SD2_DATA1__GPIO6_IO_9		0x17028
+				MX6SX_PAD_SD2_DATA2__GPIO6_IO_10   	0x00028
+				MX6SX_PAD_SD2_DATA3__GPIO6_IO_11 	0x00000	/* unused */
+				MX6SX_PAD_SD4_DATA6__GPIO6_IO_20 	0x17028
+				MX6SX_PAD_SD4_DATA7__GPIO6_IO_21	0x00028
+				
+				MX6SX_PAD_SD3_DATA0__GPIO7_IO_2		0x00028
+				MX6SX_PAD_SD3_DATA1__GPIO7_IO_3		0x00028
+                                MX6SX_PAD_SD3_DATA2__GPIO7_IO_4		0x00028
+                                MX6SX_PAD_SD3_DATA3__GPIO7_IO_5		0x00028
+                                MX6SX_PAD_SD3_DATA4__GPIO7_IO_6		0x00028
+                                MX6SX_PAD_SD3_DATA5__GPIO7_IO_7		0x10028
+                                MX6SX_PAD_SD3_DATA6__GPIO7_IO_8		0x10028
+                                MX6SX_PAD_SD3_DATA7__GPIO7_IO_9		0x10028
+			>;
+		};
+
+		pinctrl_enet1: enet1grp {
+			fsl,pins = <
+				MX6SX_PAD_ENET1_MDIO__ENET1_MDIO	0xa0b1
+				MX6SX_PAD_ENET1_MDC__ENET1_MDC		0xa0b1
+				MX6SX_PAD_RGMII1_TXC__ENET1_RGMII_TXC	0xa0b1
+				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0xa0b1
+				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0xa0b1
+				MX6SX_PAD_RGMII1_TD2__ENET1_TX_DATA_2	0xa0b1
+				MX6SX_PAD_RGMII1_TD3__ENET1_TX_DATA_3	0xa0b1
+				MX6SX_PAD_RGMII1_TX_CTL__ENET1_TX_EN	0xa0b1
+				MX6SX_PAD_RGMII1_RXC__ENET1_RX_CLK	0x3081
+				MX6SX_PAD_RGMII1_RD0__ENET1_RX_DATA_0	0x3081
+				MX6SX_PAD_RGMII1_RD1__ENET1_RX_DATA_1	0x3081
+				MX6SX_PAD_RGMII1_RD2__ENET1_RX_DATA_2	0x3081
+				MX6SX_PAD_RGMII1_RD3__ENET1_RX_DATA_3	0x3081
+				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x3081
+			>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO01__I2C1_SDA		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x4001b8b1
+			>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO03__I2C2_SDA		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO02__I2C2_SCL		0x4001b8b1
+			>;
+		};
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <
+				MX6SX_PAD_KEY_ROW4__I2C3_SDA		0x4001b8b1
+				MX6SX_PAD_KEY_COL4__I2C3_SCL		0x4001b8b1
+			>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO04__UART1_TX		0x1b0b1
+				MX6SX_PAD_GPIO1_IO05__UART1_RX		0x1b0b1
+			>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO06__UART2_TX		0x1b0b1
+				MX6SX_PAD_GPIO1_IO07__UART2_RX		0x1b0b1
+			>;
+		};
+
+
+		pinctrl_usdhc4: usdhc4grp {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17059
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x10059
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x17059
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x17059
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17059
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17059
+			>;
+		};
+		
+		/* Defined Pins for Quad-SPI1 node */
+		/* 	   	    	      	   */
+		pinctrl_qspi1: qspi1grp {
+			fsl,pins = <
+				 MX6SX_PAD_QSPI1A_DATA0__QSPI1_A_DATA_0	  0x70f1	
+				 MX6SX_PAD_QSPI1A_DATA1__QSPI1_A_DATA_1	  0x70f1
+				 MX6SX_PAD_QSPI1A_DATA2__QSPI1_A_DATA_2   0x70f1
+				 MX6SX_PAD_QSPI1A_DATA3__QSPI1_A_DATA_3	  0x70f1
+			  	 MX6SX_PAD_QSPI1A_SCLK__QSPI1_A_SCLK 	  0x70f1
+				 MX6SX_PAD_QSPI1A_SS0_B__QSPI1_A_SS0_B	  0x70f1
+				 MX6SX_PAD_QSPI1A_SS1_B__QSPI1_A_SS1_B	  0x70f1
+			>;
+		};
+	};
+};
+
+/* 05/09/16: Updated LOCAL_MUX SPI interface for TOR1	*/
+/* 	      	  	    		      		*/
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+};
+
+&i2c2 {
+        clock-frequency = <100000>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_i2c2>;
+        status = "okay";
+};
+
+&i2c3 {
+        clock-frequency = <100000>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_i2c3>;
+	status = "disabled";		/* not used */
+};
+
+&gpio1 {
+	HOST_TO_BMC_INT_L@8 {
+		gpio-pin-desc;
+	  	input;
+	};
+	BMC_TO_HOST_NMI_L@9 {
+		gpio-pin-desc;
+		input;
+	};
+	BMC_TO_HOST_RST_L@10 {
+		gpio-pin-desc;
+		output-high;
+	};
+	BMC_TO_HOST_INT_L@11 {
+		gpio-pin-desc;
+		output-high;
+	};
+	P3V3_I2C_EN@12 {
+		gpio-pin-desc;
+		output-high;
+	};
+	PHY_RST_L@13 {
+	     gpio-pin-desc;
+	     output-high;
+	};
+};
+
+&gpio2 {
+	BMC_I2C_OK@0 {
+		gpio-pin-desc;
+		input;
+	};
+        PCIEX_INT_L@1 {
+                gpio-pin-desc;
+                input;
+        };
+        PHY1_INT_L@4 {
+                gpio-pin-desc;
+                input;
+        };
+        PHY2_INT_L@5 {
+                gpio-pin-desc;
+                input;
+        };
+        ETHX_PCIE_RST_L@6 {
+                gpio-pin-desc;
+                output-high;
+        };
+	UCD90120_INT_L@7 {
+		gpio-pin-desc;
+		input;
+	};
+	UCD90120_CNTRL@8 {
+		gpio-pin-desc;
+		output-high;
+	};
+	HOST_TO_BMC_I2C_EN@10 {
+		gpio-pin-desc;
+		output-high;
+	};	      
+	BMC_ON_HOST_I2C_EN@11 {
+		gpio-pin-desc;
+		output-low;
+	};
+	I2C3_SDA_BMC_MON@12 {
+		gpio-pin-desc;
+		input;
+	};
+	I2C3_SCL_BMC_MON@13 {
+		gpio-pin-desc;
+		input;
+	};
+	I2C1_SCL_MON@15 {
+		gpio-pin-desc;
+		input;
+	};
+	I2C1_SDA_MON@16 {
+		gpio-pin-desc;
+		input;
+	};
+	I2C2_SCL_MON@17 {
+		gpio-pin-desc;
+		input;
+	};
+	I2C2_SDA_MON@18 {
+		gpio-pin-desc;
+		input;
+	};
+};		   
+
+&gpio3 {
+	ETHX_INT_L@0 {
+       		gpio-pin-desc;
+		input;
+  	};
+	ETHX_RST_L@25 {
+		gpio-pin-desc;
+		output-high;
+	};
+	BMC_TO_MC_INT_L@26 {
+		gpio-pin-desc;
+		output-high;
+	};
+	CPU_PRSNT_L@28 {
+		gpio-pin-desc;
+		input;
+	};
+};
+
+&gpio4 {
+	FP_MUX_SEL1@2 {
+		gpio-pin-desc;
+		input;
+	};
+	EEPROM_READY@3 {
+		gpio-pin-desc;
+		input;
+	};
+	LM25066_0_ALERT_L@4 {
+		gpio-pin-desc;
+		input;
+	};
+	LC_TO_MC_PRESENT_L@5 {
+		gpio-pin-desc;
+		input;
+	};
+	LM25066_1_ALERT_L@6 {
+		gpio-pin-desc;
+	  	input;
+	};
+	CLK_GENERATOR_EN@7 {
+		gpio-pin-desc;
+		input;
+	};
+	HOST_CPU_PWRBTN_L@8 {
+		gpio-pin-desc;
+		input;
+	};
+	LC_POWER_EN@9 {
+		gpio-pin-desc;
+		output-high;
+	};
+	HOST_GPIO0_INT_L@10 {
+		gpio-pin-desc;
+	  	input;
+	};
+	SET_HS_TRIP_0@12 {
+		gpio-pin-desc;
+		output-low;
+	};
+        SET_HS_TRIP_1@14 {
+                gpio-pin-desc;
+                output-low;
+        };
+	ALL_PWR_GOOD@15 {
+		gpio-pin-desc;
+		input;
+	};
+	MAX6369_SET0@24 {
+		gpio-pin-desc;
+		output-high;
+	};
+	MAX6369_SET1@25 {
+		gpio-pin-desc;
+		output-high;
+	};
+	MAX6369_SET2@26 {
+		gpio-pin-desc;
+		output-low;
+	};
+	BMC_WDI@29 {
+		gpio-pin-desc;
+		output-low;
+	};
+	BMC_WD_MUX_EN_L@30 {
+		gpio-pin-desc;
+		input;
+	};
+	QSPI_MUX_SEL@31 {
+		gpio-pin-desc;
+		input;
+	};
+};
+
+&gpio6 {
+        FP_G_LED@6 {
+                gpio-pin-desc;
+                output-high;
+        };
+	HOST_TO_BMC_I2C_GPIO@7 {
+		gpio-pin-desc;
+		input;
+	};
+	MAIN_I2C_MUX_RST_L@8 {
+		gpio-pin-desc;
+		output-high;
+	};
+	BMC_HOST_GPIO@9 {
+		gpio-pin-desc;
+		input;
+	};
+	BMC_TO_UCD_RST_L@10 {
+		gpio-pin-desc;
+		output-high;
+	};
+	PMIC_INT_L@20 {
+		gpio-pin-desc;
+		input;
+	};
+	QSPI_RST_L@21 {
+		gpio-pin-desc;
+		output-high;
+	};
+
+};
+
+&gpio7 {
+        LC_SLOT_ID0@2 {
+                gpio-pin-desc;
+                input;
+        };
+        LC_SLOT_ID1@3 {
+                gpio-pin-desc;
+                input;
+        };
+        LC_SLOT_ID2@4 {
+                gpio-pin-desc;
+                input;
+        };
+        LC_SLOT_ID3@5 {
+                gpio-pin-desc;
+                input;
+        };
+        LC_SLOT_ID4@6 {
+                gpio-pin-desc;
+                input;
+        };
+        FAN_SPEED_CTRL0@7 {
+                gpio-pin-desc;
+                input;
+        };
+        FAN_SPEED_CTRL1@8 {
+                gpio-pin-desc;
+                input;
+        };
+	FAN_SPEED_CTRL2@9 {
+                gpio-pin-desc;
+                input;
+        };
+};	

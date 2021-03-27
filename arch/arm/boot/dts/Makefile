@@ -565,7 +565,8 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-udoo-neo-full.dtb \
 	platina-bugatti-lc.dtb \
 	platina-bugatti-mm.dtb \
-	platina-mk2-mc1-bmc.dtb
+	platina-mk2-mc1-bmc.dtb \
+	platina-mk2-lc1-bmc.dtb
 dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-14x14-evk.dtb \
 	imx6ul-ccimx6ulsbcexpress.dtb \
