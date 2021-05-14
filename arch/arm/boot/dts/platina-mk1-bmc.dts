@@ -418,7 +418,9 @@
 		compatible = "at24,24c128";
 		pagesize = <32>;
 		reg = <0x55>;
-
+		#address-cells = <1>;
+		#size-cells = <1>;
+		
 		onie_data: data@0 {
 			  reg = <0x0 0x800>;
 		};
