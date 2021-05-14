@@ -10,6 +10,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/i2c/i2c.h>
 #include "imx6sx.dtsi"
 
 / {
@@ -423,7 +424,14 @@
 		};
 	};
 
-	mux: i2cmux@78 {
+	xport: xport@64 {
+	       compatible = "linux,i2c-ipc-responder";
+	       reg = <(0x64 | I2C_OWN_SLAVE_ADDRESS)>;
+	       stream-ports = <0x40 0x50>;
+	       stream-port-names = "stream-tobmc", "stream-frombmc";
+	};
+
+	mux: i2cmux@76 {
 		compatible = "nxp,pca9548";
 		#address-cells = <1>;
 		#size-cells = <0>;
